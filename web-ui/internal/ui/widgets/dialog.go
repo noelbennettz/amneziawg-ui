@@ -38,7 +38,7 @@ func NewDialog(c fyne.Canvas, title string, content fyne.CanvasObject, size fyne
 	// with a QR code above a column of config - used to grow past the screen
 	// and take its only button with it; the card now keeps the room it was
 	// given and the part that does not fit scrolls.
-	scroll := container.NewVScroll(content)
+	scroll := container.NewVScroll(Rewrapped(content))
 	scroll.SetMinSize(fyne.NewSize(0, 0))
 
 	frame := container.NewBorder(

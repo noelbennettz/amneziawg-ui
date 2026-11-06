@@ -119,7 +119,7 @@ func (u *UI) Build() fyne.CanvasObject {
 		u.list.CanvasObject(),
 	)
 
-	u.scroll = container.NewVScroll(container.NewPadded(body))
+	u.scroll = container.NewVScroll(widgets.Rewrapped(container.NewPadded(body)))
 
 	page := container.NewBorder(u.header(), nil, nil, nil, u.scroll)
 

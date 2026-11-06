@@ -9,6 +9,7 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/widget"
 )
 
@@ -44,7 +45,7 @@ type Paragraph struct {
 func NewParagraph(text string, size float32, c color.Color, style fyne.TextStyle, minWidth float32) *Paragraph {
 	p := &Paragraph{full: text, size: size, style: style, color: c, minWidth: minWidth, lines: []string{text}}
 	p.ExtendBaseWidget(p)
-	p.box = container.NewVBox()
+	p.box = container.New(layout.NewCustomPaddedVBoxLayout(0))
 	p.apply(p.wrap(minWidth))
 	return p
 }
@@ -86,6 +87,12 @@ func (p *Paragraph) MinSize() fyne.Size {
 // apply shows the given lines, and reports whether that changed anything. The
 // text is drawn as one canvas.Text per line: a canvas.Text is a single line,
 // and a newline inside one is not a break but a glyph.
+//
+// The lines are stacked with no padding between them, unlike a container.VBox:
+// the paragraph reports its height as one line height per line (MinSize below),
+// and the theme's 4-point inter-object padding would make the block it draws
+// taller than the block it asked for - four points per line, which is what put
+// the last lines of a long note on top of whatever came after it.
 func (p *Paragraph) apply(lines []string) bool {
 	if p.box == nil || equalLines(lines, p.lines) {
 		return false

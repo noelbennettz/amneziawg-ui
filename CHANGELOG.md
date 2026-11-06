@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+- **Nothing on the page is drawn on top of anything else any more.** Two things
+  behind the overlapping text in the create form's parameter block. A wrapped
+  paragraph reports its height as one line height per line, but the lines were
+  stacked in a `container.NewVBox`, which puts the theme's 4 points between
+  every pair - so every note was given four points per line less than it drew,
+  and its last lines landed on whatever came after it. And a fyne layout asks
+  every child for its minimum size before it gives any of them a width: on the
+  pass that narrows the page the notes were stacked at the height they had a
+  moment ago and then wrapped into two or three more lines, which put one note
+  on top of the next until something else laid the page out again. The lines
+  are now stacked with no padding, and the page and the dialogs lay their
+  content out twice per pass - once to learn the width, once to stack at the
+  heights that follow from it.
+
 - **Scrolling moves by what the wheel says.** The wasm driver hands fyne the
   browser's pixel delta as if it were a wheel notch, and fyne then doubles
   anything from 5 up: one notch of 100 pixels asked the page to move 200

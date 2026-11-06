@@ -4,12 +4,16 @@ import (
 	"strings"
 	"testing"
 
+	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/test"
 
 	"fyne.io/fyne/v2/widget"
 
 	"amneziawg-web-ui/web-ui/api"
 	"amneziawg-web-ui/web-ui/internal/ui/env"
+	"amneziawg-web-ui/web-ui/internal/ui/style"
+	"amneziawg-web-ui/web-ui/internal/ui/widgets"
 )
 
 // pageState is a State with whatever the test needs the page to have heard
@@ -214,5 +218,55 @@ func TestSeedDefaultsKeepsWhatTheUserTyped(t *testing.T) {
 
 	if f.port.Text != "41000" || f.subnet.Text != "10.99.0.0/24" || f.dns.Text != "1.1.1.1" {
 		t.Errorf("typed values were overwritten: %q %q %q", f.port.Text, f.subnet.Text, f.dns.Text)
+	}
+}
+
+// The notes of the create form must never be drawn on top of each other, at
+// whichever width the page is laid out - including the pass that narrows it,
+// where a note wraps into more lines than the height the layout gave it before
+// it knew the width.
+//
+// Every paragraph is walked rather than a named pair: the form holds a dozen
+// of them (the hints under the fields, the note over the randomise button, the
+// explanations of the parameter block), and the bug this guards against hit
+// whichever of them the width made taller.
+func TestCreateFormGivesItsNotesTheRoomTheyNeed(t *testing.T) {
+	test.NewApp()
+
+	f := New(&env.Env{}, pageState{}, func() {})
+	f.toggleOpen()
+	f.advancedMode.Tapped(nil) // advanced mode, and the obfuscation block with it
+
+	page := widgets.Rewrapped(container.NewVBox(f.CanvasObject()))
+	w := test.NewWindow(page)
+	defer w.Close()
+
+	for _, width := range []float32{1320, 700, 1320} {
+		f.SetNarrow(width < style.Breakpoint)
+		w.Resize(fyne.NewSize(width, 2400))
+
+		eachParagraph(page, func(p *widgets.Paragraph) {
+			if need := p.MinSize().Height; p.Size().Height+0.5 < need {
+				t.Errorf("at %.0f wide: the note at y=%.0f draws %.0f points of text in the %.0f it was given",
+					width, p.Position().Y, need, p.Size().Height)
+			}
+		})
+	}
+}
+
+// eachParagraph visits every Paragraph in a tree, stepping into containers and
+// into the objects the widgets around them draw.
+func eachParagraph(obj fyne.CanvasObject, visit func(*widgets.Paragraph)) {
+	switch node := obj.(type) {
+	case *widgets.Paragraph:
+		visit(node)
+	case *fyne.Container:
+		for _, child := range node.Objects {
+			eachParagraph(child, visit)
+		}
+	case fyne.Widget:
+		for _, child := range test.WidgetRenderer(node).Objects() {
+			eachParagraph(child, visit)
+		}
 	}
 }
