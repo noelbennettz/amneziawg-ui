@@ -22,6 +22,7 @@ func TestNarrowLayout(t *testing.T) {
 	server := servers[0]
 
 	a := newNarrowApp(t, narrowWidth, 844)
+	a.login()
 	a.start()
 
 	// Every widget the page offers has to sit inside the viewport. The three

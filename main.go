@@ -7,11 +7,11 @@ import (
 	"strconv"
 
 	"github.com/gofiber/fiber/v3"
-	"github.com/gofiber/fiber/v3/middleware/basicauth"
 	"github.com/gofiber/fiber/v3/middleware/logger"
 	"github.com/gofiber/fiber/v3/middleware/pprof"
 	"github.com/gofiber/fiber/v3/middleware/recover"
 
+	"amneziawg-web-ui/internal/auth"
 	"amneziawg-web-ui/internal/awg"
 	"amneziawg-web-ui/internal/config"
 	"amneziawg-web-ui/internal/frontend"
@@ -42,21 +42,18 @@ func main() {
 	assets := frontend.Open(os.DirFS(staticDir))
 	app.Use(assets.Compression())
 
-	// Basic auth protects everything except the health check: every asset of
-	// the UI is behind the same credentials as the API.
-	app.Use(basicauth.New(basicauth.Config{
-		Next: func(c fiber.Ctx) bool {
-			return c.Path() == "/status"
-		},
-		Users: map[string]string{
-			settings.User: settings.PasswordHash,
-		},
-		Realm: "Restricted Content",
-	}))
+	// Everything except the health check and the login page is behind the
+	// login: the browser is sent to /login, which hands out a session cookie
+	// once the form is posted with the credentials the container was started
+	// with. An Authorization: Basic header is still accepted, so scripts keep
+	// working with "curl -u".
+	guard := auth.New(settings.User, settings.PasswordHash)
+	app.Use(guard.Middleware())
+	guard.Register(app)
 
 	// Profiling is opt-in: collecting a CPU profile costs the running server
 	// real time, and the endpoints hand out stack traces and command line of
-	// the process. Registered after basicauth on purpose, so /debug/pprof
+	// the process. Registered after the guard on purpose, so /debug/pprof
 	// requires the same credentials as everything else.
 	if settings.Pprof {
 		app.Use(pprof.New())

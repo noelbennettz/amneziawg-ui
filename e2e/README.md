@@ -15,6 +15,17 @@ fold. Every coordinate in the tests assumes that collapsed 56px row above the
 "Create New VPN Server" button; dialogs are centred in the window and do not
 move either way.
 
+## Authentication
+
+The panel is in front of a login page at `/login`. It is server-rendered plain
+HTML with no JavaScript, and therefore the only page in the suite that can be
+selected by CSS: the helpers log a context in by filling `#username` and
+`#password` and pressing the submit button. Browser contexts are created without
+credentials - Playwright's `HttpCredentials` answered the old HTTP basic auth,
+and there is no `WWW-Authenticate` challenge left for it to answer. The REST
+helpers in `main_test.go` still send `Authorization: Basic`, which every route
+keeps accepting, including `/api`.
+
 ## Layout
 
 This directory is its own Go module, so playwright-go stays out of the root
@@ -23,9 +34,11 @@ backend.
 
 - `main_test.go` - `TestMain` installs the Playwright driver and launches
   Chrome once; the helpers give every test a fresh browser context with the
-  credentials and viewport, and wrap clicks, typing, screenshots and the REST
-  calls
-- `01_smoke_test.go` ... `06_port_test.go` - one test each
+  viewport, log it in through the login form, and wrap clicks, typing,
+  screenshots and the REST calls
+- `00_login_test.go` - the login page: an anonymous `/` redirects to it, a wrong
+  password shows the error and stays there, a right one lands on the panel
+- `01_smoke_test.go` ... `09_dialog_test.go` - one test each
 
 ## Running
 
@@ -64,7 +77,8 @@ AWG_URL=http://localhost:54845 go test -count=1 -v .
 
 `AWG_URL` defaults to `http://localhost:51836`. Whatever it points at needs
 `WEB_UI_USER=admin` and `WEB_UI_PASSWORD=BXugPWxEEEhj3HNh/kV4ll0YhzYPkKCJWILlimJI/IY=`
-- the base64 SHA-256 of `changeme`, which is what the tests log in with.
+- the base64 SHA-256 of `changeme`, which is what the tests type into the login
+form.
 
 No Node.js is needed: on the first run `TestMain` downloads the Playwright
 driver (with its own Node) into `~/.cache/ms-playwright-go`. Browsers are not

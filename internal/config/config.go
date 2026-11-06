@@ -43,8 +43,9 @@ type Settings struct {
 	// Pprof mounts /debug/pprof behind the same credentials as the API.
 	Pprof bool
 
-	// User and PasswordHash are the basic-auth credentials; the hash is the
-	// base64 of the SHA-256 of the password, as fiber's middleware expects.
+	// User and PasswordHash are the credentials the login page checks; the
+	// hash is the base64 of the SHA-256 of the password, the format the basic
+	// auth header still being accepted for scripts uses too.
 	User         string
 	PasswordHash string
 

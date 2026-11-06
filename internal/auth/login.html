@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AmneziaWG UI</title>
+<style>
+	/* The values below are the ones in web-ui/internal/ui/style/style.go: the
+	   page after login is a Fyne canvas painted in that palette, and this form
+	   is the last thing before it, so it is drawn in the same Material 3 dark
+	   scheme - the same near-black surfaces, the same single blue accent, the
+	   same radii. The two files cannot share code (one is a separate Go
+	   module with fyne in it), so a shade that moves there has to move here
+	   too. */
+	:root {
+		--background: #131314;
+		--surface: #1e1f20;
+		--surface-high: #333537;
+		--text: #e3e3e3;
+		--muted: #c4c7c5;
+		--placeholder: #8b8f93;
+		--primary: #a8c7fa;
+		--on-primary: #0a305f;
+		--error: #ffb4ab;
+		--radius-xl: 28px;
+		--radius-md: 16px;
+		--radius-pill: 20px;
+	}
+
+	* {
+		box-sizing: border-box;
+	}
+
+	body {
+		margin: 0;
+		min-height: 100vh;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		padding: 24px;
+		background: var(--background);
+		color: var(--text);
+		font-family: "Roboto", -apple-system, "Segoe UI", "Helvetica Neue", Arial, "Noto Sans", sans-serif;
+		-webkit-font-smoothing: antialiased;
+	}
+
+	.card {
+		width: 100%;
+		max-width: 400px;
+		padding: 32px;
+		background: var(--surface);
+		border-radius: var(--radius-xl);
+		/* M3 draws separation from tonal steps and space; the shadow is
+		   only here to lift the card off the page. */
+		box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+	}
+
+	h1 {
+		margin: 0 0 24px;
+		font-size: 24px;
+		font-weight: 400;
+		letter-spacing: -0.2px;
+	}
+
+	label {
+		display: block;
+		margin: 0 0 6px 4px;
+		font-size: 12px;
+		color: var(--muted);
+	}
+
+	.field + .field {
+		margin-top: 16px;
+	}
+
+	input[type="text"],
+	input[type="password"] {
+		width: 100%;
+		padding: 14px 16px;
+		background: var(--surface-high);
+		border: 0;
+		border-radius: var(--radius-md);
+		color: var(--text);
+		font-family: inherit;
+		font-size: 15px;
+		/* An M3 text field is a filled surface, not a box: the ring only
+		   appears while it has focus. */
+		outline: 2px solid transparent;
+		transition: outline-color 0.15s ease;
+	}
+
+	input::placeholder {
+		color: var(--placeholder);
+	}
+
+	input[type="text"]:focus,
+	input[type="password"]:focus {
+		outline-color: var(--primary);
+	}
+
+	button {
+		width: 100%;
+		margin-top: 24px;
+		padding: 14px 24px;
+		background: var(--primary);
+		border: 0;
+		border-radius: var(--radius-pill);
+		color: var(--on-primary);
+		font-family: inherit;
+		font-size: 15px;
+		font-weight: 500;
+		cursor: pointer;
+		transition: filter 0.15s ease;
+	}
+
+	button:hover {
+		filter: brightness(1.06);
+	}
+
+	button:active {
+		filter: brightness(0.94);
+	}
+
+	button:focus-visible {
+		outline: 2px solid var(--text);
+		outline-offset: 2px;
+	}
+
+	.error {
+		margin: 0 0 16px;
+		padding: 12px 16px;
+		background: rgba(255, 180, 171, 0.12);
+		border-radius: var(--radius-md);
+		color: var(--error);
+		font-size: 14px;
+	}
+
+	@media (max-width: 420px) {
+		.card {
+			padding: 24px;
+		}
+	}
+</style>
+</head>
+<body>
+	<main class="card">
+		<h1>AmneziaWG UI</h1>
+		{{if .Error}}<p class="error" role="alert">{{.Error}}</p>{{end}}
+		<form method="post" action="/login">
+			<input type="hidden" name="next" value="{{.Next}}">
+			<div class="field">
+				<label for="username">Username</label>
+				<input id="username" name="username" type="text" autocomplete="username"
+					autocapitalize="none" autocorrect="off" spellcheck="false" required autofocus>
+			</div>
+			<div class="field">
+				<label for="password">Password</label>
+				<input id="password" name="password" type="password" autocomplete="current-password" required>
+			</div>
+			<button type="submit">Sign in</button>
+		</form>
+	</main>
+</body>
+</html>

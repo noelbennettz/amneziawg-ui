@@ -21,6 +21,7 @@ func TestTrafficPolling(t *testing.T) {
 		}
 	})
 
+	a.login()
 	a.start()
 	time.Sleep(12 * time.Second)
 

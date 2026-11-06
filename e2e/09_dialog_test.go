@@ -26,6 +26,7 @@ func TestDialogFitsOnAPhone(t *testing.T) {
 
 	const height = 844
 	a := newNarrowApp(t, narrowWidth, height)
+	a.login()
 	a.start()
 
 	a.act("client." + clients[0].ID + ".menu.qr")

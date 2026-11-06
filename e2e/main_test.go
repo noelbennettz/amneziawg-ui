@@ -94,15 +94,18 @@ type app struct {
 	errors []string
 }
 
-// newApp opens a fresh browser context - its own cookies, credentials and
-// viewport, as Playwright Test gives every test - without loading the UI yet,
-// so a test can hook page events before the first request goes out.
+// newApp opens a fresh browser context - its own cookies and viewport, as
+// Playwright Test gives every test - without loading the UI yet, so a test can
+// hook page events before the first request goes out.
+//
+// The context starts out anonymous: the panel is behind a session cookie now,
+// not behind HTTP basic auth, so there is nothing to hand the browser up front
+// and a test that wants to see the panel has to log in through the form first.
 func newApp(t *testing.T) *app {
 	t.Helper()
 	ctx, err := browser.NewContext(playwright.BrowserNewContextOptions{
-		BaseURL:         new(baseURL),
-		HttpCredentials: &playwright.HttpCredentials{Username: user, Password: password},
-		Viewport:        &playwright.Size{Width: viewportWidth, Height: viewportHeight},
+		BaseURL:  new(baseURL),
+		Viewport: &playwright.Size{Width: viewportWidth, Height: viewportHeight},
 	})
 	must(t, err)
 	t.Cleanup(func() { _ = ctx.Close() })
@@ -126,11 +129,10 @@ func newApp(t *testing.T) *app {
 func newNarrowApp(t *testing.T, width, height int) *app {
 	t.Helper()
 	ctx, err := browser.NewContext(playwright.BrowserNewContextOptions{
-		BaseURL:         new(baseURL),
-		HttpCredentials: &playwright.HttpCredentials{Username: user, Password: password},
-		Viewport:        &playwright.Size{Width: width, Height: height},
-		HasTouch:        new(true),
-		IsMobile:        new(true),
+		BaseURL:  new(baseURL),
+		Viewport: &playwright.Size{Width: width, Height: height},
+		HasTouch: new(true),
+		IsMobile: new(true),
 	})
 	must(t, err)
 	t.Cleanup(func() { _ = ctx.Close() })
@@ -147,10 +149,45 @@ func newNarrowApp(t *testing.T, width, height int) *app {
 	return a
 }
 
-// startApp opens a page and loads the UI in it.
+// login signs the page in through the form at /login. The panel sits behind a
+// session cookie rather than HTTP basic auth, so a fresh context gets a redirect
+// to this form instead of the page; the form is plain server-rendered HTML, and
+// therefore the only thing in the suite that can be driven by a selector.
+func (a *app) login() {
+	a.t.Helper()
+	a.submitLogin(user, password)
+
+	// A right pair answers 303 with the cookie and sends the browser to "/".
+	// Waiting for that URL rather than for the click to return is what proves
+	// the cookie was accepted and the request was not bounced again.
+	err := a.page.WaitForURL(baseURL+"/", playwright.PageWaitForURLOptions{
+		WaitUntil: playwright.WaitUntilStateDomcontentloaded,
+		Timeout:   new(float64((30 * time.Second).Milliseconds())),
+	})
+	if err != nil {
+		a.t.Fatalf("logging in as %q did not reach the panel: %v", user, err)
+	}
+}
+
+// submitLogin loads the form, fills it in and presses the button, and leaves
+// the outcome to the caller: a wrong pair answers 401 and renders the form
+// again, which only TestLogin has anything to say about.
+func (a *app) submitLogin(name, secret string) {
+	a.t.Helper()
+	_, err := a.page.Goto("/login", playwright.PageGotoOptions{WaitUntil: playwright.WaitUntilStateDomcontentloaded})
+	must(a.t, err)
+	must(a.t, a.page.Locator("#username").Fill(name))
+	must(a.t, a.page.Locator("#password").Fill(secret))
+	must(a.t, a.page.Locator("button[type=submit]").Click())
+}
+
+// startApp opens a page, logs it in and loads the UI in it.
 func startApp(t *testing.T) *app {
 	t.Helper()
 	a := newApp(t)
+	// The session has to exist before the first GET /: without it that
+	// request is a redirect to the login form, not the panel.
+	a.login()
 	a.start()
 	return a
 }

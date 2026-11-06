@@ -21,8 +21,8 @@ import (
 const apiBase = "/api"
 
 // Client is a thin REST client for the Go/Fiber backend. Requests are
-// relative to the page origin, so the browser replays the HTTP basic-auth
-// credentials it already holds for this realm.
+// relative to the page origin, so the browser sends the session cookie it was
+// given at the login page along with each of them.
 type Client struct {
 	base string
 	http *http.Client
@@ -157,11 +157,6 @@ func (b *Client) ServerConfig(id string) (api.ServerConfig, error) {
 func (b *Client) Traffic() (api.TrafficSnapshot, error) {
 	var out api.TrafficSnapshot
 	return out, b.get(apiBase+"/traffic", &out)
-}
-
-func (b *Client) Clients(serverID string) ([]api.Client, error) {
-	var out []api.Client
-	return out, b.get(apiBase+"/servers/"+serverID+"/clients", &out)
 }
 
 func (b *Client) AddClient(serverID string, req api.AddClientRequest) error {
