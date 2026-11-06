@@ -18,6 +18,7 @@ type menuRow struct {
 	item     MenuItem
 	onTapped func()
 	hovered  bool
+	pressed  bool
 }
 
 func newMenuRow(item MenuItem, onTapped func()) *menuRow {
@@ -26,19 +27,50 @@ func newMenuRow(item MenuItem, onTapped func()) *menuRow {
 	return row
 }
 
+// The two interfaces the row is meant to be driven by, asserted so that a
+// parameter type drifting from *desktop.MouseEvent to something else - which is
+// exactly how this row spent its life never being hovered - stops the build
+// instead of silently switching the highlight off.
+var (
+	_ desktop.Hoverable = (*menuRow)(nil)
+	_ desktop.Mouseable = (*menuRow)(nil)
+)
+
 func (r *menuRow) Tapped(*fyne.PointEvent) { r.onTapped() }
+
+// MouseDown and MouseUp give the row the state a tap needs to be visible at
+// all: the highlight above is hover, and a finger never hovers. On a phone the
+// items of an overflow menu were tapped with nothing on screen saying the tap
+// had landed - the menu just vanished under the dialog that opened behind it.
+// A browser does synthesise the mouse events behind a tap, so this is the whole
+// fix.
+func (r *menuRow) MouseDown(*desktop.MouseEvent) {
+	r.pressed = true
+	r.Refresh()
+}
+
+func (r *menuRow) MouseUp(*desktop.MouseEvent) {
+	r.pressed = false
+	r.Refresh()
+}
 
 func (r *menuRow) Cursor() desktop.Cursor { return desktop.PointerCursor }
 
-func (r *menuRow) MouseIn(*fyne.PointEvent) {
+// The three hover handlers take a *desktop.MouseEvent, not the *fyne.PointEvent
+// of Tapped. It has to be that type and no other: desktop.Hoverable is defined
+// over it, and a row taking the wrong one is a row the driver never treats as
+// hoverable - which is exactly what this was, so the highlight below was dead
+// code and an item gave no sign at all that the pointer was on it.
+func (r *menuRow) MouseIn(*desktop.MouseEvent) {
 	r.hovered = true
 	r.Refresh()
 }
 
-func (r *menuRow) MouseMoved(*fyne.PointEvent) {}
+func (r *menuRow) MouseMoved(*desktop.MouseEvent) {}
 
 func (r *menuRow) MouseOut() {
 	r.hovered = false
+	r.pressed = false
 	r.Refresh()
 }
 
@@ -86,9 +118,15 @@ func (m *menuRowRenderer) MinSize() fyne.Size {
 }
 
 func (m *menuRowRenderer) Refresh() {
-	if m.r.hovered {
+	// A press is the accent laid over the surface, a hover one neutral step up:
+	// the menu is dark enough that a neutral pressed state would read as a
+	// change of background rather than as a reaction to the finger.
+	switch {
+	case m.r.pressed:
+		m.bg.FillColor = style.WithAlpha(style.Primary, 0x33)
+	case m.r.hovered:
 		m.bg.FillColor = style.SurfaceHigh
-	} else {
+	default:
 		m.bg.FillColor = nil
 	}
 	m.bg.Refresh()

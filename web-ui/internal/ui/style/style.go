@@ -150,9 +150,10 @@ func (t *darkTheme) Color(name fyne.ThemeColorName, _ fyne.ThemeVariant) color.C
 		// what makes a filled M3 field read as a field rather than as a hole.
 		return SurfaceHigh
 	case theme.ColorNameInputBorder:
-		// The border is drawn at SizeNameInputBorder, which the theme sets to
-		// zero: an M3 field is a filled surface, not a box.
-		return SurfaceHigh
+		// An M3 text field is a filled surface, not a box, so the stroke the
+		// entry draws has nothing to show - see SizeNameInputBorder below for
+		// why it cannot simply be zero.
+		return color.Transparent
 	case theme.ColorNameMenuBackground:
 		return SurfaceHigh
 	case theme.ColorNameOverlayBackground:
@@ -192,9 +193,19 @@ func (t *darkTheme) Size(name fyne.ThemeSizeName) float32 {
 	case theme.SizeNameInputRadius:
 		return RadiusMD
 	case theme.SizeNameInputBorder:
-		// M3 text fields are filled surfaces with no outline; the entry draws
-		// this as a stroke width, so zero is what removes it.
-		return 0
+		// fyne builds the text caret out of this size: entryContentRenderer.
+		// moveCursor resizes the caret rectangle to `SizeNameInputBorder` by
+		// the line height, so a theme that answers 0 - which is how the
+		// outline is removed from a filled field - removes the caret with it.
+		// The field took focus, swallowed the keystrokes and showed nothing at
+		// all: no cursor, no outline, no change of colour. Two points is the
+		// caret M3 draws.
+		//
+		// The stroke that the same number now sizes is drawn in
+		// ColorNameInputBorder, which is transparent, so the field still looks
+		// like a filled surface; what it costs is the two points of inset the
+		// entry takes inside its own bounds.
+		return 2
 	case theme.SizeNameButtonRadius:
 		// Half of a stock button's height: the pill M3 buttons are drawn as.
 		return 20
