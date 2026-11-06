@@ -71,6 +71,8 @@
   "Jc (recommended 4-12)": "Jc (recommended 4-12)",
   "Jmax (recommended 80)": "Jmax (recommended 80)",
   "Jmin (recommended 8)": "Jmin (recommended 8)",
+  "Log out": "Log out",
+
   "MTU (recommended 1280)": "MTU (recommended 1280)",
   "MTU must be between {{.Min}} and {{.Max}}": "MTU must be between {{.Min}} and {{.Max}}",
   "MTU {{.MTU}}": "MTU {{.MTU}}",

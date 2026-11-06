@@ -23,6 +23,10 @@ func OpenURL(string) {
 	panic(unsupportedPlatform)
 }
 
+func Navigate(string) {
+	panic(unsupportedPlatform)
+}
+
 func CopyText(string, func(bool)) {
 	panic(unsupportedPlatform)
 }

@@ -33,6 +33,7 @@ import (
 	"fyne.io/fyne/v2/widget"
 
 	"amneziawg-web-ui/web-ui/internal/ui/backend"
+	"amneziawg-web-ui/web-ui/internal/ui/browser"
 	"amneziawg-web-ui/web-ui/internal/ui/dashboard"
 	"amneziawg-web-ui/web-ui/internal/ui/env"
 	"amneziawg-web-ui/web-ui/internal/ui/newserver"
@@ -70,6 +71,7 @@ type UI struct {
 	bar        *fyne.Container
 	facts      *fyne.Container
 	refresh    *widgets.Button
+	logout     *widgets.Button
 
 	// narrow is the compact layout the page is in, as last decided from the
 	// window width; see reflow.
@@ -152,15 +154,22 @@ func (u *UI) header() fyne.CanvasObject {
 	u.refresh = widgets.NewButton(lang.L("Refresh IP"), theme.ViewRefreshIcon(), u.refreshPublicIP)
 	u.refresh.Importance = widget.LowImportance
 
+	// The last thing in the bar is the way out of it. Same weight as the
+	// refresh action - both are quiet, and neither is what the page is for -
+	// and it sits at the end so the eye finds the facts before the exit.
+	u.logout = widgets.NewButton(lang.L("Log out"), theme.LogoutIcon(), u.signOut)
+	u.logout.Importance = widget.LowImportance
+
 	// The facts share one line while they fit and fold onto two when they do
-	// not: the ip, the status light and the refresh action keep the first
-	// line, the summary - the longest and the least urgent - takes the
-	// second. See factsLayout.
+	// not: the ip, the status light, the refresh and the log-out actions keep
+	// the first line, the summary - the longest and the least urgent - takes
+	// the second. See factsLayout.
 	u.facts = container.New(&factsLayout{},
 		container.NewCenter(ipChip),
 		container.NewCenter(u.statusSlot),
 		container.NewCenter(summaryChip),
 		container.NewCenter(u.refresh),
+		container.NewCenter(u.logout),
 	)
 
 	// Padding rather than a centre layout: a 28pt canvas.Text needs a few
@@ -216,18 +225,20 @@ func (b *barLayout) MinSize(objects []fyne.CanvasObject) fyne.Size {
 
 // factsLayout is the row of pills on the right of the app bar: one line when
 // there is room, and when there is not the long summary on a line of its own
-// under the ip, the status light and the refresh action.
+// under the ip, the status light and the actions.
 type factsLayout struct {
 	narrow bool
 }
 
+// summaryIndex is where the summary sits among the facts. It is the one fact
+// that leaves the top line when the page narrows, and the only one whose
+// position matters to this layout; the rest are placed in order.
+const summaryIndex = 2
+
 func (l *factsLayout) Layout(objects []fyne.CanvasObject, size fyne.Size) {
-	if len(objects) < 4 {
+	if len(objects) <= summaryIndex {
 		return
 	}
-	ip, status, summary, refresh := objects[0], objects[1], objects[2], objects[3]
-	ipSize, statusSize := ip.MinSize(), status.MinSize()
-	refreshSize, summarySize := refresh.MinSize(), summary.MinSize()
 
 	if !l.narrow {
 		x := float32(0)
@@ -240,36 +251,54 @@ func (l *factsLayout) Layout(objects []fyne.CanvasObject, size fyne.Size) {
 		return
 	}
 
-	top := max(ipSize.Height, max(statusSize.Height, refreshSize.Height))
-	x := float32(0)
-	for _, item := range []struct {
-		object fyne.CanvasObject
-		size   fyne.Size
-	}{{ip, ipSize}, {status, statusSize}, {refresh, refreshSize}} {
-		item.object.Move(fyne.NewPos(x, (top-item.size.Height)/2))
-		item.object.Resize(item.size)
-		x += item.size.Width + style.Space2
+	// Two passes over the top line: the tallest of them decides the height
+	// every one of them is centred in, so it has to be known before anything
+	// is placed.
+	summary := objects[summaryIndex]
+	top, x := float32(0), float32(0)
+	for i, o := range objects {
+		if i == summaryIndex {
+			continue
+		}
+		top = max(top, o.MinSize().Height)
 	}
+	for i, o := range objects {
+		if i == summaryIndex {
+			continue
+		}
+		min := o.MinSize()
+		o.Move(fyne.NewPos(x, (top-min.Height)/2))
+		o.Resize(min)
+		x += min.Width + style.Space2
+	}
+
 	summary.Move(fyne.NewPos(0, top+style.Space2))
-	summary.Resize(summarySize)
+	summary.Resize(summary.MinSize())
 }
 
 func (l *factsLayout) MinSize(objects []fyne.CanvasObject) fyne.Size {
-	if len(objects) < 4 {
+	if len(objects) <= summaryIndex {
 		return fyne.Size{}
 	}
-	ipSize, statusSize := objects[0].MinSize(), objects[1].MinSize()
-	summarySize, refreshSize := objects[2].MinSize(), objects[3].MinSize()
+
+	summarySize := objects[summaryIndex].MinSize()
+
+	// The gaps between the facts, but not the one after the last of them.
+	line, top := float32(0), float32(0)
+	for i, o := range objects {
+		if l.narrow && i == summaryIndex {
+			continue
+		}
+		min := o.MinSize()
+		line += min.Width + style.Space2
+		top = max(top, min.Height)
+	}
+	line -= style.Space2
 
 	if l.narrow {
-		top := max(ipSize.Height, max(statusSize.Height, refreshSize.Height))
-		return fyne.NewSize(
-			max(ipSize.Width+style.Space2+statusSize.Width+style.Space2+refreshSize.Width, summarySize.Width),
-			top+style.Space2+summarySize.Height)
+		return fyne.NewSize(max(line, summarySize.Width), top+style.Space2+summarySize.Height)
 	}
-	return fyne.NewSize(
-		ipSize.Width+statusSize.Width+summarySize.Width+refreshSize.Width+style.Space2*3,
-		max(max(ipSize.Height, statusSize.Height), max(summarySize.Height, refreshSize.Height)))
+	return fyne.NewSize(line, top)
 }
 
 // statusPill is the online/offline chip: a dot of the status colour and its
@@ -330,6 +359,17 @@ func (u *UI) setSummary(text string) {
 func (u *UI) unreachable() {
 	u.setTransport(lang.L("offline"), style.Error)
 	u.setSummary(lang.L("backend unreachable"))
+}
+
+// signOut ends the session and leaves the panel.
+//
+// The cookie is the server's to clear, so there is nothing to forget on this
+// side: the page follows /logout, the backend drops it and answers with the
+// login form, and the browser replaces the whole document. Doing it with a
+// request of our own and then redrawing would keep a page on screen whose
+// every later call is a 401.
+func (u *UI) signOut() {
+	browser.Navigate("/logout")
 }
 
 func (u *UI) setPublicIP(ip string) {
@@ -448,13 +488,14 @@ func (u *UI) reflow(width float32) {
 
 	// M3's compact top app bar sets its title at 22, not at the 28 of a
 	// desktop window, and drops the labels of its actions down to icons: on
-	// a phone the three facts of the bar have to share 390 points between
-	// them.
+	// a phone the facts of the bar have to share 390 points between them.
 	u.title.TextSize = style.SizeDisplay
 	u.refresh.SetText(lang.L("Refresh IP"))
+	u.logout.SetText(lang.L("Log out"))
 	if u.narrow {
 		u.title.TextSize = style.SizeTitle
 		u.refresh.SetText("")
+		u.logout.SetText("")
 	}
 	u.title.Refresh()
 

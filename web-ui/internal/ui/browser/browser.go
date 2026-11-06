@@ -15,8 +15,8 @@ import (
 // the stubs that keep a native toolchain able to type-check this package.
 
 // Origin is the origin the app was served from, so every API call stays
-// same-origin and the browser replays the basic-auth credentials it already
-// holds for this realm.
+// same-origin and the browser attaches the session cookie it was given at the
+// login page to each of them.
 func Origin() string {
 	return js.Global().Get("location").Get("origin").String()
 }
@@ -25,6 +25,16 @@ func Origin() string {
 // download endpoints, which reply with a Content-Disposition header.
 func OpenURL(url string) {
 	js.Global().Call("open", url, "_blank")
+}
+
+// Navigate sends the whole document to url.
+//
+// It is how the page leaves itself: logging out follows /logout, the backend
+// clears the session cookie and answers with the login page, and the browser
+// replaces what is on screen. A new tab - what OpenURL does - would be wrong
+// here, because the tab that would be left behind is the logged-in one.
+func Navigate(url string) {
+	js.Global().Get("location").Set("href", url)
 }
 
 // CopyText puts text on the system clipboard and reports through done whether
