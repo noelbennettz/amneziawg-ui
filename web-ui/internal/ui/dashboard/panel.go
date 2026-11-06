@@ -85,7 +85,11 @@ func New(interval time.Duration, reflow func()) *Panel {
 		container.NewCenter(p.toggle),
 	)
 
-	p.panel = container.NewVBox(head, p.body)
+	// The header is a block of its own, the same surface and the same corner
+	// radius as the create form and the server cards under it. Floating the
+	// title on the page background made the dashboard read as a heading with
+	// cards under it, rather than as the first of the page's blocks.
+	p.panel = container.NewVBox(widgets.Card(head), p.body)
 	return p
 }
 
