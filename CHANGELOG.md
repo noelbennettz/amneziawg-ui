@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+- **Scrolling moves by what the wheel says.** The wasm driver hands fyne the
+  browser's pixel delta as if it were a wheel notch, and fyne then doubles
+  anything from 5 up: one notch of 100 pixels asked the page to move 200
+  points, eight times what the same notch moves a desktop fyne window, while
+  the one or two pixel events a trackpad sends fell under that cutoff and
+  moved a fraction of a point each - so scrolling jumped in huge steps with a
+  crawl in between. The wheel is now coalesced into at most one event per
+  frame, converted from pixels (or lines, or pages) to exactly the points the
+  page should move. The driver's wheel listener is also registered on the
+  document without `{passive: false}`, which every browser since Chrome 73
+  treats as passive: its `preventDefault` was discarded and each wheel event
+  printed an `[Intervention] Unable to preventDefault inside passive event
+  listener` line in the console.
+
 - CI publishes a single image tag, `latest`, and no longer runs on `v*.*.*`
   tags: every push to `main` replaces `latest` in place, so the package keeps
   one version instead of one per release. Version tags no longer produce

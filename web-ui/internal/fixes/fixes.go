@@ -7,11 +7,14 @@ package fixes
 import "fyne.io/fyne/v2"
 
 // Install puts every workaround in place; call it on the application before
-// the window starts, since one of them replaces the clipboard it hands out.
+// the window starts, since one of them replaces the clipboard it hands out and
+// one of them has to have wrapped document.addEventListener before the driver
+// registers its own listeners.
 func Install(a fyne.App) {
 	installNonASCIIKeyboard()
 	installClipboard(a)
 	installVisibilityRepaint(a)
 	installViewport()
+	installWheelInput()
 	installTouchInput()
 }
