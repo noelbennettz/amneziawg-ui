@@ -52,8 +52,12 @@ trailers) is built in and always on**, nothing to configure by hand.
   apps and a native **`vpn://`** link for AmneziaVPN
 - **Real-time monitoring**: traffic, the last handshake and the endpoint of
   every client, and the server status — updated automatically
+- **A login page in front of the panel**: the same `WEB_UI_USER` and
+  `WEB_UI_PASSWORD` as before, a signed session cookie for 12 hours, and an
+  `Authorization: Basic` header still accepted on every route so `curl -u` and
+  existing scripts keep working
 - **REST API** for automation: everything the web UI does is reachable over
-  HTTP endpoints behind basic auth
+  HTTP endpoints behind the same login as the panel
 - **Auto-start of servers** after a container restart, **automatic iptables
   setup**, IPv4 and IPv6 support (the IPv6 half is a ULA /64 per server with
   NAT6)
@@ -113,8 +117,9 @@ docker compose up -d
 > `docker login ghcr.io` (with a personal access token that has `read:packages`)
 > on the host before pulling.
 
-The admin panel is at `http://<your-server>:54845`, login `admin`, password
-`changeme`. Change it before you open the port to the internet.
+The admin panel is at `http://<your-server>:54845`: a login page asks for the
+user `admin` and the password `changeme`, and the session it hands out lasts 12
+hours. Change the password before you open the port to the internet.
 
 > [!IMPORTANT]
 > `WEB_UI_PASSWORD` holds **base64 of the SHA-256 of the password**, not the
@@ -158,9 +163,9 @@ only at startup.
 | Variable | Default | Description |
 |---|---|---|
 | `WEB_UI_PORT` | `54845` | Web UI port. The same value is baked into the image and published in compose |
-| `WEB_UI_USER` | `admin` | Basic auth user name |
-| `WEB_UI_PASSWORD` | `changeme` | Basic auth password as base64 of its SHA-256 (see the box above) |
-| `WEB_UI_PPROF` | `false` | Profiler at `/debug/pprof` behind the same basic auth. Parsed as a boolean (`1`, `true`, `t`), anything else is off |
+| `WEB_UI_USER` | `admin` | Login name for the panel and for `curl -u` |
+| `WEB_UI_PASSWORD` | `changeme` | Login password as base64 of its SHA-256 (see the box above) |
+| `WEB_UI_PPROF` | `false` | Profiler at `/debug/pprof` behind the same login. Parsed as a boolean (`1`, `true`, `t`), anything else is off |
 | `AUTO_START_SERVERS` | `true` | Bring previously created servers up when the container starts |
 | `DEFAULT_MTU` | `1280` | Default MTU for new servers |
 | `DEFAULT_SUBNET` | `10.0.0.0/24` | Default subnet for new servers |
@@ -194,7 +199,9 @@ the rest of the AmneziaWG 3.x parameters are compatible with them.
 The password is stored in `WEB_UI_PASSWORD` as base64 of its SHA-256. Compute
 the new value with
 `printf 'your-password' | openssl dgst -binary -sha256 | base64`, put it into
-`docker-compose.yml` and restart the container.
+`docker-compose.yml` and restart the container. The session cookie is signed
+with a key derived from the credentials, so a restart keeps everyone logged in,
+while changing the password ends every session at once.
 
 ### How do I back up and move the VPN to another server?
 
@@ -205,9 +212,13 @@ clients come up as they were.
 
 ### Do I need HTTPS, and how do I enable it?
 
-The panel serves HTTP with basic auth. For access from the internet, put a
-reverse proxy with TLS in front of it (Caddy, nginx, Traefik) or restrict port
-`54845` with a firewall.
+The panel serves HTTP: the login page sits in front of every route except
+`/status`, and only that page posts the credentials, so no browser password
+prompt appears. The session cookie is marked `Secure` only when the request
+itself arrived over TLS — behind a proxy that terminates TLS the container sees
+plain HTTP and the flag is left off. For access from the internet, put a reverse
+proxy with TLS in front of it (Caddy, nginx, Traefik) or restrict port `54845`
+with a firewall.
 
 ## Documentation
 

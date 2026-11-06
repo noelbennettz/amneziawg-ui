@@ -142,8 +142,8 @@ automatically.
 **Go/Fiber backend** (`main.go`, `internal/`)
 
 *   `main.go` — assembly only: reads the environment, brings up the manager, the
-    Fiber app, basic auth, the REST routes and the frontend served from
-    `./web-ui/wasm`, listens on `WEB_UI_PORT`
+    Fiber app, the login guard (`internal/auth`), the REST routes and the
+    frontend served from `./web-ui/wasm`, listens on `WEB_UI_PORT`
 *   `internal/httpapi` — REST API route handlers: request decoding and turning
     the manager's typed errors into status codes. It touches neither the disk
     nor the host
@@ -162,6 +162,11 @@ automatically.
     one-shot schema migrations (`migrations.go`)
 *   `internal/config` — environment variables → `Settings`; the only place with
     `os.Getenv`
+*   `internal/auth` — the way into the panel: the credential check (constant
+    time, against `WEB_UI_USER` / `WEB_UI_PASSWORD`), the signed session cookie,
+    the login page embedded from `internal/auth/login.html` and the middleware
+    that lets `/status`, `/login` and `/logout` through and answers everything
+    else — see [Security](#security)
 *   `internal/frontend` — serving the frontend off disk: the gzip bundle, ETag
     validators (so the browser neither keeps a stale bundle after an update nor
     re-downloads ~50 MB of wasm on every load), response compression
@@ -185,8 +190,8 @@ automatically.
 *   Status and traffic refresh by REST polling: the counters every 5 seconds
     with one `GET /api/traffic` request, the server list every 30 seconds (and
     right after every action from that tab). No sockets: a wasm build has no
-    TCP stack, and the browser hands you `fetch` for free, basic auth
-    credentials included
+    TCP stack, and the browser hands you `fetch` for free, the session cookie
+    included
 *   All request and response structs live in `web-ui/api`. The backend imports
     the same package through a `replace` directive, so the two sides cannot
     drift apart
@@ -317,7 +322,12 @@ cd e2e && AWG_URL=http://localhost:54845 go test -count=1 -v .
 
 ## 🔧 API endpoints
 
-Every route except `/status` is behind basic auth (see [Security](#security)).
+Every route except `/status`, `/login` and `/logout` needs a session cookie or
+an `Authorization: Basic` header (see [Security](#security)). A request that
+carries neither and asks for JSON — anything under `/api` or `/debug`, or any
+request with `Accept: application/json` — is answered with `401` and
+`{"error":"authentication required"}`; a browser navigation is redirected to the
+login page instead.
 
 ### Server management
 
@@ -617,7 +627,7 @@ imported AWG config as the outdated `amnezia-awg` container (shown as
 
 `GET /api/system/iptables-test?server_id=wg_abc123`
 
-#### Health check (the only route without authentication)
+#### Health check (no credentials)
 
 `GET /status` — the container uptime; used by the image's `HEALTHCHECK`.
 
@@ -626,8 +636,8 @@ imported AWG config as the outdated `amnezia-awg` container (shown as
 The server can serve `net/http/pprof` profiles, but only when started with
 `WEB_UI_PPROF=1`: collecting a CPU profile costs the running server real time,
 and the endpoints themselves hand out goroutine stacks and the process command
-line. The routes are registered **after** basic auth, so `/debug/pprof` requires
-the same credentials as the API.
+line. The routes are registered **after** the login guard, so `/debug/pprof`
+needs the same session cookie — or the same basic-auth credentials — as the API.
 
 ```bash
 # docker compose: add the variable to .env (or to the service's environment)
@@ -666,7 +676,7 @@ The settings are overridden with make variables:
 |----------|---------|-------------|
 | `PPROF_HOST` | `localhost` | Host of the running instance |
 | `PPROF_PORT` | `54845` | Port (that instance's `WEB_UI_PORT`) |
-| `PPROF_USER` | `admin` | Basic auth user |
+| `PPROF_USER` | `admin` | Login name, sent as `curl -u` |
 | `PPROF_PASSWORD` | `changeme` | The password **in plain text**, not the hash from `WEB_UI_PASSWORD` |
 | `PPROF_SECONDS` | `30` | How long the CPU profile is collected |
 | `PPROF_DIR` | `profiles` | Where the downloaded profiles go |
@@ -716,9 +726,9 @@ docker build --build-arg AWG_GO_VERSION=vX.Y.Z --build-arg AWG_TOOLS_VERSION=vX.
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `WEB_UI_PORT` | `54845` | Port the application listens on for the web UI. The same default is set in the image's `ENV`, in the binary and in `docker-compose.yml` (where it is also published on the host) |
-| `WEB_UI_USER` | `admin` | Basic auth user name |
-| `WEB_UI_PASSWORD` | `changeme` | Basic auth password — SHA-256 in base64: `printf 'secret' \| openssl dgst -binary -sha256 \| base64` |
-| `WEB_UI_PPROF` | `false` | Enables the profiler at `/debug/pprof` (behind the same basic auth). Parsed as a boolean (`1`, `true`, `t`); anything else is "off" |
+| `WEB_UI_USER` | `admin` | Login name for the panel's login page and for `curl -u` |
+| `WEB_UI_PASSWORD` | `changeme` | Login password — SHA-256 in base64: `printf 'secret' \| openssl dgst -binary -sha256 \| base64` |
+| `WEB_UI_PPROF` | `false` | Enables the profiler at `/debug/pprof` (behind the same login). Parsed as a boolean (`1`, `true`, `t`); anything else is "off" |
 | `AUTO_START_SERVERS` | `true` | Start servers automatically when the container starts |
 | `DEFAULT_MTU` | `1280` | Default MTU for new servers: what the panel's form starts from, and what an API request that omits `mtu` gets |
 | `DEFAULT_SUBNET` | `10.0.0.0/24` | Default subnet for new servers: the first one the panel's form offers, and what an API request that omits `subnet` gets |
@@ -991,26 +1001,83 @@ A single server or client can also simply be downloaded through the UI or with
 
 `curl -u admin:changeme http://localhost/api/system/status`
 
+`-u` still works: a basic-auth header is accepted on every route, so scripts do
+not need the login page or a cookie.
+
 ### Check the iptables setup
 
 `curl -u admin:changeme "http://localhost/api/system/iptables-test?server_id=wg_abc123"`
 
-### Check that the container is alive (no authentication)
+### Check that the container is alive (no credentials)
 
 `curl http://localhost/status`
 
 # Security
 
 The application is exposed directly on port 80 (or the configured
-`WEB_UI_PORT`) with basic authentication built into the Fiber application
-itself. Only `/status` — the container health check — is available without
-authentication; all the UI's static assets are behind the same credentials as
-the API.
+`WEB_UI_PORT`) with the login built into the Fiber application itself
+(`internal/auth`, registered before every route and the assets). Three paths
+answer without credentials: `/status` — the container health check —, `/login`
+and `/logout`. Everything else, the wasm bundle and `/debug/pprof` included,
+needs a session cookie or an `Authorization: Basic` header.
+
+## The login page
+
+A browser that asks for any guarded path is redirected (`303`) to
+`/login?next=<the path it asked for>` and lands back on that path after the
+login. The page is a single server-rendered HTML document embedded in the
+binary from `internal/auth/login.html`: no JavaScript and no external assets, so
+it renders on a host with no route to the internet. It is drawn in the panel's
+Material 3 dark palette (background `#131314`, surface `#1e1f20`, filled inputs
+`#333537`, text `#e3e3e3`, the primary `#a8c7fa` pill button and the 28px card
+radius), which is what makes the form and the panel after it look like one
+thing; the panel itself still forces the dark variant whatever
+`prefers-color-scheme` says.
+
+The form posts the user and the password. The credentials are checked against
+`WEB_UI_USER` and `WEB_UI_PASSWORD` in constant time — nothing else is stored,
+there is no user table. A wrong pair re-renders the page with `401` and
+*Incorrect username or password.*; a right pair sets the cookie and redirects to
+`next`. A `next` that points at another host is ignored and the browser goes to
+`/` instead, so the form cannot be used as an open redirect.
+
+## The session cookie
+
+The cookie is called `awg_session`, is `HttpOnly` and `SameSite=Lax`, lives 12
+hours and is marked `Secure` only when the request itself arrived over TLS —
+behind a TLS-terminating proxy the container sees plain HTTP, and a `Secure`
+cookie there would be silently dropped by the browser. Its value is the user and
+the expiry, signed with an HMAC whose key is derived from the credentials, so
+nothing is kept on the server: a container restart keeps you logged in, and
+changing `WEB_UI_PASSWORD` ends every session at once.
+
+`/logout` — GET or POST — deletes the cookie and redirects to `/login`. The
+panel's app bar carries a **Log out** action at the right of the status light
+that simply follows `/logout`; there is no confirmation step, because there is
+nothing to lose that is not already on disk.
+
+## What a request without credentials gets
+
+It depends on what asked. Anything under `/api` or `/debug`, and any request
+that sends `Accept: application/json`, gets `401` with
+`{"error":"authentication required"}` — the two kinds of client that parse a
+body get something to parse. Every other request is a navigation, and a
+navigation is redirected to the login page.
+
+## Basic auth for scripts
+
+An `Authorization: Basic` header is still accepted on every route, checked
+against the same pair, which is what keeps `curl -u admin:changeme`, the
+`make profile-*` targets and existing automation working. The only part
+that is gone is the browser's native credential prompt: no
+`WWW-Authenticate` header is sent any more, so a browser never pops up a dialog
+and always sees the login page instead.
 
 > [!IMPORTANT]
 > I strongly recommend closing the endpoints with a firewall and/or a reverse
 > proxy with TLS termination in front of the container.
-> Basic authentication alone is not enough — it can be brute-forced.
+> A login form and a 12-hour cookie are no substitute for TLS, and a password is
+> still worth brute-forcing — the panel does not rate-limit attempts.
 
 By default the image is built with the user `admin` and the password
 `changeme`. To change that, pass the Docker environment variables `WEB_UI_USER`

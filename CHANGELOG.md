@@ -2,6 +2,72 @@
 
 ## Unreleased
 
+- **Dead code removed.** Three functions nothing reached any more: the manager's
+  `Settings()` accessor, `backend.Client.Clients` (the frontend takes its clients
+  from the server list payload, never from that endpoint), and a one-line
+  `MonoText` re-export in the client row that only wrapped `widgets.MonoText`.
+  Found with `golang.org/x/tools/cmd/deadcode` over both binaries - the server
+  with `-test`, and the wasm bundle under `GOOS=js GOARCH=wasm`. What it reports
+  for the wasm build alone and not for the server is *not* dead: `api.
+  ValidateISettings`, `NextFreeSubnetV6` and `seedGroup` are called by the
+  backend, which is a separate `main`.
+
+- **One test no longer fails one run in sixteen.** The test that checks the ULA
+  /64 a new server gets expected the ID's first four hex digits to be spelled
+  verbatim, so an ID starting `07cc` had to produce `fd42:07cc::/64` while the
+  code produced `fd42:7cc::/64` - the canonical spelling, and the one the
+  server's own address is built from. IPv6 text drops a group's leading zeros,
+  so the test was wrong and the code was right; it now states the rule, and a new
+  case in `web-ui/api` pins it down without depending on the random ID.
+
+- **A field that has focus looks like it, and a menu item reacts to the pointer.**
+  Three separate reasons why nothing on the page acknowledged a click, all of
+  them fixed here. The first is the theme: fyne builds the text caret out of
+  `SizeNameInputBorder` (the caret rectangle is that many points wide), and this
+  theme answered `0` there because zero is what removes the outline from a
+  filled M3 field - so the field took focus, swallowed the keystrokes and showed
+  no cursor and no focus ring, which fyne draws in the same stroke. The size is
+  now `2` and the stroke colour is transparent, so the field keeps its filled
+  look while a focused one gets the two-point primary ring and the caret M3
+  draws. The second is the overflow menu's rows: their hover handlers were
+  declared as `MouseIn(*fyne.PointEvent)`, and `desktop.Hoverable` is defined
+  over `*desktop.MouseEvent`, so the driver never treated a row as hoverable at
+  all and the highlight in the renderer was dead code - a compile-time assertion
+  now holds the two interfaces to the row. The third is that a row had no pressed
+  state to begin with: hover is a mouse, and a finger never hovers, so on a phone
+  an item vanished under the dialog it opened with nothing on screen saying the
+  tap had landed. It now takes the accent as a state layer while it is held
+  down.
+
+- **The monitoring header is a block like everything under it.** The section
+  title used to sit straight on the page background while the create form and
+  every server below it was a surface, which made the dashboard read as a
+  heading with cards under it rather than as the first of the page's blocks. It
+  is a card now, with the same surface and the same corner radius.
+
+- **The panel has a login page instead of the browser's password prompt.** Every
+  route but `/status`, `/login` and `/logout` now needs a session cookie called
+  `awg_session`, handed out when the form at `/login` is posted with the pair
+  from `WEB_UI_USER` and `WEB_UI_PASSWORD` - the same two variables, the same
+  base64-of-SHA-256 format, and nothing else stored anywhere. The cookie is
+  `HttpOnly` and `SameSite=Lax`, is marked `Secure` only when the request itself
+  arrived over TLS, lasts 12 hours, and is signed with an HMAC whose key is
+  derived from the credentials: a container restart keeps you logged in, changing
+  `WEB_UI_PASSWORD` ends every session at once. The page itself is one
+  server-rendered HTML document embedded in the binary (`internal/auth`), with no
+  JavaScript and no external assets, drawn in the panel's Material 3 dark palette
+  so the form and the panel after it look like one thing. A navigation that asks
+  for a guarded path is redirected to `/login?next=...` and lands back on it
+  afterwards; anything under `/api` or `/debug` - or any request that sends
+  `Accept: application/json` - gets `401` with
+  `{"error":"authentication required"}` instead. `curl -u admin:changeme` and
+  every other script keep working unchanged: an `Authorization: Basic` header is
+  still accepted on every route, and no `WWW-Authenticate` header is sent any
+  more, which is why the browser no longer opens a credential dialog. The app bar
+  carries a **Log out** action at its right-hand end - the label drops to the icon
+  alone on a phone, like the refresh action beside it - which follows `/logout`
+  and leaves the login page on screen.
+
 - **Nothing on the page is drawn on top of anything else any more.** Two things
   behind the overlapping text in the create form's parameter block. A wrapped
   paragraph reports its height as one line height per line, but the lines were

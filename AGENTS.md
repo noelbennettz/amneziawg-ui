@@ -8,6 +8,10 @@ amnezialink, publicip, config, sysinfo}`:
 
 - `httpapi` — REST handlers; no `os`/`exec`, everything goes through the
   exported `manager` API and errors map to status codes in `fail`
+- `auth` — the way into the panel: the credential check against
+  `WEB_UI_USER`/`WEB_UI_PASSWORD` (constant time), the signed `awg_session`
+  cookie, the login page embedded from `internal/auth/login.html` and the
+  middleware that guards every route but `/status`, `/login` and `/logout`
 - `manager` — the state and the operations on it; the only package that
   takes the config lock. Split by file (`servers.go`, `clients.go`,
   `suspend.go`, `status.go`, `traffic.go`, `system.go`)
@@ -88,27 +92,59 @@ For manual testing possible to use `playwright-cli`
 
 # Authentication
 
-Everything except the `/status` health check is behind HTTP basic auth
-(`WEB_UI_USER`, default `admin`;), including the frontend
-assets. `WEB_UI_PASSWORD` holds the **base64 of the SHA-256 of the password**. default `changeme`
+`internal/auth` guards the panel. The credentials are the pair the container was
+started with — `WEB_UI_USER` (default `admin`) and `WEB_UI_PASSWORD`, which holds
+the **base64 of the SHA-256 of the password** (default `changeme`, i.e.
+`printf 'changeme' | openssl dgst -binary -sha256 | base64`). Nothing else is
+stored: there is no user table and no extra environment variable.
+
+Three paths are public: `/status` (the docker health check), `/login` (GET renders
+the page, POST checks the form) and `/logout` (GET or POST, drops the cookie and
+redirects to `/login`). Everything else — the wasm bundle and `/debug/pprof`
+included — needs either the `awg_session` cookie or an `Authorization: Basic`
+header. The cookie is `HttpOnly`, `SameSite=Lax`, `Secure` only when the request
+itself is TLS, lives 12 hours, and is signed with an HMAC keyed from the
+credentials: a restart keeps sessions, changing `WEB_UI_PASSWORD` ends them all.
+
+A request carrying neither proof is answered according to what it asked for:
+anything under `/api` or `/debug`, or any request with `Accept:
+application/json`, gets `401` and `{"error":"authentication required"}`; every
+other request is a navigation and is redirected (`303`) to
+`/login?next=<escaped original path>`.
+
+## In a browser
+
+Log in once per browser context through the form; from then on the cookie is
+sent with the page, the wasm bundle and every `fetch` from the UI, since all of
+them are same-origin. `web-ui` needs no auth code of its own.
 
 ```sh
-  make run
+make run
 ```
 
-For the API, `curl -u admin:changeme` is enough. In the browser, credentials
-in the URL are **not**: Chrome refuses `fetch()` on a URL that carries them,
-so `http://admin:changeme@host/` loads the loader page and then fails on
-`bundle.wasm`. Authenticate on another path first and let the browser reuse
-the credentials for the realm:
+Then open `http://localhost:54845/`, type `admin` / `changeme` into the form and
+submit. The form is the only thing in the panel with CSS selectors — the panel
+itself is a canvas: `#username`, `#password`, `button[type=submit]` (the one
+labelled `Sign in`).
+A `playwright-cli` session is therefore `goto /login`, fill those two fields,
+press the button, and continue with `goto /`; the context keeps the cookie.
+Credentials in the URL (`http://admin:changeme@host/`) are **not** a substitute
+any more: Chrome refuses `fetch()` on a URL that carries them, and no
+`WWW-Authenticate` header is sent, so there is no prompt and no realm to reuse.
 
-```sh
-  playwright-cli goto "http://admin:changeme@localhost:51836/api/system/status"
-  playwright-cli goto "http://localhost:51836/"
-```
+## From a script, and in `e2e`
 
-The e2e suite does this properly through `HttpCredentials` on the browser
-context in `e2e/main_test.go`.
+`curl -u admin:changeme` still works: an `Authorization: Basic` header is
+accepted on every route, which is why existing automation and the profile
+targets in the `Makefile` needed no change. The e2e suite shows both halves —
+`startApp` logs a fresh context in through the form (`submitLogin` in
+`e2e/main_test.go`), and the raw HTTP helpers in the same file keep
+`req.SetBasicAuth(user, password)`.
+
+The panel's app bar has a **Log out** action at the right-hand end, next to the
+refresh button; on a phone the bar drops both labels and leaves their icons. It
+follows `/logout` in the browser (`browser.Navigate`, which replaces the
+document) rather than calling the API, so the login page is what renders next.
 
 # Changelog
 
