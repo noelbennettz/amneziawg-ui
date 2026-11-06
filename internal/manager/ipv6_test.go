@@ -2,7 +2,9 @@ package manager
 
 import (
 	"errors"
+	"fmt"
 	"os"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -19,10 +21,20 @@ func TestCreateServerGivesItAFreeUlaSubnet(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if want := "fd42:" + first.ID[:4] + "::/64"; first.SubnetV6 != want {
+	// The /64 is fd42 plus the first four hex digits of the ID. Spelled the
+	// way net.IP spells an address: an ID starting 07cc gives fd42:7cc::, not
+	// fd42:07cc::, because canonical IPv6 text drops a group's leading zeros -
+	// and the server's own address is built from that same text. Expecting
+	// ID[:4] verbatim here made the test fail one run in sixteen, whenever the
+	// random ID happened to start with a zero.
+	group, err := strconv.ParseUint(first.ID[:4], 16, 16)
+	if err != nil {
+		t.Fatalf("server ID %q does not start with hex digits: %v", first.ID, err)
+	}
+	if want := fmt.Sprintf("fd42:%x::/64", group); first.SubnetV6 != want {
 		t.Errorf("SubnetV6 = %q, want %q", first.SubnetV6, want)
 	}
-	if want := "fd42:" + first.ID[:4] + "::1"; first.ServerIPV6 != want {
+	if want := fmt.Sprintf("fd42:%x::1", group); first.ServerIPV6 != want {
 		t.Errorf("ServerIPV6 = %q, want %q", first.ServerIPV6, want)
 	}
 

@@ -224,8 +224,6 @@ func initialOf(name string) string {
 	return strings.ToUpper(string([]rune(trimmed)[0]))
 }
 
-func MonoText(t *canvas.Text) *canvas.Text { return widgets.MonoText(t) }
-
 func roundedRect(fill color.NRGBA, radius float32) fyne.CanvasObject {
 	rect := canvas.NewRectangle(fill)
 	rect.CornerRadius = radius

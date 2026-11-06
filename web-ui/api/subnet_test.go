@@ -73,3 +73,16 @@ func TestNextFreeSubnetV6StartsFromTheSeed(t *testing.T) {
 		t.Errorf("NextFreeSubnetV6 = %q, want fd42:ab14::/64", got)
 	}
 }
+
+// The group is spelled the way an address is: leading zeros dropped. A seed
+// whose first four hex digits start with 0 - one server ID in sixteen - has to
+// print fd42:7cc::/64, not fd42:07cc::/64, because ServerIPV6 builds the
+// server's own address from the same text and the two have to agree.
+func TestNextFreeSubnetV6DropsLeadingZerosInTheGroup(t *testing.T) {
+	if got := NextFreeSubnetV6("07cc12", func(string) bool { return false }); got != "fd42:7cc::/64" {
+		t.Errorf("NextFreeSubnetV6 = %q, want fd42:7cc::/64", got)
+	}
+	if got := NextFreeSubnetV6("0000ab", func(string) bool { return false }); got != "fd42:0::/64" {
+		t.Errorf("NextFreeSubnetV6 = %q, want fd42:0::/64", got)
+	}
+}

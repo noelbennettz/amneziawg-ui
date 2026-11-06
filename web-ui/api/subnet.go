@@ -74,6 +74,9 @@ func isULA(ip net.IP) bool {
 func NextFreeSubnetV6(seed string, overlaps func(string) bool) string {
 	start := int(seedGroup(seed))
 	for i := range 1 << 16 {
+		// %x, so the group is spelled the way net.IP spells an address:
+		// fd42:7cc::, not fd42:07cc::. ServerIPV6 builds the first host from
+		// that same text, and the two have to agree.
 		candidate := fmt.Sprintf("%s:%x::/64", ULAv6Group, uint16(start+i))
 		if !overlaps(candidate) {
 			return candidate

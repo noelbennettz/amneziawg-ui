@@ -93,11 +93,6 @@ func (m *Manager) Start() {
 	fmt.Printf("Detected public IP: %s\n", m.PublicIP())
 }
 
-// Settings are the defaults the manager was started with.
-func (m *Manager) Settings() config.Settings {
-	return m.settings
-}
-
 // SaveConfig writes the config to disk. It takes the read lock itself, so it
 // must not be called with mu held.
 func (m *Manager) SaveConfig() error {
