@@ -2,6 +2,63 @@
 
 ## Unreleased
 
+- **The panel answers on IPv6.** Fiber's listener defaults to `tcp4`, so
+  `Listening on :54845` was really `0.0.0.0:54845`: the container published the
+  port on both stacks and the process behind it only accepted IPv4, which made
+  every `http://[2001:db8::1]:54845` attempt fail. The app now listens on the
+  dual-stack `tcp` network (`httpapi.ListenConfig`), one listener for both
+  families, falling back to `0.0.0.0` where the kernel has no IPv6 at all.
+  `TestFiberConfigListensOnBothStacks` connects from `127.0.0.1` and `::1` to
+  the listener that config builds.
+
+- **A client config can carry an IPv6 endpoint.** `Endpoint = %s:%d` wrote
+  `Endpoint = 2001:db8::1:54844`, which is not that address with a port - it is
+  a long address that does not exist - so a server whose endpoint was an IPv6
+  literal produced configs that never connected. The line (and the
+  `# Server Endpoint` comment above it) is built by `api.EndpointAddress`,
+  which brackets IPv6 and leaves names and IPv4 addresses alone.
+
+- **The endpoint field is validated instead of guessed at.** It took any text:
+  `vpn.example.com:54844` came out as `vpn.example.com:54844:54844`, and a
+  bracketed literal only worked if the operator happened to type the brackets.
+  `api.ParseEndpoint` now reads it as a host - name, IPv4, or IPv6 with or
+  without brackets, stored canonically - and the create request is refused with
+  a `400` for anything else. The form runs the same check.
+
+- **NAT66 and the forwarding rules match the real uplink.** Both iptables
+  scripts matched `-o eth+`, which is the container's bridge interface: on a
+  host-network deployment, or any host whose uplink is not `eth*`, the
+  masquerade and forwarding rules matched nothing - the tunnel came up and no
+  client reached the internet through it, on either stack. The scripts read the
+  uplink from `ip route show default` / `ip -6 route show default` per family,
+  warn when there is no default route *or* no global IPv6 address behind it
+  (a default route onto a ULA-only interface masquerades to nothing), and
+  cleanup tries every interface that exists, so an uplink that was renamed
+  between setup and teardown does not leave a rule behind. `iptables-test` now
+  reports the routing side too: an IPv4 default route for every server, and for
+  a server with an IPv6 subnet also an IPv6 default route and a global IPv6
+  address.
+
+- **Detection no longer gives an IPv6-only host a broken endpoint.** The public
+  address was only ever accepted if it parsed as IPv4, so a v6-only machine got
+  `YOUR_SERVER_IP` and every config generated from it pointed at nothing.
+  Detection now asks the v6 services when no v4 service answers, and falls back
+  to the v6 route source (`ip -6 route get`) after the v4 one. IPv4 still wins
+  on a dual-stack host: it is what every client can reach, and a name endpoint
+  is the way to hand out both.
+
+- **DNS resolvers are accepted on either stack.** The backend validated them
+  with `IsIPv4` and the form with an IPv4 regex, so
+  `2606:4700:4700::1111` was refused in both places - and a client on an
+  IPv6-only network has no way to reach `8.8.8.8` at all. Both now take any IP
+  literal (`api.IsIPAddress`) and store it canonically.
+
+- **The server dialog shows the endpoint clients really get.** It showed the
+  detected public IP only, so a server created with `vpn.example.com` looked as
+  if the next *Refresh IP* had overwritten it, while its configs still carried
+  the name. `ServerInfo` now carries `endpoint`, and the dialog shows it
+  whenever it differs from the detected address.
+
 - **The create form keeps following `DEFAULT_PORT`, `DEFAULT_SUBNET` and
   `DEFAULT_DNS`.** Two things broke that, and between them they made an
   operator's settings look like they had been ignored. The first is that the

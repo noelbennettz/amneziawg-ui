@@ -60,7 +60,9 @@ trailers) is built in and always on**, nothing to configure by hand.
   HTTP endpoints behind the same login as the panel
 - **Auto-start of servers** after a container restart, **automatic iptables
   setup**, IPv4 and IPv6 support (the IPv6 half is a ULA /64 per server with
-  NAT6)
+  NAT6). The panel itself answers on both stacks, a client config's `Endpoint`
+  takes a host name or an address of either family, and the DNS list takes
+  resolvers of either family too
 - **UI in six languages** — English, Russian, French, Spanish, Simplified and
   Traditional Chinese; the language comes from the browser settings, and the
   login page in front of the panel follows the same rule
@@ -120,6 +122,15 @@ docker compose up -d
 > either make it public once under *Package settings → Change visibility* or run
 > `docker login ghcr.io` (with a personal access token that has `read:packages`)
 > on the host before pulling.
+
+> [!IMPORTANT]
+> The port mapping reaches the container over IPv6, but the container itself has
+> no IPv6 address on the default bridge network — so clients get an IPv6 tunnel
+> and no IPv6 internet through it. For real IPv6 egress run the service with
+> `network_mode: host` (the two `net.ipv6.conf.*` sysctls then belong on the
+> host) or give the Docker network a routed global IPv6 prefix. `GET
+> /api/system/iptables-test?server_id=…` reports whether an IPv6 default route
+> and a global IPv6 address are seen from inside.
 
 The admin panel is at `http://<your-server>:54845`: a login page asks for the
 user `admin` and the password `changeme`, and the session it hands out lasts 12

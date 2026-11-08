@@ -2,6 +2,11 @@ services:
   app:
     image: proxy:latest
     restart: unless-stopped
+    # The port mapping serves the panel and the tunnel on both stacks, but the
+    # container has no IPv6 uplink on this bridge: clients get an IPv6 tunnel
+    # and no IPv6 internet through it. For IPv6 egress either use
+    # "network_mode: host" (drop `ports` and `sysctls`, set the sysctls on the
+    # host) or give the network a routed global IPv6 prefix.
     ports:
       - "${WEB_UI_PORT:-54845}:${WEB_UI_PORT:-54845}/tcp"
       - "${DEFAULT_PORT:-54844}:${DEFAULT_PORT:-54844}/udp"

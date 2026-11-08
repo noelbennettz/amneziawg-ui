@@ -121,12 +121,53 @@ automatically.
     rule set into `ip6tables`, including
     `ip6tables -t nat -A POSTROUTING -s <subnet> -o eth+ -j MASQUERADE`.
     Check it with `GET /api/system/iptables-test?server_id=…`: for a server
-    with an IPv6 subnet three `ip6tables` checks appear there.
+    with an IPv6 subnet the three `ip6tables` rules appear there, plus two
+    routing checks — an IPv6 default route and a global IPv6 address — without
+    which the NAT66 rule has nothing to masquerade onto.
 *   **What the host needs**: IPv6 enabled and forwarding on —
     `net.ipv6.conf.all.disable_ipv6=0`, `net.ipv6.conf.all.forwarding=1`,
     `net.ipv6.conf.default.forwarding=1` (already in `docker-compose.yml`) —
     plus the `ip6table_nat` module for NAT66. Without `ip6tables` the server
     still comes up, but NAT6 does not work — visible in `iptables-test`.
+*   **The uplink is read, not assumed**: both scripts used to match `-o eth+`,
+    which is the container's bridge interface. On a host-network deployment,
+    or any host whose uplink is called something else, the masquerade and
+    forwarding rules matched nothing and no client reached the internet — on
+    either stack. They now resolve the interface per family from
+    `ip route show default` and `ip -6 route show default`, and print what is
+    missing when there is no default route at all.
+*   **What the container needs for IPv6 egress**: an IPv6 address and a
+  default route of its own. A container on the default bridge has neither —
+  publishing the port makes the tunnel *reachable* over IPv6 (Docker proxies
+  the host's IPv6 port to the container's IPv4 one) but leaves the container
+  itself without a v6 uplink, so clients' `::/0` traffic dies at the
+  masquerade. Either run the service with `network_mode: host` (then
+  `WEB_UI_PORT`/`DEFAULT_PORT` are the host's ports and the two
+  `net.ipv6.conf.*` sysctls belong on the host) or give the Docker network an
+  IPv6 subnet and a routed global prefix of your own. `iptables-test` reports
+  whether an IPv6 default route and a global IPv6 address exist, which is the
+  quickest way to tell the two situations apart.
+*   **Reaching the panel over IPv6**: the listener is dual-stack (`tcp`), so
+  `http://[2001:db8::1]:54845` answers exactly like the IPv4 address does.
+*   **Reaching the tunnel over IPv6**: the engine is dual-stack by itself —
+  `amneziawg-go` opens a `udp4` and a `udp6` socket on the server's port — so
+  the same `[Interface]` answers on whichever family the client reaches it by.
+  What has to exist is the path to the container: with the default port
+  mapping Docker proxies the host's IPv6 port to the container's IPv4 address,
+  which works, and with `network_mode: host` the host's own addresses are used
+  directly.
+*   **Endpoint**: a client config's `Endpoint` accepts a host name, an IPv4
+  address, or an IPv6 literal — with or without the brackets a `.conf` file
+  writes it in; the panel stores the address canonically and brackets it when
+  it writes the line. A host name with both an `A` and an `AAAA` record is the
+  way to let each client pick its own family. A value carrying a port is
+  refused: the port is the server's own and is appended by the panel. When the
+  field is left empty the panel uses the detected public address, IPv4 first
+  and IPv6 for a host that has no IPv4 at all.
+*   **DNS on either stack**: `dns` (and `DEFAULT_DNS`) takes IPv4 and IPv6
+  resolvers, comma separated; a name is refused, since it could not be
+  resolved before the tunnel is up. A client on an IPv6-only network needs a
+  v6 resolver — `8.8.8.8` is simply not routable there.
 *   **Your own subnet**: the optional `subnet_v6` field of `POST /api/servers`
     and the "IPv6 subnet" row in the advanced form. An empty value means "pick
     a free `/64` yourself".
@@ -366,7 +407,11 @@ Content-Type: application/json
 
 `endpoint` and `dns` are optional: without them the detected public IP and
 `DEFAULT_DNS` are used. `dns` accepts either a comma separated string or an
-array of strings. The same goes for `port`, `subnet` and `mtu`: an omitted
+array of strings, on either stack (`2606:4700:4700::1111` is a resolver like
+any other). `endpoint` is a host on its own — a name, an IPv4 address, or an
+IPv6 literal with or without brackets — and a value carrying a port
+(`vpn.example.com:54844`) or a scheme answers `400`: the port is the server's
+own and is appended to every client config. The same goes for `port`, `subnet` and `mtu`: an omitted
 field is `DEFAULT_PORT`, `DEFAULT_SUBNET` and `DEFAULT_MTU`, and the panel's
 form starts from those same three plus `DEFAULT_DNS`, which is why they are
 worth setting even when every server is created through the UI. `auto_start`
@@ -630,6 +675,13 @@ imported AWG config as the outdated `amnezia-awg` container (shown as
 
 `GET /api/system/iptables-test?server_id=wg_abc123`
 
+Every rule `scripts/setup_iptables.sh` should have left, keyed by the command
+that looked for it, with `Found` or `Not found` as the value. Every server also
+gets one routing check (`ip route show default`) and a server with an IPv6
+subnet three more (`ip -6 route show default`, `ip -6 addr show scope global`):
+a NAT rule exists whether or not there is anything behind it to masquerade
+onto, and these say which situation the host is in.
+
 #### Health check (no credentials)
 
 `GET /status` — the container uptime; used by the image's `HEALTHCHECK`.
@@ -736,7 +788,7 @@ docker build --build-arg AWG_GO_VERSION=vX.Y.Z --build-arg AWG_TOOLS_VERSION=vX.
 | `DEFAULT_MTU` | `1280` | Default MTU for new servers: what the panel's form starts from, and what an API request that omits `mtu` gets |
 | `DEFAULT_SUBNET` | `10.0.0.0/24` | Default subnet for new servers: the first one the panel's form offers - a second server moves to the next `/24` of the same block - and what an API request that omits `subnet` gets |
 | `DEFAULT_PORT` | `54844` | Default port for new servers: what the panel's form starts from, and what an API request that omits `port` gets. `docker-compose.yml` publishes exactly this one over UDP |
-| `DEFAULT_DNS` | `8.8.8.8,1.1.1.1` | Default DNS servers for clients: what the panel's form starts from, and what an API request that omits `dns` gets |
+| `DEFAULT_DNS` | `8.8.8.8,1.1.1.1` | Default DNS servers for clients: what the panel's form starts from, and what an API request that omits `dns` gets. IPv4 and IPv6 resolvers are both accepted — a client on an IPv6-only network needs a v6 one |
 
 ### docker compose example
 
