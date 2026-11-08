@@ -106,6 +106,10 @@ func newApp(t *testing.T) *app {
 	ctx, err := browser.NewContext(playwright.BrowserNewContextOptions{
 		BaseURL:  new(baseURL),
 		Viewport: &playwright.Size{Width: viewportWidth, Height: viewportHeight},
+		// The panel and the login page are translated into six languages
+		// and both take the language from the browser, so the suite has to
+		// state which one it works in instead of inheriting the host's.
+		Locale: new("en-US"),
 	})
 	must(t, err)
 	t.Cleanup(func() { _ = ctx.Close() })
@@ -133,6 +137,7 @@ func newNarrowApp(t *testing.T, width, height int) *app {
 		Viewport: &playwright.Size{Width: width, Height: height},
 		HasTouch: new(true),
 		IsMobile: new(true),
+		Locale:   new("en-US"),
 	})
 	must(t, err)
 	t.Cleanup(func() { _ = ctx.Close() })

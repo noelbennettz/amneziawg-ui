@@ -26,6 +26,11 @@ and there is no `WWW-Authenticate` challenge left for it to answer. The REST
 helpers in `main_test.go` still send `Authorization: Basic`, which every route
 keeps accepting, including `/api`.
 
+The form is translated from the request's `Accept-Language`, so every context
+in the suite states the language it works in (`Locale: en-US`) rather than
+inheriting the host's; `TestLoginPageSpeaksTheBrowsersLanguage` asks for
+`zh-TW` on purpose, and reads the translated labels straight out of the DOM.
+
 ## Layout
 
 This directory is its own Go module, so playwright-go stays out of the root

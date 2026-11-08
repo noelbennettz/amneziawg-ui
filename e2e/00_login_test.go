@@ -66,6 +66,43 @@ func TestLogin(t *testing.T) {
 	must(t, resp.Dispose())
 }
 
+// TestLoginPageSpeaksTheBrowsersLanguage covers the one part of the panel that
+// is HTML rather than canvas: the form's four strings are translated from the
+// request's Accept-Language, and the page declares the language it picked. The
+// browser context asks for Traditional Chinese, which is also the case that
+// tells the two Chinese translations apart.
+func TestLoginPageSpeaksTheBrowsersLanguage(t *testing.T) {
+	ctx, err := browser.NewContext(playwright.BrowserNewContextOptions{
+		BaseURL: new(baseURL),
+		Locale:  new("zh-TW"),
+	})
+	must(t, err)
+	t.Cleanup(func() { _ = ctx.Close() })
+
+	page, err := ctx.NewPage()
+	must(t, err)
+	_, err = page.Goto("/login", playwright.PageGotoOptions{WaitUntil: playwright.WaitUntilStateDomcontentloaded})
+	must(t, err)
+
+	lang, err := page.Locator("html").GetAttribute("lang")
+	must(t, err)
+	if lang != "zh-TW" {
+		t.Errorf("<html lang> is %q, want %q", lang, "zh-TW")
+	}
+
+	label, err := page.Locator("label[for=username]").TextContent()
+	must(t, err)
+	if want := "使用者名稱"; label != want {
+		t.Errorf("the username label reads %q, want %q", label, want)
+	}
+
+	button, err := page.Locator("button[type=submit]").TextContent()
+	must(t, err)
+	if want := "登入"; button != want {
+		t.Errorf("the submit button reads %q, want %q", button, want)
+	}
+}
+
 // parseURL reads a URL the browser reports. Failure is the driver handing back
 // something that is not a URL at all, which no assertion here can improve on.
 func parseURL(t *testing.T, raw string) *url.URL {
