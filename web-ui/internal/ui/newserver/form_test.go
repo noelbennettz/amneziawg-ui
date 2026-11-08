@@ -25,6 +25,9 @@ type pageState struct {
 	port          int
 	defaultSubnet string
 	dns           string
+	// noAutoStart is AUTO_START_SERVERS=false: a new server is created
+	// stopped rather than started.
+	noAutoStart bool
 }
 
 func (s pageState) ServerMTU() int {
@@ -54,6 +57,8 @@ func (s pageState) DefaultDNS() string {
 	}
 	return s.dns
 }
+
+func (s pageState) DefaultAutoStart() bool { return !s.noAutoStart }
 
 func (s pageState) TakenPorts() map[int]string { return map[int]string{} }
 
@@ -177,6 +182,35 @@ func TestSimpleModeFollowsTheBackendDNS(t *testing.T) {
 
 	if got := f.generated("srv", 54844).DNS; got != "9.9.9.9,149.112.112.112" {
 		t.Errorf("DNS = %q, want the backend's 9.9.9.9,149.112.112.112", got)
+	}
+}
+
+// The simple mode used to send auto_start: true whatever AUTO_START_SERVERS
+// said, so an operator who turned starting off got every server created from
+// the panel started anyway. The panel's own path - the switch in the advanced
+// mode - is seeded from the same setting, and only over a switch it set itself.
+func TestAutoStartFollowsTheBackendSetting(t *testing.T) {
+	for _, off := range []bool{false, true} {
+		f := &Form{state: pageState{noAutoStart: off}}
+
+		if got, want := *f.generated("srv", 54844).AutoStart, !off; got != want {
+			t.Errorf("AUTO_START_SERVERS=%v: simple mode sends auto_start=%v, want %v", !off, got, want)
+		}
+	}
+
+	test.NewApp()
+	f := New(&env.Env{}, pageState{noAutoStart: true}, func() {})
+	if f.autoStart.Checked() {
+		t.Error("the switch starts on although the backend says not to start new servers")
+	}
+
+	// A switch the operator flipped is theirs: a later status call does not
+	// put it back.
+	f.autoStart.SetChecked(true)
+	f.state = pageState{noAutoStart: true}
+	f.SeedDefaults()
+	if !f.autoStart.Checked() {
+		t.Error("seeding undid a switch the operator set")
 	}
 }
 

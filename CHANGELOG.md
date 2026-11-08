@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+- **`AUTO_START_SERVERS` reaches the create form.** It was the one setting the
+  panel never asked the backend about: `/api/system/status` has been reporting
+  `auto_start_servers` all along, but the form ignored it and sent
+  `auto_start: true` for every server created in it - the switch in the advanced
+  mode was wired on at build time and the simple mode hardcoded the same value -
+  so an operator who set `AUTO_START_SERVERS=false` got their servers started
+  anyway. The switch now starts from the setting, the simple mode sends what it
+  says, and, like the port, subnet and DNS fields, a value the operator flips
+  themselves is left alone when the status call comes round again. The state
+  remembers whether the backend ever answered, so a page that has not had its
+  first status call does not read the zero value as "start nothing".
+  `DEFAULT_PORT`, `DEFAULT_SUBNET`, `DEFAULT_DNS` and `DEFAULT_MTU` were already
+  reaching the form, and the tests that pin them are now joined by one for this
+  (`TestAutoStartFollowsTheBackendSetting`) plus a pair for the state's
+  fallbacks.
+
 - **The panel speaks six languages, and Chinese at all.** English and Russian
   are joined by French, Spanish and Chinese in both its scripts, so
   `web-ui/translation/` now holds `en`, `ru`, `fr`, `es`, `zh-Hans` and

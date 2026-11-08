@@ -170,7 +170,7 @@ only at startup.
 | `WEB_UI_USER` | `admin` | Login name for the panel and for `curl -u` |
 | `WEB_UI_PASSWORD` | `changeme` | Login password as base64 of its SHA-256 (see the box above) |
 | `WEB_UI_PPROF` | `false` | Profiler at `/debug/pprof` behind the same login. Parsed as a boolean (`1`, `true`, `t`), anything else is off |
-| `AUTO_START_SERVERS` | `true` | Bring previously created servers up when the container starts |
+| `AUTO_START_SERVERS` | `true` | Bring servers up automatically: when the container starts, and for one created in the panel |
 | `DEFAULT_MTU` | `1280` | Default MTU for new servers |
 | `DEFAULT_SUBNET` | `10.0.0.0/24` | Default subnet for new servers |
 | `DEFAULT_PORT` | `54844` | Default UDP port for new servers. This is the one published in compose |

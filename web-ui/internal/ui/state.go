@@ -48,6 +48,13 @@ type state struct {
 	serverDefaultPort   int
 	serverDefaultSubnet string
 	serverDefaultDNS    string
+
+	// serverDefaultAutoStart is AUTO_START_SERVERS, and autoStartSeen is
+	// what tells a reported "off" from the zero value: until the status
+	// call lands the panel keeps its own default rather than pretending the
+	// operator turned starting off.
+	serverDefaultAutoStart bool
+	autoStartSeen          bool
 }
 
 func newState() *state {
@@ -91,6 +98,20 @@ func (s *state) DefaultSubnet() string {
 		return newserver.DefaultSubnet
 	}
 	return subnet
+}
+
+// DefaultAutoStart is whether a server created here is brought up as soon as
+// it exists: AUTO_START_SERVERS as the backend was started with it, or the
+// built-in default while that is unknown.
+func (s *state) DefaultAutoStart() bool {
+	s.mu.Lock()
+	autoStart, seen := s.serverDefaultAutoStart, s.autoStartSeen
+	s.mu.Unlock()
+
+	if !seen {
+		return newserver.DefaultAutoStart
+	}
+	return autoStart
 }
 
 // DefaultDNS is the DNS a new server starts from; see DefaultPort.
@@ -209,12 +230,14 @@ func (u *UI) loadSystemStatus() {
 	u.serverDefaultPort = status.Environment.DefaultPort
 	u.serverDefaultSubnet = status.Environment.DefaultSubnet
 	u.serverDefaultDNS = status.Environment.DefaultDNS
+	u.serverDefaultAutoStart = status.Environment.AutoStartServers
+	u.autoStartSeen = true
 	u.mu.Unlock()
 
 	// The form was built before this call landed, with the built-in defaults
-	// in its fields; this is what puts DEFAULT_PORT, DEFAULT_SUBNET and
-	// DEFAULT_DNS in front of the operator - and it leaves alone anything
-	// already typed over.
+	// in its fields; this is what puts DEFAULT_PORT, DEFAULT_SUBNET,
+	// DEFAULT_DNS and AUTO_START_SERVERS in front of the operator - and it
+	// leaves alone anything already typed over.
 	fyne.Do(func() { u.form.SeedDefaults() })
 
 	u.setSummary(lang.L("{{.Active}}/{{.Total}} servers running",

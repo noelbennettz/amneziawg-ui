@@ -32,12 +32,16 @@ var (
 
 // The values a new server starts from when the backend reports none of its
 // own, which is the case only until /api/system/status has answered. The
-// operator overrides them with DEFAULT_PORT, DEFAULT_SUBNET and DEFAULT_DNS,
-// the same way DEFAULT_MTU overrides the MTU; see State.
+// operator overrides them with DEFAULT_PORT, DEFAULT_SUBNET, DEFAULT_DNS and
+// AUTO_START_SERVERS, the same way DEFAULT_MTU overrides the MTU; see State.
 const (
 	DefaultPort   = 54844
 	DefaultSubnet = "10.0.0.0/24"
 	DefaultDNS    = "8.8.8.8,1.1.1.1"
+	// DefaultAutoStart is what a new server does about starting: the panel
+	// has always brought one up as it is created, and AUTO_START_SERVERS=false
+	// is what turns that off.
+	DefaultAutoStart = true
 )
 
 // DefaultMTU is the MTU used until /api/system/status reports what the
@@ -69,6 +73,9 @@ type State interface {
 	DefaultPort() int
 	DefaultSubnet() string
 	DefaultDNS() string
+	// DefaultAutoStart is AUTO_START_SERVERS: whether a server created here
+	// is brought up as soon as it exists. It falls back the same way.
+	DefaultAutoStart() bool
 }
 
 // Form is the panel. It has two modes: the default one asks for a name and a
@@ -93,10 +100,11 @@ type Form struct {
 	// mtuSeed is the last MTU the form itself wrote into the field, so it can
 	// tell its own value from one the user typed. The three others do the same
 	// for the fields the backend has a default for.
-	mtuSeed    string
-	portSeed   string
-	subnetSeed string
-	dnsSeed    string
+	mtuSeed       string
+	portSeed      string
+	subnetSeed    string
+	dnsSeed       string
+	autoStartSeed bool
 
 	advancedMode *widgets.Switch
 	extras       *fyne.Container
@@ -185,7 +193,8 @@ func New(e *env.Env, state State, reflow func()) *Form {
 	f.endpoint = widgets.EntryWithPlaceholder(lang.L("leave empty to use the auto-detected public IP"))
 
 	f.advancedMode = widgets.NewSwitch(false, f.setAdvanced)
-	f.autoStart = widgets.NewSwitch(true, nil)
+	f.autoStartSeed = state.DefaultAutoStart()
+	f.autoStart = widgets.NewSwitch(f.autoStartSeed, nil)
 	f.obfuscation = widgets.NewSwitch(true, func(bool) { f.showObfuscation() })
 
 	// The two fields the simple mode asks for sit side by side; the rest of
@@ -311,6 +320,7 @@ func (f *Form) SeedDefaults() {
 	f.seed(f.port, &f.portSeed, strconv.Itoa(f.state.DefaultPort()))
 	f.seed(f.subnet, &f.subnetSeed, f.state.DefaultSubnet())
 	f.seed(f.dns, &f.dnsSeed, f.state.DefaultDNS())
+	f.seedSwitch(f.autoStart, &f.autoStartSeed, f.state.DefaultAutoStart())
 }
 
 func (f *Form) seed(entry *widget.Entry, written *string, provided string) {
@@ -319,6 +329,15 @@ func (f *Form) seed(entry *widget.Entry, written *string, provided string) {
 	}
 	*written = provided
 	entry.SetText(provided)
+}
+
+// seedSwitch is seed for a control that is on or off rather than typed into.
+func (f *Form) seedSwitch(sw *widgets.Switch, written *bool, provided bool) {
+	if sw.Checked() != *written {
+		return
+	}
+	*written = provided
+	sw.SetChecked(provided)
 }
 
 // seedMTU puts the MTU the backend was configured with into the form, along
@@ -667,7 +686,7 @@ func (f *Form) build() (api.CreateServerRequest, []string) {
 // switching back to the simple mode means "forget what I typed there", not
 // "keep it but hide it".
 func (f *Form) generated(name string, port int) api.CreateServerRequest {
-	autoStart, obfuscation := true, true
+	autoStart, obfuscation := f.state.DefaultAutoStart(), true
 	mtu := f.state.ServerMTU()
 	return api.CreateServerRequest{
 		Name:      name,
