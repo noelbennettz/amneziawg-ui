@@ -26,8 +26,10 @@ type pageData struct {
 	// Next is where the browser goes after a successful login: the path it
 	// asked for before it was sent here.
 	Next string
-	// Error is shown above the form after a failed attempt, empty otherwise.
-	Error string
+	// Failed is set after a wrong pair, and puts the error above the form.
+	Failed bool
+	// Text is the page's wording, in the language the browser asked for.
+	Text loginText
 }
 
 // showLogin renders the form. Someone who is already logged in is sent on
@@ -47,8 +49,8 @@ func (a *Auth) submitLogin(c fiber.Ctx) error {
 
 	if !a.Check(c.FormValue("username"), c.FormValue("password")) {
 		return a.render(c, fiber.StatusUnauthorized, pageData{
-			Next:  next,
-			Error: "Incorrect username or password.",
+			Next:   next,
+			Failed: true,
 		})
 	}
 
@@ -64,8 +66,11 @@ func (a *Auth) logout(c fiber.Ctx) error {
 	return c.Redirect().To(LoginPath)
 }
 
-// render writes the page with an explicit status.
+// render writes the page with an explicit status, in the language the request
+// asked for.
 func (a *Auth) render(c fiber.Ctx, status int, data pageData) error {
+	data.Text = loginTextFor(c.Get(fiber.HeaderAcceptLanguage))
+
 	var page bytes.Buffer
 	if err := loginTemplate.Execute(&page, data); err != nil {
 		return err

@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="{{.Text.Lang}}">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -145,19 +145,19 @@
 <body>
 	<main class="card">
 		<h1>AmneziaWG UI</h1>
-		{{if .Error}}<p class="error" role="alert">{{.Error}}</p>{{end}}
+		{{if .Failed}}<p class="error" role="alert">{{.Text.Error}}</p>{{end}}
 		<form method="post" action="/login">
 			<input type="hidden" name="next" value="{{.Next}}">
 			<div class="field">
-				<label for="username">Username</label>
+				<label for="username">{{.Text.Username}}</label>
 				<input id="username" name="username" type="text" autocomplete="username"
 					autocapitalize="none" autocorrect="off" spellcheck="false" required autofocus>
 			</div>
 			<div class="field">
-				<label for="password">Password</label>
+				<label for="password">{{.Text.Password}}</label>
 				<input id="password" name="password" type="password" autocomplete="current-password" required>
 			</div>
-			<button type="submit">Sign in</button>
+			<button type="submit">{{.Text.SignIn}}</button>
 		</form>
 	</main>
 </body>
