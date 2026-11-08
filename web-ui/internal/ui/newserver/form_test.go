@@ -150,8 +150,11 @@ func TestSimpleModePayloadIsValid(t *testing.T) {
 func TestSimpleModePicksAFreeSubnet(t *testing.T) {
 	f := &Form{state: pageState{subnets: []string{"10.0.0.0/24", "10.1.0.0/24"}}}
 
-	if got := f.generated("third", 54846).Subnet; got != "10.2.0.0/24" {
-		t.Errorf("Subnet = %q, want 10.2.0.0/24", got)
+	// The neighbour of the default rather than the next second octet: with
+	// 10.0.0.0/24 taken the search moves one /24 along, which keeps a pair of
+	// servers inside one block instead of scattering them.
+	if got := f.generated("third", 54846).Subnet; got != "10.0.1.0/24" {
+		t.Errorf("Subnet = %q, want 10.0.1.0/24", got)
 	}
 }
 
@@ -302,5 +305,121 @@ func eachParagraph(obj fyne.CanvasObject, visit func(*widgets.Paragraph)) {
 		for _, child := range test.WidgetRenderer(node).Objects() {
 			eachParagraph(child, visit)
 		}
+	}
+}
+
+// A second server stays inside the block the operator chose. DEFAULT_SUBNET is
+// the first answer while it is free; after that the neighbour is the next /24
+// of the same first two octets, not the built-in 10.0.0.0/24 - which is what a
+// server created after the first one used to get, and what made the setting
+// look like it had been ignored.
+func TestSimpleModeStaysInTheOperatorsBlock(t *testing.T) {
+	cases := []struct {
+		defaultSubnet string
+		taken         []string
+		want          string
+	}{
+		{"10.9.0.0/24", []string{"10.9.0.0/24"}, "10.9.1.0/24"},
+		{"10.9.0.0/24", []string{"10.9.0.0/24", "10.9.1.0/24"}, "10.9.2.0/24"},
+		{"192.168.50.0/24", []string{"192.168.50.0/24"}, "192.168.51.0/24"},
+		// A /16 has no /24 siblings to move to without splitting the block,
+		// so the search falls back to the 10.x block rather than inventing
+		// one inside the operator's range.
+		{"10.9.0.0/16", []string{"10.9.0.0/16"}, "10.0.0.0/24"},
+	}
+
+	for _, c := range cases {
+		f := &Form{state: pageState{defaultSubnet: c.defaultSubnet, subnets: c.taken}}
+		if got := f.nextFreeSubnet(); got != c.want {
+			t.Errorf("DEFAULT_SUBNET=%s taken=%v: subnet = %q, want %q", c.defaultSubnet, c.taken, got, c.want)
+		}
+	}
+}
+
+// liveState is a page whose backend answers change while the form is open: the
+// status call lands, servers are created, the operator edits the compose file.
+// pageState cannot do that - it is a value the form copies at build time.
+type liveState struct {
+	port     int
+	subnet   string
+	dns      string
+	taken    map[int]string
+	takenNet map[string]string
+}
+
+func (s *liveState) ServerMTU() int                    { return DefaultMTU }
+func (s *liveState) TakenPorts() map[int]string        { return s.taken }
+func (s *liveState) TakenSubnets() map[string]string   { return s.takenNet }
+func (s *liveState) TakenSubnetsV6() map[string]string { return map[string]string{} }
+func (s *liveState) DefaultAutoStart() bool            { return true }
+
+func (s *liveState) DefaultPort() int {
+	if s.port == 0 {
+		return DefaultPort
+	}
+	return s.port
+}
+
+func (s *liveState) DefaultSubnet() string {
+	if s.subnet == "" {
+		return DefaultSubnet
+	}
+	return s.subnet
+}
+
+func (s *liveState) DefaultDNS() string {
+	if s.dns == "" {
+		return DefaultDNS
+	}
+	return s.dns
+}
+
+// The form has to keep following DEFAULT_PORT and DEFAULT_SUBNET for as long
+// as the page is open, including after it moved the fields itself to avoid a
+// collision. It used to write those auto-picked values without recording them
+// as its own, so a later status call read them as something the operator had
+// typed and left them alone - which is what made a changed DEFAULT_PORT
+// disappear as soon as one server existed.
+func TestTheFormKeepsFollowingTheBackendDefaults(t *testing.T) {
+	test.NewApp()
+
+	state := &liveState{taken: map[int]string{}, takenNet: map[string]string{}}
+	f := New(&env.Env{}, state, func() {})
+
+	// The first status call lands: the operator configured 51998 and
+	// 10.9.0.0/24.
+	state.port, state.subnet = 51998, "10.9.0.0/24"
+	f.SeedDefaults()
+	if f.port.Text != "51998" || f.subnet.Text != "10.9.0.0/24" {
+		t.Fatalf("after the first status call: port %q subnet %q", f.port.Text, f.subnet.Text)
+	}
+
+	// A server takes both, and the form picks the next free ones when it is
+	// opened again.
+	state.taken[51998] = `server "first"`
+	state.takenNet["10.9.0.0/24"] = `server "first"`
+	f.toggleOpen()
+	if f.port.Text != "51999" || f.subnet.Text != "10.9.1.0/24" {
+		t.Fatalf("after the collision: port %q subnet %q, want 51999 and 10.9.1.0/24", f.port.Text, f.subnet.Text)
+	}
+
+	// The operator edits the compose file and restarts the container; the
+	// status poll is what carries the new values into the open page.
+	state.port, state.subnet = 52010, "10.20.0.0/24"
+	f.SeedDefaults()
+	if f.port.Text != "52010" {
+		t.Errorf("port = %q, want the new DEFAULT_PORT 52010", f.port.Text)
+	}
+	if f.subnet.Text != "10.20.0.0/24" {
+		t.Errorf("subnet = %q, want the new DEFAULT_SUBNET 10.20.0.0/24", f.subnet.Text)
+	}
+
+	// And a value the operator actually typed is still theirs.
+	f.port.SetText("41000")
+	f.subnet.SetText("10.99.0.0/24")
+	state.port, state.subnet = 52011, "10.21.0.0/24"
+	f.SeedDefaults()
+	if f.port.Text != "41000" || f.subnet.Text != "10.99.0.0/24" {
+		t.Errorf("typed values were overwritten: %q %q", f.port.Text, f.subnet.Text)
 	}
 }

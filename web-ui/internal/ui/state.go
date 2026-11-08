@@ -23,6 +23,12 @@ const (
 	// another tab.
 	trafficInterval = 5 * time.Second
 	serversInterval = 30 * time.Second
+	// statusInterval is the same beat as the server list. The status call is
+	// what carries the defaults the create form starts from, so it cannot be
+	// a once-per-page-load thing: an operator who edits DEFAULT_PORT and
+	// restarts the container has a page open that would otherwise keep the
+	// old numbers for good - and would create servers with them.
+	statusInterval = serversInterval
 )
 
 // state is what the page has last heard from the backend, behind one lock:
@@ -192,7 +198,12 @@ func (u *UI) Start() {
 	// layout the window is actually going to have.
 	u.reflow(u.win.Canvas().Size().Width)
 
-	go u.loadSystemStatus()
+	go func() {
+		for {
+			u.loadSystemStatus()
+			time.Sleep(statusInterval)
+		}
+	}()
 	go u.loadDefaultISettings()
 	go u.reloadServers()
 

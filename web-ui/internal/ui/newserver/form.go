@@ -293,14 +293,12 @@ func (f *Form) toggleOpen() {
 		return
 	}
 
-	// Take the backend's defaults first, then offer a port nothing is listening
-	// on yet, so creating a second server is still a matter of typing a name
-	// and pressing the button.
+	// Take the backend's defaults first, then offer a port and a subnet nothing
+	// is using yet, so creating a second server is still a matter of typing a
+	// name and pressing the button.
 	f.SeedDefaults()
-	f.port.SetText(f.nextFreePort())
-	if _, taken := f.subnetHolder(f.subnet.Text); taken {
-		f.subnet.SetText(f.nextFreeSubnet())
-	}
+	f.seedPort()
+	f.seedSubnet()
 	f.seedMTU()
 
 	f.body.Show()
@@ -338,6 +336,27 @@ func (f *Form) seedSwitch(sw *widgets.Switch, written *bool, provided bool) {
 	}
 	*written = provided
 	sw.SetChecked(provided)
+}
+
+// seedPort puts the first free port at or above the backend's default into the
+// field, and records it as the form's own.
+//
+// Recording it is the whole point: a value the form picked but did not claim
+// looks like something the operator typed, and SeedDefaults then leaves it
+// alone for the rest of the page's life - which is how a changed DEFAULT_PORT
+// stopped reaching the form as soon as one server existed.
+func (f *Form) seedPort() {
+	f.portSeed = f.nextFreePort()
+	f.port.SetText(f.portSeed)
+}
+
+// seedSubnet does the same for a subnet an existing server already holds.
+func (f *Form) seedSubnet() {
+	if _, taken := f.subnetHolder(f.subnet.Text); !taken {
+		return
+	}
+	f.subnetSeed = f.nextFreeSubnet()
+	f.subnet.SetText(f.subnetSeed)
 }
 
 // seedMTU puts the MTU the backend was configured with into the form, along
@@ -555,21 +574,58 @@ func (f *Form) nextFreePort() string {
 
 // nextFreeSubnet picks a /24 that overlaps no existing server's subnet, so
 // servers created in the simple mode never collide with each other.
+//
+// The operator's DEFAULT_SUBNET is the first answer while it is free, and its
+// neighbours - the other 255 /24s of the same first two octets - come next.
+// With 10.9.0.0/24 configured, a second server has to land on 10.9.1.0/24:
+// walking the 10.x.x.0 block from 10.0.0.0 instead put every server after the
+// first on the built-in default, which reads as "the setting did nothing".
 func (f *Form) nextFreeSubnet() string {
-	// The operator's own DEFAULT_SUBNET first: a second server moves off it,
-	// but only to a neighbour the backend would have offered anyway.
-	if preferred := f.state.DefaultSubnet(); preferred != "" {
+	preferred := f.state.DefaultSubnet()
+	if preferred != "" {
 		if _, taken := f.subnetHolder(preferred); !taken {
 			return preferred
 		}
+		if neighbour, ok := f.nextFreeNeighbour(preferred); ok {
+			return neighbour
+		}
 	}
+	// The 10.x block the simple mode started on, for a DEFAULT_SUBNET that is
+	// not a /24 or whose neighbours are all taken: a free /24 is better than
+	// a collision, and the backend accepts any IPv4 subnet.
 	for i := range 256 {
 		candidate := fmt.Sprintf("10.%d.0.0/24", i)
 		if _, taken := f.subnetHolder(candidate); !taken {
 			return candidate
 		}
 	}
-	return f.state.DefaultSubnet()
+	return preferred
+}
+
+// nextFreeNeighbour walks the /24s that share the operator's first two octets,
+// starting at the one they configured and wrapping once round the /16, and
+// returns the first one no server holds.
+func (f *Form) nextFreeNeighbour(preferred string) (string, bool) {
+	network, err := api.ParseSubnet(strings.TrimSpace(preferred))
+	if err != nil {
+		return "", false
+	}
+	// Only a /24 has siblings a new server can move to without cutting the
+	// operator's block in half; anything wider falls through to the 10.x
+	// search.
+	if ones, _ := network.Mask.Size(); ones != 24 {
+		return "", false
+	}
+
+	block := network.IP.To4()
+	for offset := range 256 {
+		third := (int(block[2]) + offset) % 256
+		candidate := fmt.Sprintf("%d.%d.%d.0/24", block[0], block[1], third)
+		if _, taken := f.subnetHolder(candidate); !taken {
+			return candidate, true
+		}
+	}
+	return "", false
 }
 
 // subnetHolder names the existing server whose subnet shares addresses with

@@ -734,7 +734,7 @@ docker build --build-arg AWG_GO_VERSION=vX.Y.Z --build-arg AWG_TOOLS_VERSION=vX.
 | `WEB_UI_PPROF` | `false` | Enables the profiler at `/debug/pprof` (behind the same login). Parsed as a boolean (`1`, `true`, `t`); anything else is "off" |
 | `AUTO_START_SERVERS` | `true` | Bring servers up automatically: on container start, and for a server created in the panel - the form's "Auto-start server on creation" switch starts from it |
 | `DEFAULT_MTU` | `1280` | Default MTU for new servers: what the panel's form starts from, and what an API request that omits `mtu` gets |
-| `DEFAULT_SUBNET` | `10.0.0.0/24` | Default subnet for new servers: the first one the panel's form offers, and what an API request that omits `subnet` gets |
+| `DEFAULT_SUBNET` | `10.0.0.0/24` | Default subnet for new servers: the first one the panel's form offers - a second server moves to the next `/24` of the same block - and what an API request that omits `subnet` gets |
 | `DEFAULT_PORT` | `54844` | Default port for new servers: what the panel's form starts from, and what an API request that omits `port` gets. `docker-compose.yml` publishes exactly this one over UDP |
 | `DEFAULT_DNS` | `8.8.8.8,1.1.1.1` | Default DNS servers for clients: what the panel's form starts from, and what an API request that omits `dns` gets |
 

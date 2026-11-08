@@ -2,6 +2,28 @@
 
 ## Unreleased
 
+- **The create form keeps following `DEFAULT_PORT`, `DEFAULT_SUBNET` and
+  `DEFAULT_DNS`.** Two things broke that, and between them they made an
+  operator's settings look like they had been ignored. The first is that the
+  form moves the port and subnet fields itself when the operator's values are
+  already taken - a second server cannot share the first one's port - and it
+  wrote those auto-picked values without recording them as its own, so
+  `SeedDefaults` read them as something the operator had typed and left them
+  alone: after one server existed, changing `DEFAULT_PORT` reached the page no
+  more. The second is that the status call, which is where those defaults come
+  from, ran once per page load; a page left open while the container was
+  recreated kept the old numbers for good. It now repeats on the server-list
+  beat (30 s), and `SeedDefaults` still leaves a value the operator typed over.
+  Both are pinned down by `TestTheFormKeepsFollowingTheBackendDefaults`.
+
+- **A second server stays in the operator's block.** `nextFreeSubnet` used to
+  fall back to walking `10.x.0.0/24` from the beginning as soon as
+  `DEFAULT_SUBNET` was taken, so with `10.9.0.0/24` configured the second server
+  landed on `10.0.0.0/24` - the built-in default, which reads as the setting
+  having done nothing. It now walks the /24s that share the configured first two
+  octets (10.9.1.0/24, 10.9.2.0/24, …) and only falls back to the 10.x search
+  for a `DEFAULT_SUBNET` that is not a /24 or whose neighbours are all taken.
+
 - **`AUTO_START_SERVERS` reaches the create form.** It was the one setting the
   panel never asked the backend about: `/api/system/status` has been reporting
   `auto_start_servers` all along, but the form ignored it and sent
