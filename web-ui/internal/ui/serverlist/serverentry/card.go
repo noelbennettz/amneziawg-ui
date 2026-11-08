@@ -52,7 +52,7 @@ func New(e *env.Env, srv api.Server) *Card {
 
 	// The avatar is the tonal disc M3 puts at the head of a list row.
 	avatar := container.NewStack(
-		roundedRect(style.SurfaceHigh, 18),
+		widgets.RoundedRect(style.SurfaceHigh, 18),
 		container.NewCenter(widgets.Icon(theme.ComputerIcon(), 20)),
 	)
 
@@ -65,7 +65,9 @@ func New(e *env.Env, srv api.Server) *Card {
 		c.uptime,
 	)
 
-	status := widgets.StatusChip(stringsUpper(lang.L(srv.Status)), statusColor(srv.Status))
+	// The badge is set in the case the translation gives it: upper case would
+	// shout in some languages and not in others.
+	status := widgets.StatusChip(lang.L(srv.Status), statusColor(srv.Status))
 
 	startStop := widgets.IconButton(theme.MediaPlayIcon(), func() { c.setRunning(true) })
 	if srv.Status == "running" {
@@ -208,19 +210,6 @@ func statusColor(status string) color.NRGBA {
 		return style.Success
 	}
 	return style.Muted
-}
-
-// roundedRect is the tonal disc behind an avatar glyph.
-func roundedRect(fill color.NRGBA, radius float32) fyne.CanvasObject {
-	rect := canvas.NewRectangle(fill)
-	rect.CornerRadius = radius
-	return rect
-}
-
-func stringsUpper(s string) string {
-	// The badge is set in the same case the translation gives it: upper case
-	// would shout in some languages and not in others, so this only trims.
-	return s
 }
 
 // ── Actions ──────────────────────────────────────────────────────────────────

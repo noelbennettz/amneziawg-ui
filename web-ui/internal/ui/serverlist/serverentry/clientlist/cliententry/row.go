@@ -4,7 +4,6 @@
 package cliententry
 
 import (
-	"image/color"
 	"strings"
 	"time"
 
@@ -64,7 +63,7 @@ func New(e *env.Env, server api.Server, client api.Client) *Row {
 	initial.TextSize = style.SizeBody
 
 	avatar := container.NewGridWrap(fyne.NewSize(36, 36), container.NewStack(
-		roundedRect(style.SurfaceAlt, 18),
+		widgets.RoundedRect(style.SurfaceAlt, 18),
 		container.NewCenter(initial),
 	))
 
@@ -222,12 +221,6 @@ func initialOf(name string) string {
 		return "?"
 	}
 	return strings.ToUpper(string([]rune(trimmed)[0]))
-}
-
-func roundedRect(fill color.NRGBA, radius float32) fyne.CanvasObject {
-	rect := canvas.NewRectangle(fill)
-	rect.CornerRadius = radius
-	return rect
 }
 
 // ── Actions ──────────────────────────────────────────────────────────────────

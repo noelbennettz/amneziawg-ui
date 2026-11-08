@@ -500,11 +500,19 @@ func InnerCard(content fyne.CanvasObject) fyne.CanvasObject {
 }
 
 func surface(content fyne.CanvasObject, fill color.NRGBA, radius float32) fyne.CanvasObject {
-	bg := canvas.NewRectangle(fill)
-	bg.CornerRadius = radius
+	bg := RoundedRect(fill, radius)
 	// 20/16, not the 4px the theme pads with: a card that hugs its text looks
 	// like a table cell, and a label sitting on the edge reads as clipped.
 	return container.NewStack(bg, container.New(&insetLayout{h: style.Space5 - style.Space1, v: style.Space4}, content))
+}
+
+// RoundedRect is a bare filled rectangle with rounded corners - the tonal disc
+// behind an avatar glyph, the pill behind a chip. It has no content and no
+// padding of its own; a caller that wants a card wants surface above.
+func RoundedRect(fill color.NRGBA, radius float32) fyne.CanvasObject {
+	rect := canvas.NewRectangle(fill)
+	rect.CornerRadius = radius
+	return rect
 }
 
 // Icon is a glyph at an explicit size, drawn in the page's own text colour
