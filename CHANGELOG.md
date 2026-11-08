@@ -2,6 +2,40 @@
 
 ## Unreleased
 
+- **The panel speaks six languages, and Chinese at all.** English and Russian
+  are joined by French, Spanish and Chinese in both its scripts, so
+  `web-ui/translation/` now holds `en`, `ru`, `fr`, `es`, `zh-Hans` and
+  `zh-TW` - 213 keys each, plurals included, and `main_test.go` fails if one
+  file drifts from another. Two things had to be solved before any of it
+  showed up on screen. The first is the script: fyne's `closestSupportedLocale`
+  returns a tag and `localeFromTag` turns it into `base[-region[-script]]`,
+  dropping the script whenever there is no region - so a `zh-Hant.json` came
+  back as plain `zh` and go-i18n read it as Simplified. A region survives, so
+  the Traditional file is `zh-TW.json`, and a `zh-TW`, `zh-HK`, `zh-MO`,
+  `zh-Hant` or `zh-Hant-TW` browser all reach it while `zh`/`zh-CN`/`zh-SG`
+  reach the Simplified one; `TestTranslationsPickTheMatchingLanguage` pins
+  every one of those cases. The second is the glyphs: fyne's faces stop at
+  Latin, Greek and Cyrillic, and the wasm build has no system fonts behind
+  them, so Chinese drew as empty boxes. `style/font.go` now embeds Noto Sans SC
+  regular and bold (OFL, 30 890 glyphs - it serves both scripts and any Chinese
+  typed into a server or client name) and `darkTheme.Font` hands it out.
+  Italic text uses the regular face because the font has no italic cut, and
+  monospace stays on DejaVu so the config view's columns line up.
+  The consequence is size: the wasm bundle goes from 14 MB to 26 MB gzipped,
+  and the image from ~23 MB to ~35 MB. The login page in front of the panel is
+  plain HTML rather than part of the bundle, so its four strings are translated
+  separately, in `internal/auth/i18n.go`, from the request's `Accept-Language`
+  header (`zh-*` split into its two scripts, English the fallback), and the
+  page declares `<html lang>`.
+
+- **Redundant code out.** The two copies of `roundedRect` - the tonal disc
+  behind an avatar, one in the server card and one in the client row - are now
+  `widgets.RoundedRect`, next to the `surface` helper that wants the same
+  rectangle. `stringsUpper` in the server card was a function that returned its
+  argument, kept only for the comment explaining why a status chip is not
+  shouted in upper case; the comment moved to the call. The two translation
+  files that were already there lost the blank line in the middle of their JSON.
+
 - **Dead code removed.** Three functions nothing reached any more: the manager's
   `Settings()` accessor, `backend.Client.Clients` (the frontend takes its clients
   from the server list payload, never from that endpoint), and a one-line

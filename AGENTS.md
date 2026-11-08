@@ -10,7 +10,8 @@ amnezialink, publicip, config, sysinfo}`:
   exported `manager` API and errors map to status codes in `fail`
 - `auth` — the way into the panel: the credential check against
   `WEB_UI_USER`/`WEB_UI_PASSWORD` (constant time), the signed `awg_session`
-  cookie, the login page embedded from `internal/auth/login.html` and the
+  cookie, the login page embedded from `internal/auth/login.html` with its four
+  strings in `i18n.go` (picked per request from `Accept-Language`), and the
   middleware that guards every route but `/status`, `/login` and `/logout`
 - `manager` — the state and the operations on it; the only package that
   takes the config lock. Split by file (`servers.go`, `clients.go`,
@@ -51,10 +52,55 @@ server serves straight off disk under the relative path `./web-ui/wasm`
 
 ## Frontend translations
 
-The UI is in English and Russian, through Fyne's `lang` package
-(https://docs.fyne.io/explore/translations/). `web-ui/translation/{en,ru}.json`
-are embedded by `main.go` and loaded with `lang.AddTranslationsFS`; the
-language comes from the browser's `navigator.languages`, `en` is the fallback.
+The UI is in English, Russian, French, Spanish and Chinese (Simplified and
+Traditional), through Fyne's `lang` package
+(https://docs.fyne.io/explore/translations/). `web-ui/translation/*.json` are
+embedded by `main.go` and loaded with `lang.AddTranslationsFS`; the language
+comes from the browser's `navigator.languages`, `en` is the fallback.
+
+Two things about that are not obvious:
+
+- **The Traditional Chinese file is called `zh-TW.json`, not `zh-Hant.json`.**
+  fyne picks a language in `lang.closestSupportedLocale` and hands the result to
+  go-i18n through `lang.localeFromTag`, which returns `base[-region[-script]]`
+  and drops the script whenever there is no region. A `zh-Hant.json` therefore
+  comes back as plain `zh`, which go-i18n resolves to Simplified; a region
+  survives the trip, so `TW` is what makes the file reachable. A `zh-TW`,
+  `zh-HK`, `zh-MO`, `zh-Hant` or `zh-Hant-TW` browser all land on it, and
+  `zh_CN`/`zh_SG`/`zh` on `zh-Hans.json`. `web-ui/main_test.go` pins this - see
+  `TestTranslationsPickTheMatchingLanguage`; if a future fyne fixes
+  `localeFromTag`, both files can go back to script subtags.
+- **A plural entry lists the forms its own language has.** Chinese has one
+  (`other`), Russian four, so `{{.Count}} clients` is an object in some files
+  and a string in others. A form the language needs and the file lacks falls
+  back to the English key with its template unexpanded.
+
+### The text face
+
+`web-ui/internal/ui/style/font.go` embeds Noto Sans SC (regular and bold, OFL)
+and `darkTheme.Font` hands it out. It is there for the glyphs: fyne's own faces
+are Latin/Greek/Cyrillic plus an emoji and a symbol font, the wasm build has no
+system fonts behind them, and a Chinese string would otherwise draw as empty
+boxes. Consequences worth knowing:
+
+- italic text uses the regular face - Noto Sans SC has no italic cut, and the
+  alternative was slanted English hints next to unreadable Chinese ones
+- monospace stays on fyne's DejaVu face for the config view's column
+  alignment, so Chinese in a `.conf` comment is boxes; keep that view ASCII
+- the two files are ~17 MB of the wasm bundle, which is why the image grew
+
+### The login page
+
+`internal/auth/login.html` is a plain HTML form, not part of the wasm bundle, so
+its four strings are translated in `internal/auth/i18n.go` from the request's
+`Accept-Language` header (highest q wins, English the fallback, `zh-*` split
+into the two scripts). The page also declares `<html lang>`. Keep the two lists
+- `internal/auth/i18n.go` and `web-ui/translation/` - in step: they are the same
+six languages.
+
+`web-ui/main_test.go` checks the files against each other and against the
+locale a browser would report. It lives in `package main`, which imports fyne's
+GL driver, so it needs GL headers (or CI with them) to build.
 
 # Running the project, and check docker build
 

@@ -12,7 +12,7 @@ file, a QR code or a `vpn://` link for the **AmneziaVPN** app, and watch traffic
 and connections in the browser. Amnezia Panel.
 
 It is a lightweight alternative to `amnezia-wg-easy` and `wg-easy`: a single Go
-binary plus three AmneziaWG binaries in an Alpine image of just **~23 MB**
+binary plus three AmneziaWG binaries in an Alpine image of about **35 MB**
 ([amnezia-wg-easy](https://github.com/w0rng/amnezia-wg-easy) is ~80 MB) — no
 Node.js, no nginx, no supervisor. **AmneziaWG 3.1 (header protection + random
 trailers) is built in and always on**, nothing to configure by hand.
@@ -22,11 +22,11 @@ trailers) is built in and always on**, nothing to configure by hand.
 </p>
 
 > **AmneziaWG Web UI** is a self-hosted admin panel (web UI) for AmneziaWG.
-> A single ~23 MB Docker image (Go + Alpine) to create VPN servers, manage
+> A single ~35 MB Docker image (Go + Alpine) to create VPN servers, manage
 > clients, export `.conf` files, QR codes and AmneziaVPN `vpn://` links, and
 > watch traffic — with AmneziaWG 3.1 obfuscation (header protection, random
-> trailers) always on. The UI is available in English and Russian; the
-> documentation is in English.
+> trailers) always on. The UI is available in English, Russian, French,
+> Spanish and Chinese (both scripts); the documentation is in English.
 
 ## Contents
 
@@ -61,8 +61,12 @@ trailers) is built in and always on**, nothing to configure by hand.
 - **Auto-start of servers** after a container restart, **automatic iptables
   setup**, IPv4 and IPv6 support (the IPv6 half is a ULA /64 per server with
   NAT6)
-- **English and Russian UI** — the language comes from the browser settings
-- **Tiny image**: Go + Alpine, ~23 MB, no interpreters and no extra services
+- **UI in six languages** — English, Russian, French, Spanish, Simplified and
+  Traditional Chinese; the language comes from the browser settings, and the
+  login page in front of the panel follows the same rule
+- **Small image**: Go + Alpine, ~35 MB, no interpreters and no extra services.
+  About 13 MB of that is the Chinese font, which the panel has to carry: a
+  browser canvas has no system fonts to borrow a glyph from
 
 ## Quick start: AmneziaWG in Docker in one minute
 
