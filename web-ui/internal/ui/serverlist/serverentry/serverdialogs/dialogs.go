@@ -38,7 +38,7 @@ func presentConfig(e *env.Env, info api.ServerInfo) {
 		statusColor = style.Success
 	}
 
-	basics := widgets.InfoGrid([][2]string{
+	rows := [][2]string{
 		{lang.L("Interface"), info.Interface},
 		{lang.L("Port"), fmt.Sprintf("%d", info.Port)},
 		{lang.L("Subnet"), info.Subnet},
@@ -49,7 +49,17 @@ func presentConfig(e *env.Env, info api.ServerInfo) {
 		{lang.L("Clients"), fmt.Sprintf("%d", info.ClientsCount)},
 		{"DNS", strings.Join(info.DNS, ", ")},
 		{lang.L("Public key"), info.PublicKey},
-	})
+	}
+
+	// The endpoint is the host clients are actually told to connect to: the
+	// detected address unless the operator set a host name or an IPv6 address
+	// of their own. Showing only the detected address made a custom endpoint
+	// look as if the next Refresh IP had overwritten it.
+	if info.Endpoint != "" && info.Endpoint != info.PublicIP {
+		rows = append(rows, [2]string{lang.L("Endpoint"), info.Endpoint})
+	}
+
+	basics := widgets.InfoGrid(rows)
 
 	head := container.NewHBox(
 		widgets.SectionTitle(info.Name),

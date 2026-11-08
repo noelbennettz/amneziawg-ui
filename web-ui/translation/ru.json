@@ -66,6 +66,7 @@
   "Incoming": "Входящий",
   "Interface": "Интерфейс",
   "Invalid DNS server IP: {{.IP}}": "Некорректный IP DNS-сервера: {{.IP}}",
+  "Invalid endpoint: {{.Endpoint}}": "Некорректная конечная точка: {{.Endpoint}}",
   "IPv6 subnet": "IPv6-подсеть",
   "IPv6 subnet {{.Subnet}} overlaps {{.Holder}}": "IPv6-подсеть {{.Subnet}} пересекается с {{.Holder}}",
   "Jc (recommended 4-12)": "Jc (рекомендуется 4-12)",

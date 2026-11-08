@@ -2,6 +2,7 @@ package manager
 
 import (
 	"fmt"
+	"net"
 	"os"
 	"path/filepath"
 	"strings"
@@ -75,6 +76,7 @@ func (m *Manager) ServerInfo(id string) (api.ServerInfo, error) {
 		SubnetV6:           srv.SubnetV6,
 		ServerIPV6:         srv.ServerIPV6,
 		MTU:                srv.MTU,
+		Endpoint:           srv.Endpoint,
 		ObfuscationEnabled: srv.ObfuscationEnabled,
 		ObfuscationParams:  srv.ObfuscationParams,
 		ClientsCount:       len(clients),
@@ -156,17 +158,27 @@ func (m *Manager) CreateServer(req api.CreateServerRequest) (*api.Server, error)
 	endpoint := strings.TrimSpace(req.Endpoint)
 	if endpoint == "" {
 		endpoint = m.PublicIP()
+	} else {
+		// The endpoint is a host and nothing else: the server's own port is
+		// appended wherever the line is written, so a port here would end up
+		// in the config twice, and an unbracketed IPv6 literal would come
+		// out as one long address no client can dial.
+		host, err := api.ParseEndpoint(endpoint)
+		if err != nil {
+			return nil, fmt.Errorf("%w: %w", ErrInvalid, err)
+		}
+		endpoint = host
 	}
 
 	dnsServers := parseDNS(req.DNS)
 	if len(dnsServers) == 0 {
 		dnsServers = m.settings.DNSServers
 	}
-	for _, dns := range dnsServers {
-		if !netutil.IsIPv4(dns) {
-			return nil, fmt.Errorf("invalid DNS server IP %s: %w", dns, ErrInvalid)
-		}
+	normalizedDNS, err := normalizeDNS(dnsServers)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %w", ErrInvalid, err)
 	}
+	dnsServers = normalizedDNS
 
 	enableObfuscation := m.settings.EnableObfuscation
 	if req.Obfuscation != nil {
@@ -296,6 +308,26 @@ func parseDNS(raw interface{}) []string {
 		}
 	}
 	return out
+}
+
+// normalizeDNS canonicalises the resolvers written into a client config.
+//
+// Both stacks are allowed: a client on an IPv6-only network cannot reach
+// 8.8.8.8 any more than a v4-only one can reach 2001:4860:4860::8888, and
+// refusing the v6 form left those clients without a working resolver at all.
+// Canonical spelling matters for the same reason it does in subnets - two
+// spellings of one address would otherwise look like two resolvers, and the
+// configs would stop lining up with what the panel shows.
+func normalizeDNS(servers []string) ([]string, error) {
+	out := make([]string, 0, len(servers))
+	for _, server := range servers {
+		ip := net.ParseIP(strings.TrimSpace(server))
+		if ip == nil {
+			return nil, fmt.Errorf("invalid DNS server IP %s", server)
+		}
+		out = append(out, ip.String())
+	}
+	return out, nil
 }
 
 // portInUse names whatever already holds this port - another server, or the

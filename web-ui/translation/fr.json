@@ -68,6 +68,7 @@
   "Incoming": "Entrant",
   "Interface": "Interface",
   "Invalid DNS server IP: {{.IP}}": "Adresse IP de serveur DNS invalide : {{.IP}}",
+  "Invalid endpoint: {{.Endpoint}}": "Point de terminaison invalide : {{.Endpoint}}",
   "Jc (recommended 4-12)": "Jc (recommandé 4-12)",
   "Jmax (recommended 80)": "Jmax (recommandé 80)",
   "Jmin (recommended 8)": "Jmin (recommandé 8)",

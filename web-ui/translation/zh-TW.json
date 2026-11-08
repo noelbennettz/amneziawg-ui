@@ -68,6 +68,7 @@
   "Incoming": "入站",
   "Interface": "介面",
   "Invalid DNS server IP: {{.IP}}": "無效的 DNS 伺服器 IP：{{.IP}}",
+  "Invalid endpoint: {{.Endpoint}}": "無效的端點：{{.Endpoint}}",
   "Jc (recommended 4-12)": "Jc（推薦 4-12）",
   "Jmax (recommended 80)": "Jmax（推薦 80）",
   "Jmin (recommended 8)": "Jmin（推薦 8）",

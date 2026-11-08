@@ -83,7 +83,7 @@ func ClientConf(srv *api.Server, client *api.Client, endpoint string, includeCom
 		fmt.Fprintf(&sb, "# Server: %s\n", srv.Name)
 		fmt.Fprintf(&sb, "# Client: %s\n", client.Name)
 		fmt.Fprintf(&sb, "# Generated: %s\n", time.Unix(int64(client.CreatedAt), 0).UTC().String())
-		fmt.Fprintf(&sb, "# Server Endpoint: %s:%d\n", endpoint, srv.Port)
+		fmt.Fprintf(&sb, "# Server Endpoint: %s\n", api.EndpointAddress(endpoint, srv.Port))
 	}
 
 	fmt.Fprintf(&sb, "[Interface]\n")
@@ -109,7 +109,7 @@ func ClientConf(srv *api.Server, client *api.Client, endpoint string, includeCom
 	fmt.Fprintf(&sb, "\n[Peer]\n")
 	fmt.Fprintf(&sb, "PublicKey = %s\n", srv.ServerPublicKey)
 	fmt.Fprintf(&sb, "PresharedKey = %s\n", client.PresharedKey)
-	fmt.Fprintf(&sb, "Endpoint = %s:%d\n", endpoint, srv.Port)
+	fmt.Fprintf(&sb, "Endpoint = %s\n", api.EndpointAddress(endpoint, srv.Port))
 	fmt.Fprintf(&sb, "AllowedIPs = %s\n", AllowedIPsOrDefault(client.AllowedIPs))
 	fmt.Fprintf(&sb, "PersistentKeepalive = %s\n", PersistentKeepalive(client.ObfuscationParams))
 

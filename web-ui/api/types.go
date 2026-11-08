@@ -182,7 +182,12 @@ type ISettings = map[string]string
 
 // ── Response payloads ────────────────────────────────────────────────────────
 
-// ServerInfo is the payload of GET /api/servers/:id/info.
+// ServerInfo is the payload of GET /api/servers/:id/info. PublicIP is the
+// address the backend detected; Endpoint is what clients are actually told to
+// connect to - the operator's own host name or address when they set one, the
+// detected address otherwise. The two differ exactly while a custom endpoint
+// is in force, and showing only the first made a working host name look as if
+// the next Refresh IP had overwritten it.
 type ServerInfo struct {
 	ID                 string             `json:"id"`
 	Name               string             `json:"name"`
@@ -192,6 +197,7 @@ type ServerInfo struct {
 	Interface          string             `json:"interface"`
 	ConfigPath         string             `json:"config_path"`
 	PublicIP           string             `json:"public_ip"`
+	Endpoint           string             `json:"endpoint"`
 	ServerIP           string             `json:"server_ip"`
 	Subnet             string             `json:"subnet"`
 	SubnetV6           string             `json:"subnet_v6"`

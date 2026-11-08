@@ -68,6 +68,7 @@
   "Incoming": "Entrante",
   "Interface": "Interfaz",
   "Invalid DNS server IP: {{.IP}}": "IP de servidor DNS no válida: {{.IP}}",
+  "Invalid endpoint: {{.Endpoint}}": "Punto de enlace no válido: {{.Endpoint}}",
   "Jc (recommended 4-12)": "Jc (recomendado 4-12)",
   "Jmax (recommended 80)": "Jmax (recomendado 80)",
   "Jmin (recommended 8)": "Jmin (recomendado 8)",

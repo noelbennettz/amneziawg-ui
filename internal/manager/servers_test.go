@@ -88,6 +88,77 @@ func TestCreateServerRejectsAMalformedSubnet(t *testing.T) {
 	}
 }
 
+// A DNS resolver is an address on either stack: a client on an IPv6-only
+// network cannot reach 8.8.8.8 at all, and the panel used to refuse the v6
+// form outright. The stored list is canonical, so two spellings of one
+// address cannot look like two resolvers.
+func TestCreateServerTakesADNSResolverOnEitherStack(t *testing.T) {
+	m, _ := newTestManager(t)
+
+	srv, err := m.CreateServer(api.CreateServerRequest{
+		Name: "dns", Port: 54846, Subnet: "10.20.0.0/24", MTU: 1420,
+		DNS: "9.9.9.9, 2606:4700:4700::1111 , 0:0:0:0:0:0:0:1",
+	})
+	if err != nil {
+		t.Fatalf("CreateServer: %v", err)
+	}
+	want := []string{"9.9.9.9", "2606:4700:4700::1111", "::1"}
+	if strings.Join(srv.DNS, " ") != strings.Join(want, " ") {
+		t.Fatalf("DNS = %v, want %v", srv.DNS, want)
+	}
+
+	// A name resolver is not something a client config can use before the
+	// tunnel is up, and it stays a bad request.
+	if _, err := m.CreateServer(api.CreateServerRequest{
+		Name: "bad-dns", Port: 54847, MTU: 1420, DNS: "dns.google",
+	}); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("want ErrInvalid for a host-name resolver, got %v", err)
+	}
+}
+
+// An IPv6 endpoint is stored in its canonical form and written bracketed, so
+// the config a client downloads carries an address it can actually dial.
+func TestCreateServerKeepsAnIPv6EndpointDialable(t *testing.T) {
+	m, _ := newTestManager(t)
+
+	srv, err := m.CreateServer(api.CreateServerRequest{
+		Name: "v6", Port: 54846, Subnet: "10.21.0.0/24", MTU: 1420, Endpoint: " [2001:0db8::1] ",
+	})
+	if err != nil {
+		t.Fatalf("CreateServer: %v", err)
+	}
+	if srv.Endpoint != "2001:db8::1" {
+		t.Fatalf("endpoint = %q, want the canonical 2001:db8::1", srv.Endpoint)
+	}
+
+	client, _, err := m.AddClient(srv.ID, api.AddClientRequest{Name: "alice"})
+	if err != nil {
+		t.Fatalf("AddClient: %v", err)
+	}
+	conf, err := m.ClientConfig(srv.ID, client.ID, false)
+	if err != nil {
+		t.Fatalf("ClientConfig: %v", err)
+	}
+	if !strings.Contains(conf, "Endpoint = [2001:db8::1]:54846\n") {
+		t.Fatalf("client config does not carry a bracketed IPv6 endpoint:\n%s", conf)
+	}
+
+	// The name case keeps working, and the port the operator might paste in
+	// is refused instead of ending up in the config twice.
+	named, err := m.CreateServer(api.CreateServerRequest{Name: "named", Port: 54848, Subnet: "10.22.0.0/24", MTU: 1420, Endpoint: "vpn.example.com"})
+	if err != nil {
+		t.Fatalf("CreateServer with a host name: %v", err)
+	}
+	if named.Endpoint != "vpn.example.com" {
+		t.Fatalf("endpoint = %q, want vpn.example.com", named.Endpoint)
+	}
+	if _, err := m.CreateServer(api.CreateServerRequest{
+		Name: "bad-endpoint", Port: 54849, Subnet: "10.23.0.0/24", MTU: 1420, Endpoint: "vpn.example.com:54846",
+	}); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("want ErrInvalid for an endpoint carrying a port, got %v", err)
+	}
+}
+
 func TestPortInUse(t *testing.T) {
 	m, _ := newTestManager(t)
 

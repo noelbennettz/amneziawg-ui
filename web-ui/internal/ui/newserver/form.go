@@ -4,7 +4,6 @@ package newserver
 
 import (
 	"fmt"
-	"regexp"
 	"strconv"
 	"strings"
 
@@ -19,10 +18,6 @@ import (
 	"amneziawg-web-ui/web-ui/internal/ui/env"
 	"amneziawg-web-ui/web-ui/internal/ui/testhook"
 	"amneziawg-web-ui/web-ui/internal/ui/widgets"
-)
-
-var (
-	ipPattern = regexp.MustCompile(`^(\d{1,3}\.){3}\d{1,3}$`)
 )
 
 // What the engine accepts, and the checks against it, live in the shared api
@@ -722,9 +717,19 @@ func (f *Form) build() (api.CreateServerRequest, []string) {
 		problems = append(problems, lang.L("At least one DNS server is required"))
 	}
 	for _, dns := range servers {
-		if !ipPattern.MatchString(dns) {
+		// Either stack: a resolver the client cannot reach is no resolver.
+		if !api.IsIPAddress(dns) {
 			problems = append(problems, lang.L("Invalid DNS server IP: {{.IP}}", map[string]any{"IP": dns}))
 			break
+		}
+	}
+
+	// Empty means "use the address the backend detected", which is what the
+	// placeholder says; a value has to be a host on its own, exactly as the
+	// backend will read it - the port is the server's and is appended there.
+	if req.Endpoint != "" {
+		if _, err := api.ParseEndpoint(req.Endpoint); err != nil {
+			problems = append(problems, lang.L("Invalid endpoint: {{.Endpoint}}", map[string]any{"Endpoint": req.Endpoint}))
 		}
 	}
 

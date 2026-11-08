@@ -40,6 +40,31 @@ func TestAwg31FlagsOnInClientConf(t *testing.T) {
 	}
 }
 
+// The Endpoint line is bracketed when the host is an IPv6 literal: without
+// the brackets, "2001:db8::1:54844" is a different - and unusable - address,
+// which is why a client config generated from a v6 endpoint never connected.
+// The comment line above it carries the same value, so an operator reading
+// the file sees what the client was told.
+func TestClientConfBracketsAnIPv6Endpoint(t *testing.T) {
+	srv, cl := fixture(nil)
+
+	conf := ClientConf(srv, cl, "2001:db8::1", true)
+	if !strings.Contains(conf, "\nEndpoint = [2001:db8::1]:54844\n") {
+		t.Fatalf("an IPv6 endpoint is not bracketed:\n%s", conf)
+	}
+	if !strings.Contains(conf, "# Server Endpoint: [2001:db8::1]:54844\n") {
+		t.Fatalf("the endpoint comment disagrees with the peer line:\n%s", conf)
+	}
+
+	// A name and an IPv4 address stay as they are: brackets are for literals.
+	for _, endpoint := range []string{"vpn.example.com", "203.0.113.5"} {
+		plain := ClientConf(srv, cl, endpoint, false)
+		if !strings.Contains(plain, "\nEndpoint = "+endpoint+":54844\n") {
+			t.Fatalf("endpoint %q was rewritten:\n%s", endpoint, plain)
+		}
+	}
+}
+
 func TestAwg31FlagsOffAreOmitted(t *testing.T) {
 	p := &api.ObfuscationParams{S1: 50, S2: 60, S3: 20, S4: 16, MTU: 1280, HeaderProtectionKey: "KEY"}
 	srv, cl := fixture(p)
