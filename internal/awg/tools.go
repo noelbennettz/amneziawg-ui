@@ -134,17 +134,28 @@ func (t *Tools) runScript(name, iface, subnet, subnetV6 string) {
 // the command that looked. The values are "Found" or "Not found". The ip6tables
 // checks only appear for a server with an IPv6 subnet, since those are the only
 // servers the script writes them for.
+//
+// Those servers get two routing checks as well. A NAT66 rule is happy to exist
+// while there is nothing to masquerade onto - a container on a bridge network
+// has no IPv6 uplink at all - and the tunnel then works while the IPv6
+// internet behind it does not. "Found" on both lines means the rest of the v6
+// path is really there.
 func (t *Tools) CheckIPTables(iface, subnet, subnetV6 string) map[string]string {
 	checks := []string{
 		fmt.Sprintf("iptables -L INPUT -n | grep %s", iface),
 		fmt.Sprintf("iptables -L FORWARD -n | grep %s", iface),
 		fmt.Sprintf("iptables -t nat -L POSTROUTING -n | grep %s", subnet),
+		// Without a default route the masquerade above matches nothing, which
+		// is a rule that reads "Found" and does not work.
+		"ip route show default | head -1",
 	}
 	if subnetV6 != "" {
 		checks = append(checks,
 			fmt.Sprintf("ip6tables -L INPUT -n | grep %s", iface),
 			fmt.Sprintf("ip6tables -L FORWARD -n | grep %s", iface),
 			fmt.Sprintf("ip6tables -t nat -L POSTROUTING -n | grep %s", subnetV6),
+			"ip -6 route show default | head -1",
+			"ip -6 addr show scope global | head -1",
 		)
 	}
 	results := map[string]string{}
@@ -164,6 +175,15 @@ func (t *Tools) CheckIPTables(iface, subnet, subnetV6 string) map[string]string 
 // say what the public address is.
 func (t *Tools) RouteSourceIP() (string, error) {
 	return t.run.Run("ip route get 1 | awk '{print $7}' | head -1")
+}
+
+// RouteSourceIP6 is RouteSourceIP for IPv6. The field is looked up by name
+// rather than by position: an IPv6 route prints its own "from ::" before the
+// gateway, so the source address is not the seventh word the way it is for
+// IPv4.
+func (t *Tools) RouteSourceIP6() (string, error) {
+	return t.run.Run("ip -6 route get 2001:4860:4860::8888 2>/dev/null" +
+		" | awk '{for (i = 1; i < NF; i++) if ($i == \"src\") { print $(i + 1); exit }}'")
 }
 
 // PeerStats is what `awg show` reports about one peer: the exact byte counts

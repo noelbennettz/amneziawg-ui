@@ -50,6 +50,19 @@ func FiberConfig() fiber.Config {
 	}
 }
 
+// ListenConfig is how the panel is served, and it lives here for the same
+// reason FiberConfig does: the running app and its tests build it in one
+// place.
+//
+// ListenerNetwork is the dual-stack "tcp". Fiber's default is "tcp4" - the
+// panel bound 0.0.0.0 and every IPv6 client's connection attempt failed, no
+// matter how the host or the container published the port. "tcp" binds [::]
+// with v6only off, so one listener answers both families, and falls back to
+// 0.0.0.0 by itself on a kernel with no IPv6 at all.
+func ListenConfig() fiber.ListenConfig {
+	return fiber.ListenConfig{ListenerNetwork: fiber.NetworkTCP}
+}
+
 // RegisterRoutes attaches all API routes to the Fiber app.
 func (h *Handlers) RegisterRoutes(app *fiber.App) {
 	app.Get("/status", h.containerUptime)

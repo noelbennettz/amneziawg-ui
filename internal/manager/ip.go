@@ -20,7 +20,7 @@ func (m *Manager) setPublicIP(ip string) {
 
 // RefreshPublicIP re-detects the public IP and stamps it on every server.
 func (m *Manager) RefreshPublicIP() string {
-	ip := publicip.Detect(m.tools.RouteSourceIP)
+	ip := publicip.Detect(m.tools.RouteSourceIP, m.tools.RouteSourceIP6)
 
 	m.mu.Lock()
 	m.publicIP = ip

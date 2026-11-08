@@ -70,7 +70,7 @@ func New(settings config.Settings, st *store.Store, tools *awg.Tools) *Manager {
 // scheduled-suspension checker. It returns once the servers are up; the
 // checker keeps running in the background for the life of the process.
 func (m *Manager) Start() {
-	m.setPublicIP(publicip.Detect(m.tools.RouteSourceIP))
+	m.setPublicIP(publicip.Detect(m.tools.RouteSourceIP, m.tools.RouteSourceIP6))
 
 	// The address files come before any server is brought up: awg-quick reads
 	// the .conf on the way up, and a server that starts IPv4-only because of a

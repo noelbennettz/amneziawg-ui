@@ -19,6 +19,13 @@ func IsIPv4(s string) bool {
 	return ip != nil && ip.To4() != nil
 }
 
+// IsIPv6 reports whether s is a literal IPv6 address. The IPv4-mapped form
+// "::ffff:203.0.113.5" counts as IPv4, since that is the address it carries.
+func IsIPv6(s string) bool {
+	ip := net.ParseIP(s)
+	return ip != nil && ip.To4() == nil
+}
+
 // SplitCIDR separates "10.0.0.0/24" into its network and prefix length. A
 // bare network gets the prefix that every default subnet here uses.
 func SplitCIDR(subnet string) (network, prefix string) {

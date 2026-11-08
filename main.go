@@ -66,5 +66,5 @@ func main() {
 
 	fmt.Printf("Serving the frontend from %s\n", staticDir)
 	fmt.Printf("Listening on :%d\n", settings.WebUIPort)
-	log.Fatal(app.Listen(":" + strconv.Itoa(settings.WebUIPort)))
+	log.Fatal(app.Listen(":"+strconv.Itoa(settings.WebUIPort), httpapi.ListenConfig()))
 }
