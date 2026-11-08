@@ -188,6 +188,26 @@ func (t *darkTheme) Color(name fyne.ThemeColorName, _ fyne.ThemeVariant) color.C
 	return t.Theme.Color(name, theme.VariantDark)
 }
 
+// Font answers with the page's text face. The stock theme's faces stop at
+// Latin, Greek and Cyrillic, so Chinese - the panel is translated into it -
+// would come out as boxes; see font.go for the two files this returns.
+//
+// Italic maps to the regular face: Noto Sans SC has no italic cut, and a
+// slanted Latin face with no CJK in it would trade readable Chinese hints for
+// a slant on the ones written in English. Hints stay distinguishable by size
+// and colour. Monospace and symbol requests keep the stock faces: the config
+// view is an ASCII .conf and its columns depend on a monospace advance, and
+// the symbols are the icons.
+func (t *darkTheme) Font(style fyne.TextStyle) fyne.Resource {
+	if style.Monospace || style.Symbol {
+		return t.Theme.Font(style)
+	}
+	if style.Bold {
+		return boldFace
+	}
+	return textFace
+}
+
 func (t *darkTheme) Size(name fyne.ThemeSizeName) float32 {
 	switch name {
 	case theme.SizeNameInputRadius:
