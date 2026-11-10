@@ -2,6 +2,23 @@
 
 ## Unreleased
 
+- **The login page leads with the panel's blue.** Its *Sign in* pill was the
+  pastel primary (`#a8c7fa`), while the one large accent the panel itself shows
+  is the traffic card in the primary *container* tone (`#0842a0` with
+  `#d3e3fd`): two different blues, one on each side of the login, so the form
+  and the page behind it did not read as the same product. The pill now uses the
+  container pair; the pastel stays for the panel's small buttons and focus ring,
+  where it belongs.
+
+- **The login page paints the browser's own surfaces too.** The page colour was
+  on `body` alone, so whatever the browser draws outside it - the strip under a
+  phone viewport sized to the *large* height, the overscroll area, the area
+  behind the URL bar - came out light, while the panel after login sets `html`,
+  `body` and `overscroll-behavior` itself. `html` now carries `#131314`,
+  `:root` declares `color-scheme: dark` (scrollbars and native controls follow),
+  and the page is sized with `100dvh` where it is known so the card is centred
+  in the viewport a phone is actually showing.
+
 - **The panel answers on IPv6.** Fiber's listener defaults to `tcp4`, so
   `Listening on :54845` was really `0.0.0.0:54845`: the container published the
   port on both stacks and the process behind it only accepted IPv4, which made

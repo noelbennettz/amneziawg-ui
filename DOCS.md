@@ -1084,10 +1084,19 @@ login. The page is a single server-rendered HTML document embedded in the
 binary from `internal/auth/login.html`: no JavaScript and no external assets, so
 it renders on a host with no route to the internet. It is drawn in the panel's
 Material 3 dark palette (background `#131314`, surface `#1e1f20`, filled inputs
-`#333537`, text `#e3e3e3`, the primary `#a8c7fa` pill button and the 28px card
-radius), which is what makes the form and the panel after it look like one
-thing; the panel itself still forces the dark variant whatever
-`prefers-color-scheme` says.
+`#333537`, text `#e3e3e3`, the 28px card radius), which is what makes the form
+and the panel after it look like one thing; the panel itself still forces the
+dark variant whatever `prefers-color-scheme` says.
+
+The one accent on the page is the *Sign in* pill, and it carries the panel's
+primary **container** pair (`#0842a0` with `#d3e3fd` on it), not the pastel
+`#a8c7fa` the panel's small buttons and focus ring use: the panel's one large
+accent is the traffic card, which is that same container tone, so the two pages
+lead with the same blue. The page also paints `html` as well as `body` with
+`#131314`, declares `color-scheme: dark` (the scrollbar, the overscroll area and
+the controls the browser draws itself are otherwise light) and sizes itself with
+`100dvh` where it is known - the same three things the panel does for itself in
+`web-ui/internal/fixes/mobile_wasm.go`.
 
 The form posts the user and the password. The credentials are checked against
 `WEB_UI_USER` and `WEB_UI_PASSWORD` in constant time — nothing else is stored,
