@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"testing/fstest"
 
@@ -103,6 +104,92 @@ func TestEtagMatches(t *testing.T) {
 	} {
 		if got := etagMatches(header, tag); got != want {
 			t.Errorf("etagMatches(%q) = %v, want %v", header, got, want)
+		}
+	}
+}
+
+// loaderFixture is the loader page "fyne package" writes, trimmed to the parts
+// this package cares about: the two stylesheets and the two spinners, each
+// chosen by prefers-color-scheme.
+const loaderFixture = `<!DOCTYPE html>
+<html>
+	<head>
+		<style>
+			body { text-align:center; }
+		</style>
+		<link rel="stylesheet" href="dark.css" media="(prefers-color-scheme: dark)" />
+		<link rel="stylesheet" href="light.css" media="(prefers-color-scheme: light)" />
+		<meta charset="utf-8">
+		<link rel="icon" type="image/png" href="icon.png">
+	</head>
+	<body scroll="no" style="overflow: hidden">
+		<div id="main">
+			<picture>
+				<source srcset="spinner_dark.gif" media="(prefers-color-scheme: dark)" />
+				<source srcset="spinner_light.gif" media="(prefers-color-scheme: light)" />
+				<img class="spinner" src="spinner_light.gif" />
+			</picture>
+		</div>
+	</body>
+</html>
+`
+
+func newLoaderApp(t *testing.T) *fiber.App {
+	t.Helper()
+	app := fiber.New()
+	assets := Open(fstest.MapFS{
+		"index.html": {Data: []byte(loaderFixture)},
+		"dark.css":   {Data: []byte("body { background-color: #141415; }")},
+		"light.css":  {Data: []byte("body { background-color: white; }")},
+	})
+	assets.Mount(app)
+	return app
+}
+
+// The panel is always dark, so the loading screen in front of it has to be too:
+// a browser set to light would otherwise be shown a white page (and a spinner
+// drawn for one) between the login and the panel.
+func TestLoaderIsServedInTheDarkVariant(t *testing.T) {
+	app := newLoaderApp(t)
+
+	for _, path := range []string{"/", "/index.html"} {
+		resp := get(t, app, path, nil)
+		body, _ := io.ReadAll(resp.Body)
+
+		if resp.StatusCode != 200 || !strings.HasPrefix(resp.Header.Get("Content-Type"), "text/html") {
+			t.Errorf("%s: %d %q", path, resp.StatusCode, resp.Header.Get("Content-Type"))
+		}
+		// No choice is left to the browser: the dark stylesheet and the dark
+		// spinner are unconditional, and the light pair can never match.
+		if strings.Contains(string(body), "prefers-color-scheme") {
+			t.Errorf("%s: the page still asks the browser which variant it wants:\n%s", path, body)
+		}
+		if !strings.Contains(string(body), `href="dark.css" media="all"`) ||
+			!strings.Contains(string(body), `href="light.css" media="not all"`) ||
+			!strings.Contains(string(body), `srcset="spinner_dark.gif" media="all"`) {
+			t.Errorf("%s: the dark branch is not pinned:\n%s", path, body)
+		}
+		// The page colour is the panel's, and it is the last rule in the head so
+		// it wins against the dark stylesheet's own #141415.
+		if !strings.Contains(string(body), `<style>html{background:#131314;color-scheme:dark}body{background:#131314}</style></head>`) {
+			t.Errorf("%s: page colour not injected before </head>:\n%s", path, body)
+		}
+		if at, head := strings.Index(string(body), "</head>"), strings.Index(string(body), "<style>html{"); head < 0 || head > at {
+			t.Errorf("%s: injected style is not inside the head", path)
+		}
+	}
+}
+
+// A loader page without those markers is somebody else's page - a future "fyne
+// package" - and is served exactly as it is instead of being half-rewritten.
+func TestLoaderWithoutTheMarkersIsServedUntouched(t *testing.T) {
+	app := newApp(t) // its fixture is "<html>loader</html>"
+
+	for _, path := range []string{"/", "/index.html"} {
+		resp := get(t, app, path, nil)
+		body, _ := io.ReadAll(resp.Body)
+		if resp.StatusCode != 200 || string(body) != "<html>loader</html>" {
+			t.Errorf("%s: %d %q", path, resp.StatusCode, body)
 		}
 	}
 }

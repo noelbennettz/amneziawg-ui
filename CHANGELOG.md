@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+- **The loading screen is dark whatever the browser prefers.** `fyne package`
+  writes a loader page that picks between a light and a dark stylesheet *and* a
+  light and a dark spinner with `prefers-color-scheme`, while the panel behind it
+  forces the dark variant regardless. A browser set to light therefore showed a
+  white page - with a white-page spinner on it - between the login and the
+  panel, and a dark browser got the loader's `#141415` rather than the `#131314`
+  the rest of the product is painted in. The server now pins the page to the dark
+  branch (dark stylesheet and dark spinner unconditional, the light pair never
+  matching) and serves it with the panel's page colour. It is done in
+  `internal/frontend`, the one place that hands the page out, because
+  `web-ui/wasm/` is generated on every build; a loader page from a future
+  `fyne package` that no longer carries those markers is served untouched.
+  `TestLoaderIsServedInTheDarkVariant`.
+
 - **The login page leads with the panel's blue.** Its *Sign in* pill was the
   pastel primary (`#a8c7fa`), while the one large accent the panel itself shows
   is the traffic card in the primary *container* tone (`#0842a0` with

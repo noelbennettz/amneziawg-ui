@@ -208,9 +208,10 @@ automatically.
     the login page embedded from `internal/auth/login.html` and the middleware
     that lets `/status`, `/login` and `/logout` through and answers everything
     else — see [Security](#security)
-*   `internal/frontend` — serving the frontend off disk: the gzip bundle, ETag
-    validators (so the browser neither keeps a stale bundle after an update nor
-    re-downloads ~50 MB of wasm on every load), response compression
+*   `internal/frontend` — serving the frontend off disk: the gzip bundle, the
+    loading page repainted for the panel's dark palette, ETag validators (so the
+    browser neither keeps a stale bundle after an update nor re-downloads ~50 MB
+    of wasm on every load), response compression
 *   `internal/publicip`, `internal/netutil`, `internal/atomicfile` — small
     helper packages: public address detection, subnet arithmetic, atomic file
     writes
@@ -226,8 +227,12 @@ automatically.
     `web-ui/wasm`, from where the server serves the files straight off disk —
     nothing is embedded into the binary, so the bundle can be replaced without
     rebuilding the server
-*   A single dark theme, forced inside the application itself; the loading page
-    is the one `fyne package` generates, with Fyne's standard dark styling
+*   A single dark theme, forced inside the application itself. The loading page
+    `fyne package` writes is served by `internal/frontend`, which pins it to the
+    dark branch (its two stylesheets and its two spinners are otherwise chosen
+    by `prefers-color-scheme`) and paints it in the panel's own `#131314`: a
+    browser set to light would otherwise show a white page, with a spinner
+    drawn for one, between the login and the panel
 *   Status and traffic refresh by REST polling: the counters every 5 seconds
     with one `GET /api/traffic` request, the server list every 30 seconds (and
     right after every action from that tab). No sockets: a wasm build has no

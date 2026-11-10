@@ -6,6 +6,7 @@
 package frontend
 
 import (
+	"bytes"
 	"compress/gzip"
 	"crypto/sha256"
 	"encoding/hex"
@@ -26,12 +27,15 @@ import (
 type Assets struct {
 	files  fs.FS
 	packed map[string]string // request path -> .gz file answering it
+	// loader is the page served for "/" and "/index.html": the packaged one,
+	// repainted. Nil when the tree has no index.html at all.
+	loader []byte
 }
 
 // Open indexes the directory. A tree without any .gz - a development build -
 // simply has nothing packed, and every asset takes the ordinary static path.
 func Open(files fs.FS) *Assets {
-	return &Assets{files: files, packed: packedAssets(files, ".")}
+	return &Assets{files: files, packed: packedAssets(files, "."), loader: loaderPage(files)}
 }
 
 // Compression is the compress middleware configured for these assets. The
@@ -53,11 +57,84 @@ func (a *Assets) Compression() fiber.Handler {
 func (a *Assets) Mount(app *fiber.App) {
 	app.Use(a.cache())
 	app.Use(a.sendPacked())
+	app.Use(a.sendLoader())
 	app.Get("/*", static.New("", static.Config{
 		FS:         a.files,
 		IndexNames: []string{"index.html"},
 		Browse:     false,
 	}))
+}
+
+// The loader page "fyne package" writes chooses between its two stylesheets and
+// its two spinners with prefers-color-scheme, and the panel behind it forces the
+// dark variant whatever the browser asks for. So the choice is made here
+// instead of in the browser: the dark branch is pinned to every colour scheme,
+// or a browser set to light shows a white page - and then a spinner drawn for a
+// white page on a white page - between the login and the panel.
+const (
+	darkMedia  = `media="(prefers-color-scheme: dark)"`
+	lightMedia = `media="(prefers-color-scheme: light)"`
+	anyMedia   = `media="all"`
+	noMedia    = `media="not all"`
+
+	// loaderBackground is the page colour of the panel
+	// (web-ui/internal/ui/style/style.go) and of the login page in front of it
+	// (internal/auth/login.html). The loader's own dark stylesheet says
+	// #141415, close but not the same, and it is the last thing on screen
+	// before the canvas takes over.
+	loaderBackground = "#131314"
+)
+
+// loaderPage reads the packaged index.html, or nil when the tree has none - a
+// test fixture, or a bundle that was not built yet; the static handler then
+// answers the request with whatever the tree does have.
+func loaderPage(files fs.FS) []byte {
+	page, err := fs.ReadFile(files, "index.html")
+	if err != nil {
+		return nil
+	}
+	return darkLoader(page)
+}
+
+// darkLoader pins the loading screen to the dark variant and to the page colour
+// of everything around it.
+//
+// The palette of the panel is decided inside the wasm bundle, which has not
+// started yet while this page is on screen, so nothing in the bundle can be
+// asked to recolour it - the page has to be served that way. A page without the
+// markers (a loader from a future "fyne package") is returned untouched rather
+// than broken by a rewrite that no longer applies.
+func darkLoader(page []byte) []byte {
+	if !bytes.Contains(page, []byte(darkMedia)) || !bytes.Contains(page, []byte(lightMedia)) {
+		return page
+	}
+
+	pinned := bytes.ReplaceAll(page, []byte(darkMedia), []byte(anyMedia))
+	pinned = bytes.ReplaceAll(pinned, []byte(lightMedia), []byte(noMedia))
+
+	// Last rule in the head: the dark stylesheet sets the body to its own
+	// #141415, and the injection has to win that tie on specificity.
+	style := []byte(`<style>html{background:` + loaderBackground + `;color-scheme:dark}body{background:` + loaderBackground + `}</style>`)
+	if at := bytes.Index(pinned, []byte("</head>")); at >= 0 {
+		pinned = append(pinned[:at:at], append(style, pinned[at:]...)...)
+	}
+	return pinned
+}
+
+// sendLoader answers / and /index.html with that page. It goes before the
+// static handler, which would serve the file as it sits on disk.
+func (a *Assets) sendLoader() fiber.Handler {
+	return func(c fiber.Ctx) error {
+		if a.loader == nil || (c.Path() != "/" && c.Path() != "/index.html") {
+			return c.Next()
+		}
+		if c.Method() != fiber.MethodGet && c.Method() != fiber.MethodHead {
+			return c.Next()
+		}
+
+		c.Set(fiber.HeaderContentType, fiber.MIMETextHTMLCharsetUTF8)
+		return c.Send(a.loader)
+	}
 }
 
 // packedAssets maps a request path to the pre-compressed file that answers it.
