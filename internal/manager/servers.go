@@ -392,6 +392,9 @@ func (m *Manager) DeleteServer(serverID string) error {
 		return serverNotFound(serverID)
 	}
 	m.forgetServerStatus(srv.Interface)
+	// The traffic poll marked this interface quiet when it stopped; the
+	// interface is about to stop existing, so its mark must not outlive it.
+	m.wake(srv.Interface)
 	m.saveOrLog("server removal")
 	return nil
 }
@@ -411,8 +414,24 @@ func (m *Manager) removeServerLocked(serverID string) bool {
 	if idx < 0 {
 		return false
 	}
+	srv := &m.cfg.Servers[idx]
 
-	os.Remove(m.cfg.Servers[idx].ConfigPath)
+	// A suspended client's peer block is parked next to the .conf, in a
+	// directory every server shares. Left there, it is not inert: it holds a
+	// public key and a preshared key, and activation reads it back by client
+	// ID. The server is going away, so the blocks go with it.
+	for i := range srv.Clients {
+		if err := wgconf.ForgetPeer(srv.ConfigPath, srv.Clients[i].ID); err != nil {
+			fmt.Printf("Deleting %s: the parked peer of %s stays: %v\n", srv.Name, srv.Clients[i].ID, err)
+		}
+	}
+	// Only removes it when nothing else is in it - another server's parked
+	// peers, or an orphan left by a reconcile.
+	os.Remove(wgconf.SuspendedDir(srv.ConfigPath))
+
+	if err := os.Remove(srv.ConfigPath); err != nil && !os.IsNotExist(err) {
+		fmt.Printf("Deleting %s: the config file stays at %s: %v\n", srv.Name, srv.ConfigPath, err)
+	}
 
 	// The server owns its clients, so dropping it drops them with it.
 	m.cfg.Servers = append(m.cfg.Servers[:idx], m.cfg.Servers[idx+1:]...)
@@ -437,7 +456,14 @@ func (m *Manager) StartServer(serverID string) error {
 		return err
 	}
 
-	m.tools.SetupIPTables(srv.Interface, srv.Subnet, srv.SubnetV6)
+	// A missing or failing script leaves a tunnel that answers handshakes and
+	// forwards nothing. The server is up either way, so this is a warning and
+	// not a failed start - but it is loud, because the client's symptom is
+	// "connected, no internet" and nothing else in the panel would say why.
+	if err := m.tools.SetupIPTables(srv.Interface, srv.Subnet, srv.SubnetV6); err != nil {
+		fmt.Printf("Server %s is up, but its NAT rules were not applied: %v\n", srv.Name, err)
+		fmt.Printf("Clients on %s can connect and will have no internet until that is fixed.\n", srv.Interface)
+	}
 	m.setServerStatus(serverID, "running")
 	// The traffic poll may have marked this interface quiet while it was
 	// down; a server that just came up should not wait out that mark before
@@ -461,7 +487,12 @@ func (m *Manager) StopServer(serverID string) error {
 		return fmt.Errorf("server %s is not running: %w", serverID, ErrConflict)
 	}
 
-	m.tools.CleanupIPTables(srv.Interface, srv.Subnet, srv.SubnetV6)
+	if err := m.tools.CleanupIPTables(srv.Interface, srv.Subnet, srv.SubnetV6); err != nil {
+		// Worse than on the way up: the interface is going down with rules
+		// still pointing at it, and they will collide with the next server
+		// that takes the same subnet.
+		fmt.Printf("Stopping %s: its NAT rules could not be removed: %v\n", srv.Name, err)
+	}
 
 	if err := m.tools.QuickDown(srv.Interface); err != nil {
 		fmt.Printf("Failed to stop server %s: %v\n", srv.Name, err)
