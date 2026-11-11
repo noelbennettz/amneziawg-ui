@@ -114,3 +114,56 @@ func PeerBlock(client *api.Client, allowedIPs string) string {
 	return fmt.Sprintf("\n%s\n[Peer]\nPublicKey = %s\nPresharedKey = %s\nAllowedIPs = %s\n",
 		PeerMarker(client.Name, client.ID), client.ClientPublicKey, client.PresharedKey, allowedIPs)
 }
+
+// peerValue returns the value of a "Key = value" line in a peer block.
+func peerValue(block []string, key string) (string, bool) {
+	for _, line := range block {
+		if k, v, ok := strings.Cut(line, "="); ok && strings.EqualFold(strings.TrimSpace(k), key) {
+			return strings.TrimSpace(v), true
+		}
+	}
+	return "", false
+}
+
+// RewritePeerForClient checks a stored peer block against the client and
+// returns it as that client's block should look now: the marker is retagged,
+// the preshared key and the allowed addresses are taken from the model.
+//
+// The public key is the one line that is not rewritten but compared. A stored
+// block is read back by client ID, and IDs are short - so a block belonging to
+// somebody else must be refused rather than relabelled: relabelled, it would
+// admit a stranger's key under a name and an address this panel believes it
+// controls.
+func RewritePeerForClient(block []string, client *api.Client) ([]string, error) {
+	pub, ok := peerValue(block, "PublicKey")
+	if !ok {
+		return nil, fmt.Errorf("the stored block of %s has no PublicKey line", client.ID)
+	}
+	if pub != client.ClientPublicKey {
+		return nil, fmt.Errorf("the stored block of %s holds %s, not that client's public key %s",
+			client.ID, pub, client.ClientPublicKey)
+	}
+
+	out := RetagPeerBlock(block, client)
+	// A client the model has no address for is one the panel never finished
+	// creating; the stored line is better than "/32" alone.
+	allowed := ""
+	if client.ClientIP != "" {
+		allowed = PeerAllowedIPs(client)
+	}
+	for i, line := range out {
+		key, _, ok := strings.Cut(line, "=")
+		if !ok {
+			continue
+		}
+		switch strings.TrimSpace(key) {
+		case "PresharedKey":
+			out[i] = "PresharedKey = " + client.PresharedKey
+		case "AllowedIPs":
+			if allowed != "" {
+				out[i] = "AllowedIPs = " + allowed
+			}
+		}
+	}
+	return out, nil
+}

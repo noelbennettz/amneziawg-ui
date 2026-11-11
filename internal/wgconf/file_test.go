@@ -74,6 +74,69 @@ func TestRestoringAnUnparkedPeerFails(t *testing.T) {
 	}
 }
 
+// A parked file is read back by client ID, and IDs are six hex characters: a
+// block that belongs to somebody else must be refused, not relabelled onto
+// this client's name. Otherwise whoever holds the other private key is a peer
+// of this server, and this client's own traffic goes to the wrong place.
+func TestRestoreRefusesAParkedBlockWithSomebodyElsesKey(t *testing.T) {
+	path := newServerConf(t)
+	alice := &api.Client{ID: "aaa", Name: "alice", ClientPublicKey: "APUB", PresharedKey: "APSK", ClientIP: "10.0.1.2"}
+	stranger := &api.Client{ID: "aaa", Name: "alice", ClientPublicKey: "STRANGER", PresharedKey: "SPKS", ClientIP: "10.0.1.3"}
+	if err := AppendPeer(path, stranger, "10.0.1.3/32"); err != nil {
+		t.Fatal(err)
+	}
+	if err := ParkPeer(path, stranger); err != nil {
+		t.Fatal(err)
+	}
+	parked := filepath.Join(SuspendedDir(path), "aaa.conf")
+	before := read(t, parked)
+
+	err := RestorePeer(path, alice)
+	if err == nil {
+		t.Fatal("a parked block with another public key was accepted")
+	}
+	if !strings.Contains(err.Error(), "STRANGER") {
+		t.Errorf("the error should name the key it found, got %v", err)
+	}
+	if read(t, parked) != before {
+		t.Error("the refused block should be left where it was")
+	}
+	if strings.Contains(read(t, path), "STRANGER") {
+		t.Error("the stranger's key ended up in the live config")
+	}
+}
+
+// The parked block is stale in the parts the model owns: a client renamed and
+// re-addressed while it was out comes back as it is now, not as it was.
+func TestRestoreTakesKeysAndAddressesFromTheClient(t *testing.T) {
+	path := newServerConf(t)
+	alice := &api.Client{ID: "aaa", Name: "alice", ClientPublicKey: "APUB", PresharedKey: "APSK", ClientIP: "10.0.1.2"}
+	if err := AppendPeer(path, alice, "10.0.1.2/32"); err != nil {
+		t.Fatal(err)
+	}
+	if err := ParkPeer(path, alice); err != nil {
+		t.Fatal(err)
+	}
+
+	alice.Name = "alice-now"
+	alice.PresharedKey = "NEWPSK"
+	alice.ClientIP = "10.0.1.9"
+	alice.ClientIPV6 = "fd42:ab12::9"
+	if err := RestorePeer(path, alice); err != nil {
+		t.Fatal(err)
+	}
+
+	conf := read(t, path)
+	for _, want := range []string{"PresharedKey = NEWPSK", "AllowedIPs = 10.0.1.9/32, fd42:ab12::9/128", PeerMarker("alice-now", "aaa")} {
+		if !strings.Contains(conf, want) {
+			t.Errorf("restored config is missing %q:\n%s", want, conf)
+		}
+	}
+	if strings.Contains(conf, "APSK") {
+		t.Errorf("the old preshared key is still in the peer block:\n%s", conf)
+	}
+}
+
 func TestRemovePeerOfAClientWithoutABlockIsANoOp(t *testing.T) {
 	path := newServerConf(t)
 	before := read(t, path)

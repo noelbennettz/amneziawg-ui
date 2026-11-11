@@ -82,7 +82,9 @@ func ParkPeer(serverConfPath string, client *api.Client) error {
 
 // RestorePeer appends the client's parked block back onto the server's .conf
 // and removes the parked copy. The client may have been renamed while it was
-// parked, so the marker is rewritten from the client as it is now.
+// parked, so the marker is rewritten from the client as it is now - and so are
+// the keys and addresses, after checking that the block really is this
+// client's.
 func RestorePeer(serverConfPath string, client *api.Client) error {
 	parked := filepath.Join(SuspendedDir(serverConfPath), client.ID+".conf")
 	suspended, err := os.ReadFile(parked)
@@ -90,7 +92,10 @@ func RestorePeer(serverConfPath string, client *api.Client) error {
 		return fmt.Errorf("reading the suspended peer of %s: %w", client.ID, err)
 	}
 
-	block := RetagPeerBlock(strings.Split(strings.TrimRight(string(suspended), "\n"), "\n"), client)
+	block, err := RewritePeerForClient(strings.Split(strings.TrimRight(string(suspended), "\n"), "\n"), client)
+	if err != nil {
+		return fmt.Errorf("refusing to bring %s back: %w", client.ID, err)
+	}
 	if err := appendText(serverConfPath, "\n"+strings.Join(block, "\n")+"\n"); err != nil {
 		return err
 	}
