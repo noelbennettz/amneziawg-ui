@@ -15,6 +15,7 @@ import (
 	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/base64"
+	"net"
 	"net/url"
 	"strconv"
 	"strings"
@@ -72,6 +73,8 @@ type Auth struct {
 	audit *audit.Log
 	// limiter counts failed logins per address, nil when the limit is off.
 	limiter *limiter
+	// trustProxy makes the client address come from X-Forwarded-For.
+	trustProxy bool
 }
 
 // Option configures the guard.
@@ -103,6 +106,34 @@ func WithLoginRateLimit(enabled bool) Option {
 			a.limiter = newLimiter()
 		}
 	}
+}
+
+// WithTrustProxy reads the client address from X-Forwarded-For.
+//
+// Off by default and worth thinking about before turning it on: the header is
+// whatever the client sent unless a proxy in front of the panel overwrote or
+// appended to it. Believed blindly, it lets a guesser pick a new address per
+// attempt and walk straight past the limiter.
+func WithTrustProxy(enabled bool) Option {
+	return func(a *Auth) { a.trustProxy = enabled }
+}
+
+// clientIP is the address the limiter counts and the audit log records.
+//
+// Behind a proxy every request arrives from the proxy, so the forwarded
+// address is the only one that means anything - and it is read only when the
+// operator said a proxy is in front. The left-most entry is the client: a
+// proxy appends what it saw, so anything further right was written by
+// somebody else.
+func (a *Auth) clientIP(c fiber.Ctx) string {
+	if a.trustProxy {
+		if first, _, _ := strings.Cut(c.Get(fiber.HeaderXForwardedFor), ","); strings.TrimSpace(first) != "" {
+			if addr := strings.TrimSpace(first); net.ParseIP(addr) != nil {
+				return addr
+			}
+		}
+	}
+	return c.IP()
 }
 
 // New builds the guard for the credentials the container was started with.
@@ -165,6 +196,7 @@ func (a *Auth) Middleware() fiber.Handler {
 				a.csrfToken(c)
 			}
 			c.Locals(UserLocalKey, a.user)
+			c.Locals(audit.IPLocalKey, a.clientIP(c))
 			return c.Next()
 		}
 
@@ -177,7 +209,7 @@ func (a *Auth) Middleware() fiber.Handler {
 		// consulted here - never for a request that is already
 		// authenticated - so a working session is never locked out by an
 		// attacker sharing its address.
-		if wait := a.limiter.retryAfter(c.IP()); wait > 0 {
+		if wait := a.limiter.retryAfter(a.clientIP(c)); wait > 0 {
 			c.Set(fiber.HeaderRetryAfter, strconv.Itoa(int(wait.Seconds())+1))
 			if wantsJSON(c) {
 				return c.Status(fiber.StatusTooManyRequests).JSON(api.ErrorResponse{Error: "too many failed logins, try again later"})
@@ -218,7 +250,7 @@ func (a *Auth) authenticated(c fiber.Ctx) bool {
 	// A header that was offered and refused is a wrong password, and the
 	// limiter is the only thing that makes guessing one expensive.
 	if c.Get(fiber.HeaderAuthorization) != "" {
-		a.limiter.fail(c.IP())
+		a.limiter.fail(a.clientIP(c))
 	}
 	return false
 }

@@ -62,6 +62,7 @@ func main() {
 		auth.WithSecureCookies(settings.SecureCookie),
 		auth.WithAudit(auditLog),
 		auth.WithLoginRateLimit(settings.LoginRateLimit),
+		auth.WithTrustProxy(settings.TrustProxy),
 	)
 	app.Use(guard.Middleware())
 	// A write has to prove it came from this page, not from one that made
@@ -92,6 +93,9 @@ func main() {
 	fmt.Printf("Listening on %s\n", addr)
 	if settings.AuditLog {
 		fmt.Printf("Audit log: %s\n", config.AuditFile)
+	}
+	if settings.TrustProxy {
+		fmt.Println("Client addresses come from X-Forwarded-For (WEB_UI_TRUST_PROXY)")
 	}
 	if settings.SecureCookie == config.SecureOn {
 		fmt.Println("Cookies will be marked Secure: the panel must be reached over HTTPS")

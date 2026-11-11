@@ -801,3 +801,57 @@ func TestSessionsAreDistinctAndLegacyTokensSurvive(t *testing.T) {
 		t.Error("a token without the nonce was rejected")
 	}
 }
+
+// Behind a proxy every request arrives from the proxy, so the limiter has to
+// count the forwarded address - or it is one bucket for the whole internet.
+func TestRateLimitFollowsTheForwardedAddressWhenTrusted(t *testing.T) {
+	app := newTestApp(t, WithLoginRateLimit(true), WithTrustProxy(true))
+
+	attempt := func(forwarded, password string) *http.Response {
+		t.Helper()
+		token, cookie := csrfToken(t, app)
+		form := url.Values{"username": {testUser}, "password": {password}, "next": {"/"}, "csrf": {token}}
+		req := httptest.NewRequest(http.MethodPost, LoginPath, strings.NewReader(form.Encode()))
+		req.Header.Set(fiber.HeaderContentType, fiber.MIMEApplicationForm)
+		req.Header.Set(fiber.HeaderXForwardedFor, forwarded)
+		req.AddCookie(cookie)
+		return do(t, app, req)
+	}
+
+	for i := range 5 {
+		if resp := attempt("203.0.113.7", "wrong"+strconv.Itoa(i)); resp.StatusCode != fiber.StatusUnauthorized {
+			t.Fatalf("attempt %d = %d, want 401", i+1, resp.StatusCode)
+		}
+	}
+	if resp := attempt("203.0.113.7", testPassword); resp.StatusCode != fiber.StatusTooManyRequests {
+		t.Errorf("the blocked address = %d, want 429", resp.StatusCode)
+	}
+	// Somebody else behind the same proxy is somebody else.
+	if resp := attempt("198.51.100.9", testPassword); resp.StatusCode != fiber.StatusSeeOther {
+		t.Errorf("another forwarded address = %d, want 303", resp.StatusCode)
+	}
+}
+
+// A header nobody vouches for is not an address: with the proxy untrusted, a
+// guesser cannot pick a new one per attempt and walk past the limiter.
+func TestForwardedAddressIsIgnoredWithoutTrustProxy(t *testing.T) {
+	app := newTestApp(t, WithLoginRateLimit(true))
+
+	attempt := func(forwarded, password string) *http.Response {
+		t.Helper()
+		token, cookie := csrfToken(t, app)
+		form := url.Values{"username": {testUser}, "password": {password}, "next": {"/"}, "csrf": {token}}
+		req := httptest.NewRequest(http.MethodPost, LoginPath, strings.NewReader(form.Encode()))
+		req.Header.Set(fiber.HeaderContentType, fiber.MIMEApplicationForm)
+		req.Header.Set(fiber.HeaderXForwardedFor, forwarded)
+		req.AddCookie(cookie)
+		return do(t, app, req)
+	}
+
+	for i := range 5 {
+		attempt("203.0.113."+strconv.Itoa(i), "wrong"+strconv.Itoa(i))
+	}
+	if resp := attempt("198.51.100.9", testPassword); resp.StatusCode != fiber.StatusTooManyRequests {
+		t.Errorf("a new header per attempt walked past the limiter: %d, want 429", resp.StatusCode)
+	}
+}

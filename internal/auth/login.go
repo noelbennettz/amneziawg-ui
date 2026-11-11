@@ -67,7 +67,7 @@ func (a *Auth) submitLogin(c fiber.Ctx) error {
 	if !a.formTokenValid(c) {
 		a.audit.Record(audit.Event{
 			Event:  audit.EventCSRFRejected,
-			IP:     c.IP(),
+			IP:     a.clientIP(c),
 			Method: c.Method(),
 			Path:   c.Path(),
 			Status: fiber.StatusSeeOther,
@@ -82,7 +82,7 @@ func (a *Auth) submitLogin(c fiber.Ctx) error {
 	// faster. The wait is the same page as a failed login, with the sentence
 	// that says so: "incorrect username or password" would be a lie, and the
 	// person would go looking for a typo that is not there.
-	if wait := a.limiter.retryAfter(c.IP()); wait > 0 {
+	if wait := a.limiter.retryAfter(a.clientIP(c)); wait > 0 {
 		c.Set(fiber.HeaderRetryAfter, strconv.Itoa(int(wait.Seconds())+1))
 		return a.render(c, fiber.StatusTooManyRequests, pageData{
 			Next:        next,
@@ -92,11 +92,11 @@ func (a *Auth) submitLogin(c fiber.Ctx) error {
 	}
 
 	if !a.Check(user, c.FormValue("password")) {
-		a.limiter.fail(c.IP())
+		a.limiter.fail(a.clientIP(c))
 		a.audit.Record(audit.Event{
 			Event:  audit.EventLoginFailed,
 			User:   user,
-			IP:     c.IP(),
+			IP:     a.clientIP(c),
 			Method: c.Method(),
 			Path:   c.Path(),
 			Status: fiber.StatusUnauthorized,
@@ -111,12 +111,12 @@ func (a *Auth) submitLogin(c fiber.Ctx) error {
 	a.audit.Record(audit.Event{
 		Event:  audit.EventLogin,
 		User:   a.user,
-		IP:     c.IP(),
+		IP:     a.clientIP(c),
 		Method: c.Method(),
 		Path:   c.Path(),
 		Status: fiber.StatusSeeOther,
 	})
-	a.limiter.succeed(c.IP())
+	a.limiter.succeed(a.clientIP(c))
 
 	// A token handed out before the session existed is one that had a
 	// chance to be fixed; the page that loads after the redirect reads the
@@ -134,7 +134,7 @@ func (a *Auth) logout(c fiber.Ctx) error {
 		a.audit.Record(audit.Event{
 			Event:  audit.EventLogout,
 			User:   a.user,
-			IP:     c.IP(),
+			IP:     a.clientIP(c),
 			Method: c.Method(),
 			Path:   c.Path(),
 			Status: fiber.StatusSeeOther,

@@ -7,8 +7,13 @@ import (
 )
 
 // UserLocalKey is where the guard puts the name it authenticated, so a change
-// recorded here can say who made it.
-const UserLocalKey = "audit.user"
+// recorded here can say who made it. IPLocalKey is the address it resolved for
+// the same request: behind a proxy that is the forwarded one, which only the
+// guard knows how to read.
+const (
+	UserLocalKey = "audit.user"
+	IPLocalKey   = "audit.ip"
+)
 
 // Middleware records every change that reached the API: the method, the route,
 // where it came from, who was logged in and how it ended. Reads are not
@@ -43,7 +48,7 @@ func Middleware(log *Log) fiber.Handler {
 		log.Record(Event{
 			Event:  EventChange,
 			User:   UserLocal(c),
-			IP:     c.IP(),
+			IP:     IPLocal(c),
 			Method: c.Method(),
 			Path:   c.Path(),
 			Status: status,
@@ -56,4 +61,13 @@ func Middleware(log *Log) fiber.Handler {
 func UserLocal(c fiber.Ctx) string {
 	user, _ := c.Locals(UserLocalKey).(string)
 	return user
+}
+
+// IPLocal is the address the guard resolved for the request - the forwarded
+// one when WEB_UI_TRUST_PROXY is on - falling back to the connection's own.
+func IPLocal(c fiber.Ctx) string {
+	if ip, ok := c.Locals(IPLocalKey).(string); ok && ip != "" {
+		return ip
+	}
+	return c.IP()
 }

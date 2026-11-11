@@ -68,6 +68,13 @@ type Settings struct {
 	// would lock the operator out together with whoever is guessing.
 	LoginRateLimit bool
 
+	// TrustProxy reads the client address from X-Forwarded-For instead of the
+	// connection. Off by default: a client that can reach the panel directly
+	// writes that header itself, and then the limiter is protecting a value
+	// the attacker chose. Turn it on when — and only when — every request
+	// arrives through a proxy that appends the address it saw.
+	TrustProxy bool
+
 	// AutoStart brings every server marked auto-start up when the backend
 	// boots, and is the default for new servers.
 	AutoStart bool
@@ -109,6 +116,7 @@ func FromEnv() Settings {
 		AuditLog:             parseBool(os.Getenv("WEB_UI_AUDIT_LOG")),
 		AuditRetention:       auditRetention(os.Getenv("WEB_UI_AUDIT_RETENTION_HOURS")),
 		LoginRateLimit:       parseBool(os.Getenv("WEB_UI_LOGIN_RATE_LIMIT")),
+		TrustProxy:           parseBool(os.Getenv("WEB_UI_TRUST_PROXY")),
 		AutoStart:            strings.EqualFold(getenv("AUTO_START_SERVERS", "true"), "true"),
 		DefaultMTU:           atoiDefault(getenv("DEFAULT_MTU", ""), 1280),
 		DefaultSubnet:        getenv("DEFAULT_SUBNET", "10.0.0.0/24"),

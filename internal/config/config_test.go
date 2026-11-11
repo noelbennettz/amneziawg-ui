@@ -49,6 +49,9 @@ func TestSecuritySettingsDefaultToOff(t *testing.T) {
 	if s.LoginRateLimit {
 		t.Error("LoginRateLimit is on by default")
 	}
+	if s.TrustProxy {
+		t.Error("TrustProxy is on by default")
+	}
 }
 
 // The audit log keeps a day of events by default, and the operator can widen
@@ -78,9 +81,10 @@ func TestSecuritySettingsFromTheEnvironment(t *testing.T) {
 	t.Setenv("WEB_UI_SECURE_COOKIE", "true")
 	t.Setenv("WEB_UI_AUDIT_LOG", "1")
 	t.Setenv("WEB_UI_LOGIN_RATE_LIMIT", "true")
+	t.Setenv("WEB_UI_TRUST_PROXY", "true")
 
 	s := FromEnv()
-	if s.WebUIBind != "127.0.0.1" || s.SecureCookie != SecureOn || !s.AuditLog || !s.LoginRateLimit {
+	if s.WebUIBind != "127.0.0.1" || s.SecureCookie != SecureOn || !s.AuditLog || !s.LoginRateLimit || !s.TrustProxy {
 		t.Errorf("Settings = %+v", s)
 	}
 

@@ -54,7 +54,7 @@ func (a *Auth) CSRF() fiber.Handler {
 
 		a.audit.Record(audit.Event{
 			Event:  audit.EventCSRFRejected,
-			IP:     c.IP(),
+			IP:     a.clientIP(c),
 			Method: c.Method(),
 			Path:   c.Path(),
 			Status: fiber.StatusForbidden,
