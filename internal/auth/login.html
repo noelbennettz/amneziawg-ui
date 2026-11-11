@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>AmneziaWG UI</title>
+<title>amneziawg ui</title>
 <style>
 	/* The values below are the ones in web-ui/internal/ui/style/style.go: the
 	   page after login is a Fyne canvas painted in that palette, and this form
@@ -174,8 +174,9 @@
 </head>
 <body>
 	<main class="card">
-		<h1>AmneziaWG UI</h1>
+		<h1>amneziawg ui</h1>
 		{{if .Failed}}<p class="error" role="alert">{{.Text.Error}}</p>{{end}}
+		{{if .RateLimited}}<p class="error" role="alert">{{.Text.TooMany}}</p>{{end}}
 		<form method="post" action="/login">
 			<input type="hidden" name="next" value="{{.Next}}">
 			<input type="hidden" name="csrf" value="{{.CSRF}}">

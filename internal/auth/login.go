@@ -34,6 +34,9 @@ type pageData struct {
 	CSRF string
 	// Failed is set after a wrong pair, and puts the error above the form.
 	Failed bool
+	// RateLimited is set when the address has failed too often, and shows the
+	// wait instead of the wrong-password message.
+	RateLimited bool
 	// Text is the page's wording, in the language the browser asked for.
 	Text loginText
 }
@@ -76,10 +79,16 @@ func (a *Auth) submitLogin(c fiber.Ctx) error {
 
 	// A blocked address is told to wait before the password is looked at.
 	// The point of the limit is to make a guess expensive, not to answer one
-	// faster.
+	// faster. The wait is the same page as a failed login, with the sentence
+	// that says so: "incorrect username or password" would be a lie, and the
+	// person would go looking for a typo that is not there.
 	if wait := a.limiter.retryAfter(c.IP()); wait > 0 {
 		c.Set(fiber.HeaderRetryAfter, strconv.Itoa(int(wait.Seconds())+1))
-		return c.Status(fiber.StatusTooManyRequests).SendString("Too many failed logins. Try again later.\n")
+		return a.render(c, fiber.StatusTooManyRequests, pageData{
+			Next:        next,
+			CSRF:        a.csrfToken(c),
+			RateLimited: true,
+		})
 	}
 
 	if !a.Check(user, c.FormValue("password")) {

@@ -309,7 +309,7 @@ func TestPublicPathsNeedNoCredentials(t *testing.T) {
 		t.Errorf("%s = %d, want 200", LoginPath, page.StatusCode)
 	}
 	html := body(t, page)
-	for _, want := range []string{"AmneziaWG UI", `name="username"`, `name="password"`, "Sign in"} {
+	for _, want := range []string{"amneziawg ui", `name="username"`, `name="password"`, "Sign in"} {
 		if !strings.Contains(html, want) {
 			t.Errorf("the login page does not contain %q", want)
 		}
@@ -753,6 +753,14 @@ func TestLoginRateLimitAnswers429(t *testing.T) {
 	}
 	if got := resp.Header.Get(fiber.HeaderRetryAfter); got == "" {
 		t.Error("the 429 carries no Retry-After")
+	}
+	// The page says the address is blocked, not that the password is wrong:
+	// the second would send the operator looking for a typo that is not there.
+	if page := body(t, resp); !strings.Contains(page, "Too many failed logins") {
+		t.Errorf("the 429 does not explain itself: %.200s", page)
+	}
+	if page := body(t, login(t, app, testUser, testPassword, "/")); strings.Contains(page, "Incorrect username") {
+		t.Error("a blocked address was told its password was wrong")
 	}
 
 	if resp := get(t, app, "/api/system/status", nil, nil); resp.StatusCode != fiber.StatusTooManyRequests {

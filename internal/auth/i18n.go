@@ -16,6 +16,10 @@ type loginText struct {
 	Password string
 	SignIn   string
 	Error    string
+	// TooMany is what a blocked address is shown instead: the limit is not a
+	// wrong password, and telling somebody their password is wrong when it is
+	// not sends them looking for a problem that does not exist.
+	TooMany string
 }
 
 // loginTexts is every language the panel is translated into, keyed by the tag
@@ -24,17 +28,23 @@ type loginText struct {
 // the comment on TestTranslationsPickTheMatchingLanguage in web-ui.
 var loginTexts = map[string]loginText{
 	"en": {Lang: "en", Username: "Username", Password: "Password", SignIn: "Sign in",
-		Error: "Incorrect username or password."},
+		Error:   "Incorrect username or password.",
+		TooMany: "Too many failed logins. Try again later."},
 	"ru": {Lang: "ru", Username: "Имя пользователя", Password: "Пароль", SignIn: "Войти",
-		Error: "Неверное имя пользователя или пароль."},
+		Error:   "Неверное имя пользователя или пароль.",
+		TooMany: "Слишком много неудачных попыток входа. Попробуйте позже."},
 	"fr": {Lang: "fr", Username: "Nom d'utilisateur", Password: "Mot de passe", SignIn: "Se connecter",
-		Error: "Nom d'utilisateur ou mot de passe incorrect."},
+		Error:   "Nom d'utilisateur ou mot de passe incorrect.",
+		TooMany: "Trop de tentatives de connexion échouées. Réessayez plus tard."},
 	"es": {Lang: "es", Username: "Usuario", Password: "Contraseña", SignIn: "Iniciar sesión",
-		Error: "Usuario o contraseña incorrectos."},
+		Error:   "Usuario o contraseña incorrectos.",
+		TooMany: "Demasiados intentos de inicio de sesión fallidos. Inténtalo más tarde."},
 	"zh-Hans": {Lang: "zh-Hans", Username: "用户名", Password: "密码", SignIn: "登录",
-		Error: "用户名或密码不正确。"},
+		Error:   "用户名或密码不正确。",
+		TooMany: "登录失败次数过多，请稍后再试。"},
 	"zh-TW": {Lang: "zh-TW", Username: "使用者名稱", Password: "密碼", SignIn: "登入",
-		Error: "使用者名稱或密碼不正確。"},
+		Error:   "使用者名稱或密碼不正確。",
+		TooMany: "登入失敗次數過多，請稍後再試。"},
 }
 
 // defaultLoginText is what a browser that asks for nothing gets.
