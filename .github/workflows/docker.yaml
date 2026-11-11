@@ -51,15 +51,24 @@ jobs:
           GOOS=js GOARCH=wasm go vet ./...
           GOOS=js GOARCH=wasm go build ./...
 
-      # The frontend's own unit tests run the wasm binary through
-      # go_js_wasm_exec, which needs a node on PATH. The runner has one; a
-      # fork or a self-hosted runner may not, and a missing interpreter is not
-      # a failing test.
+      # The frontend's unit tests run the wasm binary through node. The
+      # runner has one; a fork or a self-hosted runner may not, and a missing
+      # interpreter is not a failing test.
+      #
+      # The exec wrapper is named explicitly rather than left to the go
+      # command's own lookup: `go test` for js/wasm has to be told what to run
+      # the .test file with, and where it looks for that has moved between Go
+      # releases. The module root is left out on purpose - it is the fyne app
+      # itself, and importing it pulls in the glfw wasm driver, whose init
+      # reads `window`, which node does not have: the binary panics before a
+      # single test runs. Everything under api/ and internal/ runs there.
       - name: Test the frontend
         run: |
           cd web-ui
           if command -v node >/dev/null 2>&1; then
-            GOOS=js GOARCH=wasm go test ./...
+            GOOS=js GOARCH=wasm go test \
+              -exec "node $(go env GOROOT)/lib/wasm/wasm_exec_node.js" \
+              ./api/... ./internal/...
           else
             echo "::warning::node is not on PATH - the wasm unit tests did not run"
           fi
