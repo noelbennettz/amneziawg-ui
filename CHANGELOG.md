@@ -54,15 +54,46 @@
   console errors.
 
 - **CI runs the tests before it publishes.** A `test` job (`go vet`, `go test`
-  for the server, vet and build for the wasm frontend, its unit tests when a
-  node is on PATH, vet for the e2e suite) gates `build-and-push`; until now a
-  commit that failed every test went straight to `latest`. Every action is
-  pinned to a commit sha, and the Alpine packages the panel shells out to are
-  pinned to the minor version the base image ships, so an `apk upgrade` cannot
-  change `iptables` behind a release.
+  for the server, vet and build for the wasm frontend, its unit tests named
+  through the wasm exec wrapper, vet for the e2e suite) gates `build-and-push`;
+  until now a commit that failed every test went straight to `latest`. Every
+  action is pinned to a commit sha, and the Alpine packages the panel shells out
+  to are pinned to the minor version the base image ships, so an `apk upgrade`
+  cannot change `iptables` behind a release. A last job then deletes this
+  workflow's own older runs, keeping the three newest, so the history does not
+  grow a page per push.
+
+- **A restart settles a `.conf` that disagrees with the client list.** The file
+  and `web_config.json` are written one after the other, and a crash in between
+  leaves them disagreeing in a way nothing repaired: a peer the panel does not
+  know still connects, shows nothing in the UI and is dropped from the traffic
+  snapshot, and a client whose block was lost cannot be suspended or activated
+  again. Startup now reconciles each server: a missing block is rebuilt from the
+  model (which holds the keys), a block the model does not know is parked under
+  `suspended/orphan-<id>.conf` rather than deleted, a block the model says is
+  suspended is parked where activation reads it from, and a hand-written block
+  with no client marker is left alone and reported. Deleting a client now also
+  removes its parked block, which a suspended client used to leave behind.
+
+- **One `awg` call per poll instead of three.** The traffic snapshot ran `awg
+  show`, `... transfer` and `... latest-handshakes` per server on every poll,
+  and the panel polls every five seconds from every open tab. It asks for
+  `awg show <iface> dump` now — one call that carries the same figures — words
+  the handshake age exactly as the plain listing does, falls back to the three
+  listings on tools too old to know `dump`, and shares one snapshot for three
+  seconds between tabs.
+
+- **A tab in the background stops polling.** The panel skipped its rounds while
+  `document.visibilityState` was hidden and refreshes at once when the tab comes
+  back, instead of running `awg` on the server for a page nobody is looking at.
 
 - **`GET /api/system/refresh-ip`** no longer rewrites `web_config.json` when the
   address it finds is the one already stored.
+
+- **The login page is named the same as the panel.** Its title and heading said
+  `amneziawg ui` while the panel's own tab says `AmneziaWG Web UI` (fyne sets
+  `document.title` from `FyneApp.toml`), so the page in front of it read as a
+  different product.
 
 - **The audit log now keeps a window, not everything.** Entries live for
   `WEB_UI_AUDIT_RETENTION_HOURS` — 24 by default, 1 at the floor and 720 (30

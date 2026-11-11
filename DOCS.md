@@ -205,13 +205,20 @@ automatically.
     `os.Getenv`
 *   `internal/auth` — the way into the panel: the credential check (constant
     time, against `WEB_UI_USER` / `WEB_UI_PASSWORD`), the signed session cookie,
-    the login page embedded from `internal/auth/login.html` and the middleware
-    that lets `/status`, `/login` and `/logout` through and answers everything
-    else — see [Security](#security)
+    the per-address login limiter (`WEB_UI_LOGIN_RATE_LIMIT`), the login page
+    embedded from `internal/auth/login.html`, the double-submit CSRF token and
+    the middleware that lets `/status`, `/login` and `/logout` through and
+    answers everything else — see [Security](#security)
+*   `internal/security` — the response headers: the CSP and the nonce the
+    loading page carries, `X-Frame-Options`, `nosniff`, `Referrer-Policy`
+*   `internal/audit` — the opt-in security log (`WEB_UI_AUDIT_LOG`): logins,
+    logouts, rejected writes and API changes as JSON lines, kept to a window of
+    time (`WEB_UI_AUDIT_RETENTION_HOURS`)
 *   `internal/frontend` — serving the frontend off disk: the gzip bundle, the
-    loading page repainted for the panel's dark palette, ETag validators (so the
-    browser neither keeps a stale bundle after an update nor re-downloads ~50 MB
-    of wasm on every load), response compression
+    loading page repainted for the panel's dark palette and rewritten around the
+    CSP nonce, ETag validators (so the browser neither keeps a stale bundle
+    after an update nor re-downloads ~50 MB of wasm on every load), response
+    compression
 *   `internal/publicip`, `internal/netutil`, `internal/atomicfile` — small
     helper packages: public address detection, subnet arithmetic, atomic file
     writes
@@ -235,9 +242,11 @@ automatically.
     drawn for one, between the login and the panel
 *   Status and traffic refresh by REST polling: the counters every 5 seconds
     with one `GET /api/traffic` request, the server list every 30 seconds (and
-    right after every action from that tab). No sockets: a wasm build has no
-    TCP stack, and the browser hands you `fetch` for free, the session cookie
-    included
+    right after every action from that tab). A hidden tab skips its rounds and
+    refreshes as soon as it is visible again, and the backend answers a traffic
+    request from a three-second cache so several tabs do not run `awg` once
+    each. No sockets: a wasm build has no TCP stack, and the browser hands you
+    `fetch` for free, the session cookie included
 *   All request and response structs live in `web-ui/api`. The backend imports
     the same package through a `replace` directive, so the two sides cannot
     drift apart
@@ -262,6 +271,9 @@ automatically.
 │   ├── amnezialink/           # vpn:// export for AmneziaVPN
 │   ├── store/                 # web_config.json: loading, atomic writes, migrations
 │   ├── config/                # Environment variables → Settings
+│   ├── auth/                  # Credential check, session cookie, CSRF, login limiter
+│   ├── security/              # CSP nonce and the security response headers
+│   ├── audit/                 # Opt-in security log (WEB_UI_AUDIT_LOG)
 │   ├── frontend/              # Serving the frontend: gzip bundle, ETag
 │   ├── publicip/              # Public address detection
 │   ├── sysinfo/               # CPU, memory and disk readings of the host
@@ -1056,6 +1068,18 @@ docker cp amnezia-web-ui:/etc/amnezia ./amnezia-backup/
 
 To restore, stop the container, copy the saved directory back into the
 `/etc/amnezia` volume and start the container again.
+
+That directory also holds `amneziawg/suspended/` - the peer blocks of suspended
+clients, and any block the panel found in a `.conf` without a client to belong
+to (`suspended/orphan-<id>.conf`, parked by the start-up reconcile) - and
+`audit.log` when the audit log is on. Copying the whole directory takes all of
+it; a `.conf` restored without its parked blocks leaves those clients suspended
+with nothing to activate them from.
+
+On every start the panel reconciles each server's `.conf` with the clients it
+knows about, and prints one `Reconcile <server>: ...` line when it had to change
+anything. A `.conf` edited by hand is otherwise left alone, except for peer
+blocks that carry no client marker: those are reported and kept.
 
 A single server or client can also simply be downloaded through the UI or with
 `GET /api/servers/{server_id}/config` /
