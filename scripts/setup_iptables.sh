@@ -67,7 +67,7 @@ iptables -D INPUT -i $INTERFACE -j ACCEPT 2>/dev/null || true
 iptables -D FORWARD -i $INTERFACE -j ACCEPT 2>/dev/null || true
 iptables -D OUTPUT -o $INTERFACE -j ACCEPT 2>/dev/null || true
 iptables -D FORWARD -i $INTERFACE -o $WAN4 -s $SUBNET -j ACCEPT 2>/dev/null || true
-iptables -D FORWARD -m state --state ESTABLISHED,RELATED -j ACCEPT 2>/dev/null || true
+iptables -D FORWARD -o $INTERFACE -m state --state ESTABLISHED,RELATED -j ACCEPT 2>/dev/null || true
 iptables -t nat -D POSTROUTING -s $SUBNET -o $WAN4 -j MASQUERADE 2>/dev/null || true
 
 # Allow traffic on the TUN interface
@@ -79,8 +79,11 @@ iptables -A OUTPUT -o $INTERFACE -j ACCEPT
 # Match the uplink the routing table named above
 iptables -A FORWARD -i $INTERFACE -o $WAN4 -s $SUBNET -j ACCEPT
 
-# Allow established and related connections
-iptables -A FORWARD -m state --state ESTABLISHED,RELATED -j ACCEPT
+# Replies to what a client started, scoped to this server's interface. It used
+# to be a blanket "established anywhere" rule, added once per server and
+# removed once per server: with two servers the table held two copies, and a
+# create/delete cycle drifted the count. Scoped, setup and cleanup are a pair.
+iptables -A FORWARD -o $INTERFACE -m state --state ESTABLISHED,RELATED -j ACCEPT
 
 # Enable NAT for VPN traffic
 iptables -t nat -A POSTROUTING -s $SUBNET -o $WAN4 -j MASQUERADE
@@ -105,13 +108,14 @@ if [ -n "$SUBNET6" ]; then
     ip6tables -D FORWARD -i $INTERFACE -j ACCEPT 2>/dev/null || true
     ip6tables -D OUTPUT -o $INTERFACE -j ACCEPT 2>/dev/null || true
     ip6tables -D FORWARD -i $INTERFACE -o $WAN6 -s $SUBNET6 -j ACCEPT 2>/dev/null || true
+    ip6tables -D FORWARD -o $INTERFACE -m state --state ESTABLISHED,RELATED -j ACCEPT 2>/dev/null || true
     ip6tables -t nat -D POSTROUTING -s $SUBNET6 -o $WAN6 -j MASQUERADE 2>/dev/null || true
 
     ip6tables -A INPUT -i $INTERFACE -j ACCEPT
     ip6tables -A FORWARD -i $INTERFACE -j ACCEPT
     ip6tables -A OUTPUT -o $INTERFACE -j ACCEPT
     ip6tables -A FORWARD -i $INTERFACE -o $WAN6 -s $SUBNET6 -j ACCEPT
-    ip6tables -A FORWARD -m state --state ESTABLISHED,RELATED -j ACCEPT
+    ip6tables -A FORWARD -o $INTERFACE -m state --state ESTABLISHED,RELATED -j ACCEPT
 
     if ! ip6tables -t nat -A POSTROUTING -s $SUBNET6 -o $WAN6 -j MASQUERADE; then
         echo "ip6tables NAT66 setup failed for $INTERFACE (is the ip6table_nat module available?)"

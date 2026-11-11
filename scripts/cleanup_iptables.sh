@@ -47,7 +47,7 @@ for wan in $(uplink_candidates "$WAN4"); do
     iptables -t nat -D POSTROUTING -s $SUBNET -o "$wan" -j MASQUERADE 2>/dev/null || true
     iptables -D FORWARD -i $INTERFACE -o "$wan" -s $SUBNET -j ACCEPT 2>/dev/null || true
 done
-iptables -D FORWARD -m state --state ESTABLISHED,RELATED -j ACCEPT 2>/dev/null || true
+iptables -D FORWARD -o $INTERFACE -m state --state ESTABLISHED,RELATED -j ACCEPT 2>/dev/null || true
 iptables -D OUTPUT -o $INTERFACE -j ACCEPT 2>/dev/null || true
 iptables -D FORWARD -i $INTERFACE -j ACCEPT 2>/dev/null || true
 iptables -D INPUT -i $INTERFACE -j ACCEPT 2>/dev/null || true
@@ -58,7 +58,7 @@ if [ -n "$SUBNET6" ] && command -v ip6tables >/dev/null 2>&1; then
         ip6tables -t nat -D POSTROUTING -s $SUBNET6 -o "$wan" -j MASQUERADE 2>/dev/null || true
         ip6tables -D FORWARD -i $INTERFACE -o "$wan" -s $SUBNET6 -j ACCEPT 2>/dev/null || true
     done
-    ip6tables -D FORWARD -m state --state ESTABLISHED,RELATED -j ACCEPT 2>/dev/null || true
+    ip6tables -D FORWARD -o $INTERFACE -m state --state ESTABLISHED,RELATED -j ACCEPT 2>/dev/null || true
     ip6tables -D OUTPUT -o $INTERFACE -j ACCEPT 2>/dev/null || true
     ip6tables -D FORWARD -i $INTERFACE -j ACCEPT 2>/dev/null || true
     ip6tables -D INPUT -i $INTERFACE -j ACCEPT 2>/dev/null || true
