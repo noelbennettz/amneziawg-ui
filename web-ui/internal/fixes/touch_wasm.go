@@ -81,21 +81,19 @@ const touchScript = `
 		if (!canvas) return false;
 
 		var startX = 0, startY = 0, lastY = 0, dragging = false;
-		// The driver scrolls whatever sits under the cursor it last saw, and a
-		// touch never moves it: the mousemove in front of every wheel event is
-		// what tells it where the finger is. Without it a drag scrolls the
-		// top-left corner of the page, which is to say nothing at all.
-		var point = function (x, y) {
-			document.dispatchEvent(new MouseEvent('mousemove', {
-				clientX: x, clientY: y, bubbles: true, cancelable: true
-			}));
-		};
-		var wheel = function (dy, x, y) {
-			point(x, y);
-			canvas.dispatchEvent(new WheelEvent('wheel', {
-				deltaY: dy, deltaMode: 0, clientX: x, clientY: y,
-				bubbles: true, cancelable: true
-			}));
+
+		// A drag is fed to the same per-frame accumulator the wheel fix owns:
+		// one synthetic wheel event per animation frame instead of one per
+		// touchmove. A phone fires touchmove at the display rate - 120 a
+		// second on a 120 Hz screen - and each of those used to build a
+		// WheelEvent, run the document listener and allocate an array, all
+		// before the one event per frame that the driver actually needs.
+		// The coordinates go with it: the driver scrolls whatever sits under
+		// the pointer it last saw, and a touch never moves it.
+		var scroll = function (dy, x, y) {
+			if (window.__awgScroll) {
+				window.__awgScroll(0, dy, x, y);
+			}
 		};
 
 		canvas.addEventListener('touchstart', function (e) {
@@ -114,10 +112,14 @@ const touchScript = `
 				if (dy < 8 || Math.abs(t.clientX - startX) > dy) return;
 				dragging = true;
 			}
-			e.preventDefault();
-			wheel(lastY - t.clientY, t.clientX, t.clientY);
+			// No preventDefault, and the listener is passive: the page has
+			// nothing to scroll (installViewport pins it) and the canvas
+			// carries touch-action: none, so there is no default behaviour
+			// worth waiting for - and a non-passive listener makes the
+			// browser wait for the main thread on every move.
+			scroll(lastY - t.clientY, t.clientX, t.clientY);
 			lastY = t.clientY;
-		}, { passive: false });
+		}, { passive: true });
 
 		return true;
 	};

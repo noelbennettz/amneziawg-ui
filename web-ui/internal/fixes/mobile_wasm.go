@@ -45,7 +45,11 @@ func installViewport() {
 		overflow: hidden; overscroll-behavior: none;
 		background-color: #131314; text-align: left;
 	}
-	canvas { display: block; }`)
+	/* The page cannot scroll and every gesture on the canvas is ours: saying
+	   so lets the browser stop negotiating whether a drag is a scroll before
+	   it hands the events over, which is the delay a phone feels as a drag
+	   that starts late. */
+	canvas { display: block; touch-action: none; }`)
 	head.Call("appendChild", style)
 
 	js.Global().Call("dispatchEvent", js.Global().Get("Event").New("resize"))

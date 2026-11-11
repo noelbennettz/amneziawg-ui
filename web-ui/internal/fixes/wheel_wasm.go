@@ -47,9 +47,10 @@ import (
 // doubles anything from 5 up, hence the halving below, and the leftover below
 // 10 points waits for the next event rather than being rounded up into a jump.
 //
-// On a phone this is also the path the touch fix feeds: its synthetic wheel
-// events are coalesced here like real ones, so a drag costs one event a frame
-// instead of one per touchmove.
+// On a phone this is also the path the touch fix feeds, through the
+// __awgScroll hook below: a drag adds its delta to the same accumulator and
+// the frame that follows carries one wheel event for the whole gesture, so a
+// 120 Hz screen does not cost 120 events a second.
 //
 // What is lost: with no native scrolling left in the page (installViewport
 // hides the overflow) nothing needs preventDefault on the real events, so they
@@ -84,17 +85,15 @@ const wheelScript = `
 	// points cannot be said at all.
 	var MIN_POINTS = 10;
 
+	// The canvas is looked up once and remembered: a query on every wheel
+	// event, or on every frame, is a DOM walk the panel does not need.
+	var canvas = null;
 	var pendingX = 0, pendingY = 0, frame = 0;
 
-	var points = function (e) {
-		var toPixel = 1;
-		if (e.deltaMode === 1) {
-			toPixel = PIXEL_PER_LINE;
-		} else if (e.deltaMode === 2) {
-			toPixel = PIXEL_PER_PAGE;
-		}
-		return [e.deltaX * toPixel, e.deltaY * toPixel];
-	};
+	// Where the pointer is, and whether the event being accumulated came from
+	// a finger: a touch never moves the cursor the driver last saw, so the
+	// frame that carries a drag has to put it there first.
+	var pointerX = 0, pointerY = 0, fromTouch = false;
 
 	var flush = function () {
 		frame = 0;
@@ -102,10 +101,19 @@ const wheelScript = `
 			return; // too small to say: it rides along with the next event
 		}
 
-		var canvas = doc.querySelector('canvas');
+		if (!canvas) {
+			canvas = doc.querySelector('canvas');
+		}
 		if (!canvas) {
 			pendingX = pendingY = 0;
 			return;
+		}
+
+		if (fromTouch) {
+			fromTouch = false;
+			canvas.dispatchEvent(new MouseEvent('mousemove', {
+				clientX: pointerX, clientY: pointerY, bubbles: true, cancelable: true
+			}));
 		}
 
 		var ev = new WheelEvent('wheel', {
@@ -120,17 +128,33 @@ const wheelScript = `
 		canvas.dispatchEvent(ev);
 	};
 
+	// The touch fix hands its drags to this instead of dispatching a wheel
+	// event per touchmove: a phone fires those at the display rate, and the
+	// driver only ever needs one per frame.
+	window.__awgScroll = function (dx, dy, x, y) {
+		pendingX += dx;
+		pendingY += dy;
+		pointerX = x;
+		pointerY = y;
+		fromTouch = true;
+		if (!frame) {
+			frame = window.requestAnimationFrame(flush);
+		}
+	};
+
 	doc.addEventListener('wheel', function (e) {
 		if (e.__awgWheel) {
 			return; // ours, on its way to the driver
 		}
-		if (!doc.querySelector('canvas')) {
-			return;
-		}
 
-		var p = points(e);
-		pendingX += p[0];
-		pendingY += p[1];
+		var toPixel = 1;
+		if (e.deltaMode === 1) {
+			toPixel = PIXEL_PER_LINE;
+		} else if (e.deltaMode === 2) {
+			toPixel = PIXEL_PER_PAGE;
+		}
+		pendingX += e.deltaX * toPixel;
+		pendingY += e.deltaY * toPixel;
 		e.stopImmediatePropagation();
 		if (!frame) {
 			frame = window.requestAnimationFrame(flush);
