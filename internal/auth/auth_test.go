@@ -309,7 +309,7 @@ func TestPublicPathsNeedNoCredentials(t *testing.T) {
 		t.Errorf("%s = %d, want 200", LoginPath, page.StatusCode)
 	}
 	html := body(t, page)
-	for _, want := range []string{"amneziawg ui", `name="username"`, `name="password"`, "Sign in"} {
+	for _, want := range []string{"AmneziaWG Web UI", `name="username"`, `name="password"`, "Sign in"} {
 		if !strings.Contains(html, want) {
 			t.Errorf("the login page does not contain %q", want)
 		}
