@@ -95,6 +95,34 @@
   `document.title` from `FyneApp.toml`), so the page in front of it read as a
   different product.
 
+- **`WEB_UI_TRUST_PROXY`** (off by default) takes the client address from
+  `X-Forwarded-For` for the login limiter and the audit log — the left-most
+  entry, and only when it parses as an IP. Without it, a panel behind a proxy
+  counts every request against the proxy's address, which turns
+  `WEB_UI_LOGIN_RATE_LIMIT` into a lockout for everybody; with it on and no
+  proxy in front, the header is the caller's to write and the limiter counts
+  whatever they choose. It is off because the second mistake is an attacker's
+  tool and the first one is visible.
+
+- **The iptables rules are this server's rules.** The `ESTABLISHED,RELATED`
+  accept was a blanket rule for the whole namespace, added once per server and
+  removed once per server: two servers left two copies, and a create/delete
+  cycle drifted the count. Both directions are now scoped to the interface, so
+  setup and cleanup are a pair. `start.sh` also stops deciding between the nft
+  and legacy backends by looking for kernel modules — `nf_tables` can be built
+  in and `/proc/modules` is not readable everywhere — and asks iptables itself
+  whether it can read the nat table.
+
+- **A stopped server is not asked about every five seconds.** Two processes per
+  poll (the dump call fails, and the listing it falls back to fails too) bought
+  nothing for a server with no counters; the interface is left alone for twenty
+  seconds after that, and a server that has just been started is asked at once.
+
+- **A migration that could not finish is retried.** Giving every client an IPv6
+  address could run out of room and still stamp the schema as current, which
+  meant those clients would never get one. The schema is now left one revision
+  behind when that pass is incomplete.
+
 - **The audit log now keeps a window, not everything.** Entries live for
   `WEB_UI_AUDIT_RETENTION_HOURS` — 24 by default, 1 at the floor and 720 (30
   days) at the ceiling. The file is swept at most once an hour, and rewritten

@@ -119,7 +119,11 @@ automatically.
     config the peer gets `AllowedIPs = 10.0.0.2/32, fd42:ab12::2/128`.
 *   **NAT6**: when a server starts, `scripts/setup_iptables.sh` writes the same
     rule set into `ip6tables`, including
-    `ip6tables -t nat -A POSTROUTING -s <subnet> -o eth+ -j MASQUERADE`.
+    `ip6tables -t nat -A POSTROUTING -s <subnet> -o <uplink> -j MASQUERADE`,
+    where the uplink is the interface the IPv6 default route names — not a
+    fixed `eth+`, which matched nothing on a host whose interface is called
+    something else. The same lookup, only reversed, is what the rule set is
+    removed with.
     Check it with `GET /api/system/iptables-test?server_id=…`: for a server
     with an IPv6 subnet the three `ip6tables` rules appear there, plus two
     routing checks — an IPv6 default route and a global IPv6 address — without
@@ -805,6 +809,7 @@ docker build --build-arg AWG_GO_VERSION=vX.Y.Z --build-arg AWG_TOOLS_VERSION=vX.
 | `WEB_UI_AUDIT_LOG` | `false` | Append logins, logouts and every change made through the API to `/etc/amnezia/audit.log`: time, address, user, route, status. Off by default — it records who reached the panel |
 | `WEB_UI_AUDIT_RETENTION_HOURS` | `24` | How long an entry stays in that file: at least `1`, at most `720` (30 days), anything else falls back to the default. The file is swept at most once an hour, and rewritten atomically only when something has aged out |
 | `WEB_UI_LOGIN_RATE_LIMIT` | `false` | Five failed logins from one address block it for 15 minutes; the second block lasts 30, and each one after that doubles, up to 24 hours. A blocked address gets `429` and `Retry-After` on the login form, on the API and on a basic-auth header alike. Off by default — behind a proxy that does not forward the client address every request looks like one address, and the limiter would lock the operator out with the attacker |
+| `WEB_UI_TRUST_PROXY` | `false` | Take the client address from `X-Forwarded-For` instead of the connection: the left-most entry, and only when it parses as an IP. It feeds the limiter and the audit log. Only turn it on when every request arrives through a proxy that appends the address it saw — a client that can reach the panel directly sets that header itself, and a limiter counting a value the attacker picks is no limiter |
 | `WEB_UI_PPROF` | `false` | Enables the profiler at `/debug/pprof` (behind the same login). Parsed as a boolean (`1`, `true`, `t`); anything else is "off" |
 | `AUTO_START_SERVERS` | `true` | Bring servers up automatically: on container start, and for a server created in the panel - the form's "Auto-start server on creation" switch starts from it |
 | `DEFAULT_MTU` | `1280` | Default MTU for new servers: what the panel's form starts from, and what an API request that omits `mtu` gets |

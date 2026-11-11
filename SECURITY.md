@@ -70,8 +70,11 @@ Written down rather than left to be discovered:
   for 15 minutes after five failed logins, doubling on each further block. Off
   by default, because behind a proxy that does not forward the client address
   every request looks like the proxy's address — and then the limiter locks the
-  operator out along with whoever is guessing. It is also per-address only:
-  five guesses from five addresses are not slowed down at all.
+  operator out along with whoever is guessing. `WEB_UI_TRUST_PROXY=true` is the
+  other half of that: the client address is then read from `X-Forwarded-For`,
+  which is only safe when every request really does arrive through a proxy.
+  It is per-address only: five guesses from five addresses are not slowed down
+  at all.
 * **No second factor.** There is no TOTP, no WebAuthn.
 * **The password is SHA-256 in base64, not argon2id.** It is a hash of a
   password the operator chooses, in an environment variable they can read.

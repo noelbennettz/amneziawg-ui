@@ -117,6 +117,9 @@ services:
       # every block after that doubles. Off unless asked for: behind a proxy
       # that does not forward the client address it would lock everybody out.
       # - WEB_UI_LOGIN_RATE_LIMIT=true
+      # With a proxy in front, the client address is in X-Forwarded-For. Only
+      # turn this on when every request really arrives through that proxy.
+      # - WEB_UI_TRUST_PROXY=true
 
     volumes:
       # Servers, client configs and web_config.json. Back this up and the
@@ -241,6 +244,7 @@ only at startup.
 | `WEB_UI_AUDIT_LOG` | `false` | Append logins, logouts and every change made through the API to `/etc/amnezia/audit.log`: time, address, user, route, status. Off by default — it records who reached the panel |
 | `WEB_UI_AUDIT_RETENTION_HOURS` | `24` | How long an entry stays in that file before it is dropped: at least `1`, at most `720` (30 days). Swept once an hour, and the file is rewritten only when something has aged out |
 | `WEB_UI_LOGIN_RATE_LIMIT` | `false` | Five failed logins from one address block it for 15 minutes, and every block after that doubles (24 hours at most). Off by default: behind a proxy that does not forward the client address every request looks like the same address, and the limiter would lock the operator out with the attacker |
+| `WEB_UI_TRUST_PROXY` | `false` | Take the client address from `X-Forwarded-For` (the left-most entry, if it parses as an IP) for the limiter and the audit log. Only turn it on when every request arrives through a proxy that appends the address it saw: a client that can reach the panel directly writes that header itself, and a limiter counting a header the attacker chooses is no limiter at all |
 | `WEB_UI_PPROF` | `false` | Profiler at `/debug/pprof` behind the same login. Parsed as a boolean (`1`, `true`, `t`), anything else is off |
 | `AUTO_START_SERVERS` | `true` | Bring servers up automatically: when the container starts, and for one created in the panel |
 | `DEFAULT_MTU` | `1280` | Default MTU for new servers |
