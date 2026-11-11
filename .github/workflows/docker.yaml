@@ -123,6 +123,29 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      # The size of the image is one of the numbers the project is sold on, so
+      # it gets reported on every build instead of being remembered. It is a
+      # warning and not a gate: a release should not fail because a layer grew,
+      # and the number is only worth acting on when a human looks at what
+      # changed. The sum is of the compressed layers the registry holds, which
+      # is what `docker pull` reports - not the unpacked size on disk.
+      - name: Report the image size
+        continue-on-error: true
+        run: |
+          ref="${IMAGE_NAME}:latest"
+          largest=0
+          for digest in $(docker buildx imagetools inspect "$ref" --format '{{json .Manifest}}' \
+              | python3 -c 'import json,sys;print(" ".join(m["digest"] for m in json.load(sys.stdin).get("manifests",[])))'); do
+            size=$(docker buildx imagetools inspect "${ref}@${digest}" --format '{{json .Manifest}}' \
+              | python3 -c 'import json,sys;print(sum(l.get("size",0) for l in json.load(sys.stdin).get("layers",[])))')
+            echo "  ${digest}: $((size / 1000000)) MB"
+            if [ "$size" -gt "$largest" ]; then largest=$size; fi
+          done
+          echo "Largest platform: $((largest / 1000000)) MB compressed"
+          if [ "$largest" -gt 40000000 ]; then
+            echo "::warning::the image is $((largest / 1000000)) MB compressed, over the 40 MB line"
+          fi
+
       - name: Verify pushed image
         run: |
           echo "Image successfully pushed to ${{ env.REGISTRY }}"
