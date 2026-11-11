@@ -329,6 +329,20 @@ func (a *Assets) cache() fiber.Handler {
 	}
 	tags["/"] = tags["/index.html"]
 
+	// The loader page is not served as it sits on disk: it is rewritten at
+	// start-up around a nonce, and that nonce changes when the process
+	// restarts. Its validator therefore has to be the hash of the bytes that
+	// go on the wire. A tag taken from the file would survive a restart, a
+	// browser would revalidate against it, and the 304 would hand back a page
+	// whose nonce the new policy does not name - so the panel would load
+	// nothing at all until someone forced a reload.
+	if a.loader != nil {
+		sum := sha256.Sum256(a.loader)
+		tag := weakTag(sum[:])
+		tags["/index.html"] = tag
+		tags["/"] = tag
+	}
+
 	return func(c fiber.Ctx) error {
 		tag, ok := tags[c.Path()]
 		if !ok || tag == "" || c.Method() != fiber.MethodGet {
@@ -379,12 +393,21 @@ func fileETag(files fs.FS, name string) (string, error) {
 	if _, err := io.Copy(sum, file); err != nil {
 		return "", err
 	}
+	return weakTag(sum.Sum(nil)), nil
+}
 
-	// Weak on purpose. The tag hashes the file as it sits on disk, while what goes
-	// on the wire is usually gzipped - a difference a strong tag is not
-	// allowed to gloss over. It also keeps the compression middleware from
-	// replacing the tag with a hash of the compressed body: that one changes
-	// with the compression settings, and it is the wrong thing to compare a
-	// cached copy against.
-	return `W/"` + hex.EncodeToString(sum.Sum(nil)[:8]) + `"`, nil
+// weakTag turns a digest - of a file, or of the bytes about to be served - into
+// the validator that answers for it.
+//
+// Weak on purpose. The tag hashes the content as it sits on disk or in memory,
+// while what goes on the wire is usually gzipped - a difference a strong tag is
+// not allowed to gloss over. It also keeps the compression middleware from
+// replacing the tag with a hash of the compressed body: that one changes with
+// the compression settings, and it is the wrong thing to compare a cached copy
+// against.
+func weakTag(digest []byte) string {
+	if len(digest) > 8 {
+		digest = digest[:8]
+	}
+	return `W/"` + hex.EncodeToString(digest) + `"`
 }

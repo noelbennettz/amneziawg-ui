@@ -271,3 +271,48 @@ func TestLoaderWithoutTheScriptIsNotClaimedAsReady(t *testing.T) {
 		t.Errorf("a page that was not prepared still names a nonce:\n%s", raw)
 	}
 }
+
+// The nonce lives in the page, so the page's validator has to change when the
+// nonce does. A tag taken from the file on disk would survive a restart, the
+// browser would revalidate against it, and the 304 would hand back a page whose
+// script the new policy refuses - the panel would load nothing until someone
+// forced a reload.
+func TestLoaderETagFollowsTheNonce(t *testing.T) {
+	etagOf := func(nonce string) string {
+		t.Helper()
+		app := fiber.New()
+		Open(fstest.MapFS{
+			"index.html": {Data: []byte(scriptedLoader)},
+			"dark.css":   {Data: []byte("body { color: white; }")},
+			"light.css":  {Data: []byte("body { color: black; }")},
+		}, nonce).Mount(app)
+		return get(t, app, "/", nil).Header.Get("ETag")
+	}
+
+	first, second := etagOf("bm9uY2Utb25l"), etagOf("bm9uY2UtdHdv")
+	if first == second {
+		t.Fatalf("the tag did not change with the nonce: %s", first)
+	}
+
+	// Both names answer with the page that is served, so both carry its tag.
+	app := fiber.New()
+	Open(fstest.MapFS{
+		"index.html": {Data: []byte(scriptedLoader)},
+		"dark.css":   {Data: []byte("body { color: white; }")},
+		"light.css":  {Data: []byte("body { color: black; }")},
+	}, "bm9uY2U").Mount(app)
+	slash := get(t, app, "/", nil).Header.Get("ETag")
+	index := get(t, app, "/index.html", nil).Header.Get("ETag")
+	if slash != index {
+		t.Errorf("/ and /index.html disagree on the tag: %q vs %q", slash, index)
+	}
+
+	// A stale tag from a previous process - the same one the file would have
+	// produced - must not be answered 304.
+	if resp := get(t, app, "/", map[string]string{"If-None-Match": `W/"0000000000000000"`}); resp.StatusCode != 200 {
+		t.Errorf("an unknown tag = %d, want 200", resp.StatusCode)
+	}
+	if resp := get(t, app, "/", map[string]string{"If-None-Match": slash}); resp.StatusCode != 304 {
+		t.Errorf("the current tag = %d, want 304", resp.StatusCode)
+	}
+}

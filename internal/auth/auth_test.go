@@ -664,7 +664,7 @@ func TestSecureCookiePolicy(t *testing.T) {
 func TestAuditRecordsLoginsAndChanges(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "audit.log")
 
-	app := newTestApp(t, WithAudit(audit.New(true, path)))
+	app := newTestApp(t, WithAudit(audit.New(true, path, 0)))
 
 	login(t, app, testUser, "wrong", "/")
 	postLogin(t, app, testUser, testPassword, "/", "", nil) // rejected: no token
@@ -710,10 +710,26 @@ func TestAuditRecordsLoginsAndChanges(t *testing.T) {
 // Record and does not create a file.
 func TestAuditIsOffByDefault(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "audit.log")
-	app := newTestApp(t, WithAudit(audit.New(false, path)))
+	app := newTestApp(t, WithAudit(audit.New(false, path, 0)))
 
 	loginCookies(t, app)
 	if _, err := os.Stat(path); !os.IsNotExist(err) {
 		t.Errorf("a disabled audit log created %s", path)
+	}
+}
+
+// The health check is asked by docker every 30 seconds and keeps nothing, and
+// a visitor who has not logged in has nothing to echo a token with: neither
+// gets a cookie. The login page is the exception - its form needs one.
+func TestPublicPathsSetNoCookie(t *testing.T) {
+	app := newTestApp(t)
+
+	for _, cookie := range get(t, app, StatusPath, nil, nil).Cookies() {
+		t.Errorf("%s set the cookie %q", StatusPath, cookie.Name)
+	}
+
+	cookies := get(t, app, LoginPath, nil, nil).Cookies()
+	if len(cookies) != 1 || cookies[0].Name != CSRFCookieName {
+		t.Errorf("GET %s set %v, want the CSRF cookie alone", LoginPath, cookies)
 	}
 }

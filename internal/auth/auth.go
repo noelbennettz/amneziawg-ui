@@ -132,7 +132,13 @@ func (a *Auth) Check(user, password string) bool {
 // and lets the public paths through untouched.
 func (a *Auth) Middleware() fiber.Handler {
 	return func(c fiber.Ctx) error {
-		if public(c.Path()) || a.authenticated(c) {
+		if public(c.Path()) {
+			// The health check and the login page have nothing to write
+			// and nobody to write as: no session, no token, no cookie in
+			// the response.
+			return c.Next()
+		}
+		if a.authenticated(c) {
 			// A page that is about to write needs the token that goes with
 			// it, and the panel's page is a wasm bundle that cannot be
 			// handed one in its markup: the cookie is where it reads it,
@@ -140,9 +146,7 @@ func (a *Auth) Middleware() fiber.Handler {
 			if c.Method() == fiber.MethodGet && c.Cookies(CSRFCookieName) == "" {
 				a.csrfToken(c)
 			}
-			if !public(c.Path()) {
-				c.Locals(UserLocalKey, a.user)
-			}
+			c.Locals(UserLocalKey, a.user)
 			return c.Next()
 		}
 
