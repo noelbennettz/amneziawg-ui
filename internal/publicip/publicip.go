@@ -3,6 +3,7 @@
 package publicip
 
 import (
+	"context"
 	"net/http"
 	"strings"
 	"time"
@@ -19,8 +20,17 @@ const Unknown = "YOUR_SERVER_IP"
 // which costs a v6-only host a few seconds at startup and costs a dual-stack
 // host nothing.
 var (
-	Services  = []string{"http://ifconfig.me", "https://api.ipify.org", "https://ident.me"}
+	// Both lists are HTTPS. The address that comes back from them is written
+	// into every client config as the Endpoint, so a plaintext answer is an
+	// answer an on-path attacker can choose: every client the panel hands a
+	// config to would then dial the attacker's server instead.
+	Services  = []string{"https://api.ipify.org", "https://ident.me", "https://ifconfig.me"}
 	Services6 = []string{"https://api6.ipify.org", "https://v6.ident.me", "https://ipv6.icanhazip.com"}
+
+	// DetectTimeout bounds one whole list. Three services that each hang for
+	// the full per-request timeout would otherwise cost 15 seconds per family
+	// - and this runs before the panel starts listening.
+	DetectTimeout = 6 * time.Second
 )
 
 // Detect returns the address clients should connect to: the first IPv4 answer,
@@ -61,10 +71,23 @@ func Detect(fallbackV4, fallbackV6 func() (string, error)) string {
 // accept approves of, so a service that answers with the wrong family - the
 // way http://ifconfig.me does for an IPv6 caller - cannot be mistaken for the
 // address of that family.
+//
+// The whole list shares one deadline: a host whose first two services are
+// unreachable should not wait out a per-request timeout on each.
 func detectFrom(services []string, accept func(string) bool) string {
-	client := &http.Client{Timeout: 5 * time.Second}
+	ctx, cancel := context.WithTimeout(context.Background(), DetectTimeout)
+	defer cancel()
+
+	client := &http.Client{Timeout: 4 * time.Second}
 	for _, svc := range services {
-		resp, err := client.Get(svc)
+		if ctx.Err() != nil {
+			return ""
+		}
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, svc, nil)
+		if err != nil {
+			continue
+		}
+		resp, err := client.Do(req)
 		if err != nil {
 			continue
 		}

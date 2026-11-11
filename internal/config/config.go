@@ -62,6 +62,12 @@ type Settings struct {
 	// ceiling a month, adjustable with WEB_UI_AUDIT_RETENTION_HOURS.
 	AuditRetention time.Duration
 
+	// LoginRateLimit blocks an address that has failed to log in five times
+	// in a quarter of an hour, for fifteen minutes and doubling. Off by
+	// default: behind a proxy that does not forward the client address it
+	// would lock the operator out together with whoever is guessing.
+	LoginRateLimit bool
+
 	// AutoStart brings every server marked auto-start up when the backend
 	// boots, and is the default for new servers.
 	AutoStart bool
@@ -102,6 +108,7 @@ func FromEnv() Settings {
 		SecureCookie:         secureMode(os.Getenv("WEB_UI_SECURE_COOKIE")),
 		AuditLog:             parseBool(os.Getenv("WEB_UI_AUDIT_LOG")),
 		AuditRetention:       auditRetention(os.Getenv("WEB_UI_AUDIT_RETENTION_HOURS")),
+		LoginRateLimit:       parseBool(os.Getenv("WEB_UI_LOGIN_RATE_LIMIT")),
 		AutoStart:            strings.EqualFold(getenv("AUTO_START_SERVERS", "true"), "true"),
 		DefaultMTU:           atoiDefault(getenv("DEFAULT_MTU", ""), 1280),
 		DefaultSubnet:        getenv("DEFAULT_SUBNET", "10.0.0.0/24"),

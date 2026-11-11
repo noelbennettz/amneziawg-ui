@@ -19,17 +19,26 @@ func (m *Manager) setPublicIP(ip string) {
 }
 
 // RefreshPublicIP re-detects the public IP and stamps it on every server.
+// Nothing is written when the answer is the one already stored: this is
+// reachable as a GET, and a read should not rewrite the config file - nor
+// should a prefetch, a scanner or a browser's speculative request.
 func (m *Manager) RefreshPublicIP() string {
 	ip := publicip.Detect(m.tools.RouteSourceIP, m.tools.RouteSourceIP6)
 
 	m.mu.Lock()
+	changed := ip != m.publicIP
 	m.publicIP = ip
 	for i := range m.cfg.Servers {
-		m.cfg.Servers[i].PublicIP = ip
+		if m.cfg.Servers[i].PublicIP != ip {
+			m.cfg.Servers[i].PublicIP = ip
+			changed = true
+		}
 	}
 	m.mu.Unlock()
 
-	m.saveOrLog("public IP")
+	if changed {
+		m.saveOrLog("public IP")
+	}
 	return ip
 }
 

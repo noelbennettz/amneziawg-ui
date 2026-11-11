@@ -792,6 +792,7 @@ docker build --build-arg AWG_GO_VERSION=vX.Y.Z --build-arg AWG_TOOLS_VERSION=vX.
 | `WEB_UI_SECURE_COOKIE` | *auto* | `true` marks every cookie `Secure`, `false` never does, unset follows the request and `X-Forwarded-Proto`. Behind a TLS proxy the container sees plain HTTP, so `true` (or a proxy that sends the header) is what makes the flag appear at all |
 | `WEB_UI_AUDIT_LOG` | `false` | Append logins, logouts and every change made through the API to `/etc/amnezia/audit.log`: time, address, user, route, status. Off by default — it records who reached the panel |
 | `WEB_UI_AUDIT_RETENTION_HOURS` | `24` | How long an entry stays in that file: at least `1`, at most `720` (30 days), anything else falls back to the default. The file is swept at most once an hour, and rewritten atomically only when something has aged out |
+| `WEB_UI_LOGIN_RATE_LIMIT` | `false` | Five failed logins from one address block it for 15 minutes; the second block lasts 30, and each one after that doubles, up to 24 hours. A blocked address gets `429` and `Retry-After` on the login form, on the API and on a basic-auth header alike. Off by default — behind a proxy that does not forward the client address every request looks like one address, and the limiter would lock the operator out with the attacker |
 | `WEB_UI_PPROF` | `false` | Enables the profiler at `/debug/pprof` (behind the same login). Parsed as a boolean (`1`, `true`, `t`); anything else is "off" |
 | `AUTO_START_SERVERS` | `true` | Bring servers up automatically: on container start, and for a server created in the panel - the form's "Auto-start server on creation" switch starts from it |
 | `DEFAULT_MTU` | `1280` | Default MTU for new servers: what the panel's form starts from, and what an API request that omits `mtu` gets |
@@ -1188,7 +1189,8 @@ and always sees the login page instead.
 > I strongly recommend closing the endpoints with a firewall and/or a reverse
 > proxy with TLS termination in front of the container.
 > A login form and a 12-hour cookie are no substitute for TLS, and a password is
-> still worth brute-forcing — the panel does not rate-limit attempts.
+> still worth brute-forcing — `WEB_UI_LOGIN_RATE_LIMIT=true` makes guessing
+> expensive per address, and it is off by default (see the table above for why).
 
 By default the image is built with the user `admin` and the password
 `changeme`. To change that, pass the Docker environment variables `WEB_UI_USER`

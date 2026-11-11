@@ -61,6 +61,7 @@ func main() {
 	guard := auth.New(settings.User, settings.PasswordHash,
 		auth.WithSecureCookies(settings.SecureCookie),
 		auth.WithAudit(auditLog),
+		auth.WithLoginRateLimit(settings.LoginRateLimit),
 	)
 	app.Use(guard.Middleware())
 	// A write has to prove it came from this page, not from one that made

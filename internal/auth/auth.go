@@ -16,6 +16,7 @@ import (
 	"crypto/subtle"
 	"encoding/base64"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -69,6 +70,8 @@ type Auth struct {
 	secure config.SecureMode
 	// audit is the security log, nil when auditing is off.
 	audit *audit.Log
+	// limiter counts failed logins per address, nil when the limit is off.
+	limiter *limiter
 }
 
 // Option configures the guard.
@@ -85,6 +88,21 @@ func WithSecureCookies(mode config.SecureMode) Option {
 // WithAudit records logins, logouts and rejected writes.
 func WithAudit(log *audit.Log) Option {
 	return func(a *Auth) { a.audit = log }
+}
+
+// WithLoginRateLimit turns the per-address limiter on: five failures in a
+// quarter of an hour block that address, and every block after the first lasts
+// twice as long as the one before it.
+//
+// Off by default. A panel behind a proxy that does not forward the client
+// address sees the proxy's address for everybody, and a limiter there would
+// lock the operator out together with whoever is guessing.
+func WithLoginRateLimit(enabled bool) Option {
+	return func(a *Auth) {
+		if enabled {
+			a.limiter = newLimiter()
+		}
+	}
 }
 
 // New builds the guard for the credentials the container was started with.
@@ -153,6 +171,20 @@ func (a *Auth) Middleware() fiber.Handler {
 		// A request for data gets data back: the frontend shows the error,
 		// and curl has something to parse. Only a navigation is worth a
 		// redirect, and it is the only kind that ends up with a login form.
+		//
+		// Before that: somebody who has just been guessing passwords gets
+		// told to wait, whatever they asked for. The limiter is only
+		// consulted here - never for a request that is already
+		// authenticated - so a working session is never locked out by an
+		// attacker sharing its address.
+		if wait := a.limiter.retryAfter(c.IP()); wait > 0 {
+			c.Set(fiber.HeaderRetryAfter, strconv.Itoa(int(wait.Seconds())+1))
+			if wantsJSON(c) {
+				return c.Status(fiber.StatusTooManyRequests).JSON(api.ErrorResponse{Error: "too many failed logins, try again later"})
+			}
+			return c.Status(fiber.StatusTooManyRequests).SendString("Too many failed logins. Try again later.\n")
+		}
+
 		if wantsJSON(c) {
 			return c.Status(fiber.StatusUnauthorized).JSON(api.ErrorResponse{Error: "authentication required"})
 		}
@@ -180,7 +212,15 @@ func (a *Auth) authenticated(c fiber.Ctx) bool {
 	if a.sessionValid(c.Cookies(CookieName), a.now()) {
 		return true
 	}
-	return a.basicValid(c)
+	if a.basicValid(c) {
+		return true
+	}
+	// A header that was offered and refused is a wrong password, and the
+	// limiter is the only thing that makes guessing one expensive.
+	if c.Get(fiber.HeaderAuthorization) != "" {
+		a.limiter.fail(c.IP())
+	}
+	return false
 }
 
 func (a *Auth) basicValid(c fiber.Ctx) bool {

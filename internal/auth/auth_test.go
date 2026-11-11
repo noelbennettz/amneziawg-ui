@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -731,5 +732,64 @@ func TestPublicPathsSetNoCookie(t *testing.T) {
 	cookies := get(t, app, LoginPath, nil, nil).Cookies()
 	if len(cookies) != 1 || cookies[0].Name != CSRFCookieName {
 		t.Errorf("GET %s set %v, want the CSRF cookie alone", LoginPath, cookies)
+	}
+}
+
+// The limiter is off unless asked for, and on it answers the sixth attempt
+// with 429 - from the form, from the API and from a basic-auth header alike,
+// so moving to another door does not reset the count.
+func TestLoginRateLimitAnswers429(t *testing.T) {
+	app := newTestApp(t, WithLoginRateLimit(true))
+
+	for i := range 5 {
+		if resp := login(t, app, testUser, "wrong"+strconv.Itoa(i), "/"); resp.StatusCode != fiber.StatusUnauthorized {
+			t.Fatalf("attempt %d = %d, want 401", i+1, resp.StatusCode)
+		}
+	}
+
+	resp := login(t, app, testUser, testPassword, "/")
+	if resp.StatusCode != fiber.StatusTooManyRequests {
+		t.Fatalf("the sixth attempt = %d, want 429", resp.StatusCode)
+	}
+	if got := resp.Header.Get(fiber.HeaderRetryAfter); got == "" {
+		t.Error("the 429 carries no Retry-After")
+	}
+
+	if resp := get(t, app, "/api/system/status", nil, nil); resp.StatusCode != fiber.StatusTooManyRequests {
+		t.Errorf("the API from a blocked address = %d, want 429", resp.StatusCode)
+	}
+	if resp := write(t, app, nil, map[string]string{
+		fiber.HeaderAuthorization: "Basic " + base64Std(testUser+":wrong"),
+	}); resp.StatusCode != fiber.StatusTooManyRequests {
+		t.Errorf("basic auth from a blocked address = %d, want 429", resp.StatusCode)
+	}
+}
+
+// Off is the default: a wrong password is 401 every time, however many.
+func TestLoginRateLimitIsOffByDefault(t *testing.T) {
+	app := newTestApp(t)
+
+	for i := range 10 {
+		if resp := login(t, app, testUser, "wrong"+strconv.Itoa(i), "/"); resp.StatusCode != fiber.StatusUnauthorized {
+			t.Fatalf("attempt %d = %d, want 401", i+1, resp.StatusCode)
+		}
+	}
+}
+
+// Two logins in the same second are two different sessions, and a token minted
+// before the nonce existed is still accepted: an upgrade must not log anybody
+// out.
+func TestSessionsAreDistinctAndLegacyTokensSurvive(t *testing.T) {
+	a := newTestAuth()
+	now := time.Unix(testNow, 0)
+
+	if a.issue(now) == a.issue(now) {
+		t.Error("two logins in the same second produced the same token")
+	}
+
+	payload := testUser + "|" + strconv.FormatInt(now.Add(SessionTTL).Unix(), 10)
+	legacy := base64url(payload) + "." + a.sign(payload)
+	if !a.sessionValid(legacy, now) {
+		t.Error("a token without the nonce was rejected")
 	}
 }

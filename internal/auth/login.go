@@ -5,6 +5,7 @@ import (
 	_ "embed"
 	"html/template"
 	"net/url"
+	"strconv"
 	"strings"
 
 	"github.com/gofiber/fiber/v3"
@@ -72,7 +73,17 @@ func (a *Auth) submitLogin(c fiber.Ctx) error {
 	}
 
 	user := c.FormValue("username")
+
+	// A blocked address is told to wait before the password is looked at.
+	// The point of the limit is to make a guess expensive, not to answer one
+	// faster.
+	if wait := a.limiter.retryAfter(c.IP()); wait > 0 {
+		c.Set(fiber.HeaderRetryAfter, strconv.Itoa(int(wait.Seconds())+1))
+		return c.Status(fiber.StatusTooManyRequests).SendString("Too many failed logins. Try again later.\n")
+	}
+
 	if !a.Check(user, c.FormValue("password")) {
+		a.limiter.fail(c.IP())
 		a.audit.Record(audit.Event{
 			Event:  audit.EventLoginFailed,
 			User:   user,
@@ -96,6 +107,7 @@ func (a *Auth) submitLogin(c fiber.Ctx) error {
 		Path:   c.Path(),
 		Status: fiber.StatusSeeOther,
 	})
+	a.limiter.succeed(c.IP())
 
 	// A token handed out before the session existed is one that had a
 	// chance to be fixed; the page that loads after the redirect reads the

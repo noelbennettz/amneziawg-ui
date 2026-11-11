@@ -15,8 +15,12 @@ import (
 // to its in-memory state, and the file and that state cannot disagree.
 
 // WriteServerConf creates a server's .conf from its [Interface] section.
+//
+// The write is atomic: a server .conf is the only copy of that server's
+// private key, and a half-written one - power, a killed process, a full
+// volume - would leave a tunnel that cannot come back up.
 func WriteServerConf(path string, iface ServerInterface) error {
-	if err := os.WriteFile(path, []byte(iface.Render()), 0o600); err != nil {
+	if err := atomicfile.Write(path, []byte(iface.Render()), 0o600); err != nil {
 		return fmt.Errorf("failed to write config: %w", err)
 	}
 	return nil

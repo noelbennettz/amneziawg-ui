@@ -4,10 +4,19 @@
 package awg
 
 import (
+	"context"
 	"errors"
 	"os/exec"
 	"strings"
+	"time"
 )
+
+// Timeout bounds one shell command. awg-quick talks to the kernel, to
+// iptables and - through resolvconf - to the network, and any of those can
+// hang. Without a bound the HTTP request that triggered it waits forever with
+// the manager's write lock in its hand, and at startup the same hang is the
+// panel never listening at all.
+const Timeout = 60 * time.Second
 
 // Runner executes one shell command line and returns its trimmed stdout.
 type Runner interface {
@@ -35,10 +44,18 @@ func (e *ExitError) Unwrap() error { return e.Err }
 // the process substitution in SyncConf needs.
 type Shell struct{}
 
-// Run implements Runner.
+// Run implements Runner. A command that outlives Timeout is killed, and the
+// error says so, rather than leaving the caller waiting on a process that may
+// never return.
 func (Shell) Run(command string) (string, error) {
-	out, err := exec.Command("bash", "-c", command).Output()
+	ctx, cancel := context.WithTimeout(context.Background(), Timeout)
+	defer cancel()
+
+	out, err := exec.CommandContext(ctx, "bash", "-c", command).Output()
 	if err != nil {
+		if ctx.Err() != nil {
+			return "", &ExitError{Err: ctx.Err(), Stderr: "timed out after " + Timeout.String()}
+		}
 		if exitErr, ok := errors.AsType[*exec.ExitError](err); ok {
 			return "", &ExitError{Err: err, Stderr: strings.TrimSpace(string(exitErr.Stderr))}
 		}

@@ -66,9 +66,12 @@ What the panel does about the model above:
 
 Written down rather than left to be discovered:
 
-* **No rate limiting on the login form.** A password can be guessed at line
-  speed. Use a long one, and put the panel behind a proxy that can rate-limit
-  if the port is on the internet.
+* **Rate limiting is opt-in.** `WEB_UI_LOGIN_RATE_LIMIT=true` blocks an address
+  for 15 minutes after five failed logins, doubling on each further block. Off
+  by default, because behind a proxy that does not forward the client address
+  every request looks like the proxy's address — and then the limiter locks the
+  operator out along with whoever is guessing. It is also per-address only:
+  five guesses from five addresses are not slowed down at all.
 * **No second factor.** There is no TOTP, no WebAuthn.
 * **The password is SHA-256 in base64, not argon2id.** It is a hash of a
   password the operator chooses, in an environment variable they can read.

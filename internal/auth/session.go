@@ -17,8 +17,13 @@ import (
 // header as it is.
 
 // issue returns the token a login at now is worth.
+//
+// The payload carries a random nonce as well as the user and the expiry: two
+// logins in the same second would otherwise produce the same token, which
+// makes a session impossible to tell from another one - and impossible to
+// revoke on its own.
 func (a *Auth) issue(now time.Time) string {
-	payload := a.user + "|" + strconv.FormatInt(now.Add(SessionTTL).Unix(), 10)
+	payload := a.user + "|" + strconv.FormatInt(now.Add(SessionTTL).Unix(), 10) + "|" + newToken()
 
 	return base64.RawURLEncoding.EncodeToString([]byte(payload)) + "." + a.sign(payload)
 }
@@ -47,10 +52,14 @@ func (a *Auth) sessionValid(token string, now time.Time) bool {
 		return false
 	}
 
-	user, deadline, ok := strings.Cut(string(payload), "|")
+	user, rest, ok := strings.Cut(string(payload), "|")
 	if !ok || user != a.user {
 		return false
 	}
+	// The third field is the per-session nonce. Tokens minted before it
+	// existed carry only user|expiry, and are still accepted: an upgrade must
+	// not log everybody out.
+	deadline, _, _ := strings.Cut(rest, "|")
 	expires, err := strconv.ParseInt(deadline, 10, 64)
 	if err != nil {
 		return false

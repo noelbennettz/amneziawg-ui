@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/gofiber/fiber/v3"
 
@@ -30,6 +31,15 @@ func New(mgr *manager.Manager) *Handlers {
 // without it would not exercise what production does.
 func FiberConfig() fiber.Config {
 	return fiber.Config{
+		// A panel request is a JSON body or a form: a few kilobytes, sent by
+		// a browser that is already talking to us. Anything that takes
+		// longer than this to arrive is a client that is not sending - and
+		// without the limit a handful of them hold every connection slot
+		// open. WriteTimeout stays at zero on purpose: the wasm bundle is
+		// tens of megabytes and a slow phone is allowed to finish.
+		ReadTimeout: 30 * time.Second,
+		IdleTimeout: 120 * time.Second,
+
 		// c.Params() hands back a string pointing into the request buffer,
 		// which fiber recycles as soon as the handler returns. Anything the
 		// manager keeps past that - a client's ServerID is taken straight
@@ -68,6 +78,15 @@ func (h *Handlers) RegisterRoutes(app *fiber.App) {
 	app.Get("/status", h.containerUptime)
 
 	r := app.Group("/api")
+
+	// Nothing under /api is cacheable. A config answer carries the private key
+	// of a client or of a server, and every answer is the state of one
+	// authenticated session: no-store keeps a browser, a proxy or a shared
+	// machine's disk from holding a copy of either.
+	r.Use(func(c fiber.Ctx) error {
+		c.Set(fiber.HeaderCacheControl, "no-store")
+		return c.Next()
+	})
 
 	r.Get("/traffic", h.getTraffic)
 
