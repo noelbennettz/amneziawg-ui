@@ -1,6 +1,8 @@
 package api
 
 import (
+	"crypto/rand"
+	"encoding/base64"
 	"strings"
 	"testing"
 )
@@ -118,5 +120,59 @@ func TestValidateISettingsSkipsEmptyEntries(t *testing.T) {
 	problems := ValidateISettings(ISettings{"i4": "<r 2000>"})
 	if len(problems) != 1 || !strings.HasPrefix(problems[0], "I4: ") {
 		t.Fatalf("want one problem naming I4, got %v", problems)
+	}
+}
+
+// The header protection key is written into the server's .conf as a bare
+// value, so it is the one field of the set that has to be a key and nothing
+// else: a newline there would end the line and start a directive of the
+// caller's choosing, and awg-quick runs PostUp as root.
+func TestHeaderProtectionKeyMustBeAKey(t *testing.T) {
+	buf := make([]byte, 32)
+	if _, err := rand.Read(buf); err != nil {
+		t.Fatal(err)
+	}
+	good := base64.StdEncoding.EncodeToString(buf)
+
+	cases := map[string]string{
+		"a real key":       good,
+		"with padding":     good,
+		"empty":            "",
+		"plain text":       "not-a-key",
+		"a newline":        good + "\nPostUp = touch /tmp/pwned",
+		"a carriage ret":   good + "\r\nPostUp = x",
+		"truncated base64": good[:20],
+		"too long":         good + "AAAA",
+	}
+
+	for name, value := range cases {
+		p := validParams()
+		p.HeaderProtectionKey = value
+		problems := p.Validate(MinMTU)
+
+		wantOK := name == "a real key" || name == "with padding" || name == "empty"
+		if gotOK := len(problems) == 0; gotOK != wantOK {
+			t.Errorf("%s: problems = %v, want accepted = %v", name, problems, wantOK)
+		}
+	}
+}
+
+// An I1-I5 value is written as "I<n> = <value>". Anything outside a tag is
+// filler to the engine's parser, which is exactly why the newline has to be
+// rejected before it is stored rather than ignored by the grammar.
+func TestISettingsRejectControlCharacters(t *testing.T) {
+	for name, spec := range map[string]string{
+		"a newline":      "<b 0x00ff>\nPostUp = touch /tmp/pwned",
+		"a carriage ret": "<b 0x00ff>\r\nPostUp = x",
+		"a tab":          "<b 0x00ff>\t",
+		"a NUL":          "<b 0x00ff>\x00",
+	} {
+		if problem := ValidateCPS("I1", spec); problem == "" {
+			t.Errorf("%s: accepted %q", name, spec)
+		}
+	}
+
+	if problem := ValidateCPS("I1", "<b 0x00ff><r 20>"); problem != "" {
+		t.Errorf("a normal spec was rejected: %s", problem)
 	}
 }

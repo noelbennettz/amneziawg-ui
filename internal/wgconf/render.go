@@ -63,7 +63,7 @@ type ServerInterface struct {
 func (s ServerInterface) Render() string {
 	var sb strings.Builder
 	fmt.Fprintf(&sb, "[Interface]\n")
-	fmt.Fprintf(&sb, "PrivateKey = %s\n", s.PrivateKey)
+	fmt.Fprintf(&sb, "PrivateKey = %s\n", singleLine(s.PrivateKey))
 	fmt.Fprintf(&sb, "Address = %s\n", AddressList(s.Address, s.AddressV6))
 	fmt.Fprintf(&sb, "ListenPort = %d\n", s.ListenPort)
 	fmt.Fprintf(&sb, "SaveConfig = false\n")
@@ -80,16 +80,16 @@ func ClientConf(srv *api.Server, client *api.Client, endpoint string, includeCom
 
 	if includeComments {
 		fmt.Fprintf(&sb, "# AmneziaWG Client Configuration\n")
-		fmt.Fprintf(&sb, "# Server: %s\n", srv.Name)
-		fmt.Fprintf(&sb, "# Client: %s\n", client.Name)
+		fmt.Fprintf(&sb, "# Server: %s\n", singleLine(srv.Name))
+		fmt.Fprintf(&sb, "# Client: %s\n", singleLine(client.Name))
 		fmt.Fprintf(&sb, "# Generated: %s\n", time.Unix(int64(client.CreatedAt), 0).UTC().String())
 		fmt.Fprintf(&sb, "# Server Endpoint: %s\n", api.EndpointAddress(endpoint, srv.Port))
 	}
 
 	fmt.Fprintf(&sb, "[Interface]\n")
-	fmt.Fprintf(&sb, "PrivateKey = %s\n", client.ClientPrivateKey)
+	fmt.Fprintf(&sb, "PrivateKey = %s\n", singleLine(client.ClientPrivateKey))
 	fmt.Fprintf(&sb, "Address = %s\n", AddressList(client.ClientIP+"/32", clientAddressV6(client)))
-	fmt.Fprintf(&sb, "DNS = %s\n", strings.Join(srv.DNS, ", "))
+	fmt.Fprintf(&sb, "DNS = %s\n", singleLine(strings.Join(srv.DNS, ", ")))
 	fmt.Fprintf(&sb, "MTU = %d\n", srv.MTU)
 
 	if client.ObfuscationEnabled {
@@ -101,16 +101,16 @@ func ClientConf(srv *api.Server, client *api.Client, endpoint string, includeCom
 	if client.ApplyISettings && client.ISettings["i1"] != "" {
 		for n := 1; n <= 5; n++ {
 			if v := client.ISettings[fmt.Sprintf("i%d", n)]; v != "" {
-				fmt.Fprintf(&sb, "I%d = %s\n", n, v)
+				fmt.Fprintf(&sb, "I%d = %s\n", n, singleLine(v))
 			}
 		}
 	}
 
 	fmt.Fprintf(&sb, "\n[Peer]\n")
-	fmt.Fprintf(&sb, "PublicKey = %s\n", srv.ServerPublicKey)
-	fmt.Fprintf(&sb, "PresharedKey = %s\n", client.PresharedKey)
+	fmt.Fprintf(&sb, "PublicKey = %s\n", singleLine(srv.ServerPublicKey))
+	fmt.Fprintf(&sb, "PresharedKey = %s\n", singleLine(client.PresharedKey))
 	fmt.Fprintf(&sb, "Endpoint = %s\n", api.EndpointAddress(endpoint, srv.Port))
-	fmt.Fprintf(&sb, "AllowedIPs = %s\n", AllowedIPsOrDefault(client.AllowedIPs))
+	fmt.Fprintf(&sb, "AllowedIPs = %s\n", singleLine(AllowedIPsOrDefault(client.AllowedIPs)))
 	fmt.Fprintf(&sb, "PersistentKeepalive = %s\n", PersistentKeepalive(client.ObfuscationParams))
 
 	return sb.String()
@@ -175,8 +175,27 @@ func writeObfuscation(sb *strings.Builder, p *api.ObfuscationParams) {
 // writeIfSet writes "key = value\n" to sb only if value is non-empty.
 func writeIfSet(sb *strings.Builder, key, value string) {
 	if value != "" {
-		fmt.Fprintf(sb, "%s = %s\n", key, value)
+		fmt.Fprintf(sb, "%s = %s\n", key, singleLine(value))
 	}
+}
+
+// singleLine is what may follow "Key = " on one line of a .conf.
+//
+// The values that reach it are validated before they are stored, so this is
+// the second door rather than the first: a config written by an older version
+// - or by anything that ever slipped past the validator - must not be able to
+// turn a value into a directive. PostUp in an [Interface] section runs as root
+// when awg-quick brings the interface up, so the cost of being wrong here is
+// the whole container. A newline becomes a space, which makes the resulting
+// value invalid and the tunnel fail loudly - the right outcome for data that
+// was never a key in the first place.
+func singleLine(value string) string {
+	return strings.Map(func(r rune) rune {
+		if r < 0x20 || r == 0x7f {
+			return ' '
+		}
+		return r
+	}, value)
 }
 
 // writeAwgBoolIfOn writes an AmneziaWG 3.1 "key = on" line, and writes

@@ -155,3 +155,47 @@ func TestClientConfAndPeerRoutesCoverBothStacks(t *testing.T) {
 		t.Errorf("PeerAllowedIPs without IPv6 = %q", got)
 	}
 }
+
+// A value that already made it into the config store - written by an older
+// version, or by anything that slipped past the validator - must not be able
+// to turn into a directive: PostUp in an [Interface] section runs as root
+// when awg-quick brings the interface up.
+func TestStoredValuesCannotStartADirective(t *testing.T) {
+	iface := ServerInterface{
+		PrivateKey: "key",
+		Address:    "10.0.0.1/24",
+		ListenPort: 54844,
+		MTU:        1280,
+		Obfuscation: &api.ObfuscationParams{
+			Jc: 1, Jmin: 8, Jmax: 80, S1: 50, S2: 50, S3: 50, S4: 50,
+			H1: 1, H2: 2, H3: 3, H4: 4,
+			HeaderProtectionKey: "AAAA\nPostUp = touch /tmp/pwned",
+		},
+	}
+
+	conf := iface.Render()
+	for _, line := range strings.Split(conf, "\n") {
+		if strings.HasPrefix(strings.TrimSpace(line), "PostUp") {
+			t.Fatalf("the key became a directive:\n%s", conf)
+		}
+	}
+	if !strings.Contains(conf, "HeaderProtectionKey = AAAA PostUp = touch /tmp/pwned") {
+		t.Errorf("the value was not flattened onto its own line:\n%s", conf)
+	}
+
+	client := &api.Client{
+		Name:             "x\nPostUp = touch /tmp/client",
+		ClientPrivateKey: "key",
+		ClientIP:         "10.0.0.2",
+		PresharedKey:     "psk",
+		ApplyISettings:   true,
+		ISettings:        api.ISettings{"i1": "<b 0x00ff>\nPostUp = touch /tmp/client"},
+	}
+	srv := &api.Server{Name: "s\nPostUp = x", ServerPublicKey: "pub", Port: 54844, MTU: 1280}
+	out := ClientConf(srv, client, "198.51.100.1", true)
+	for _, line := range strings.Split(out, "\n") {
+		if strings.HasPrefix(strings.TrimSpace(line), "PostUp") {
+			t.Fatalf("a client value became a directive:\n%s", out)
+		}
+	}
+}

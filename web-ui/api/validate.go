@@ -1,6 +1,7 @@
 package api
 
 import (
+	"encoding/base64"
 	"encoding/hex"
 	"fmt"
 	"regexp"
@@ -124,7 +125,35 @@ func (p *ObfuscationParams) Validate(mtu int) []string {
 		}
 	}
 
+	// The header protection key is the one free-form string in this set, and
+	// it is written into the server's .conf as "HeaderProtectionKey = <it>".
+	// Anything but a 32-byte base64 key - a newline above all - would put a
+	// line of the caller's choosing in the [Interface] section, and awg-quick
+	// runs PostUp/PreUp from there as root. So the shape is checked here, not
+	// sanitised later: a mangled key is a tunnel that will not come up, and
+	// failing the request is the honest answer.
+	if p.HeaderProtectionKey != "" {
+		if problem := ValidateKey("HeaderProtectionKey", p.HeaderProtectionKey); problem != "" {
+			problems = append(problems, problem)
+		}
+	}
+
 	return problems
+}
+
+// keyBytes is what every WireGuard key is: 32 bytes of curve25519 material.
+const keyBytes = 32
+
+// ValidateKey checks that value is a base64 key of the right size, and nothing
+// else. It is the only shape that may be written into a config as a bare
+// value, which makes it the one place a newline could have turned data into a
+// directive.
+func ValidateKey(name, value string) string {
+	key, err := base64.StdEncoding.DecodeString(strings.TrimSpace(value))
+	if err != nil || len(key) != keyBytes {
+		return fmt.Sprintf("%s must be a base64-encoded %d-byte key", name, keyBytes)
+	}
+	return ""
 }
 
 var uintRangePattern = regexp.MustCompile(`^(\d+)(?:-(\d+))?$`)
@@ -195,6 +224,17 @@ func ValidateISettings(settings ISettings) []string {
 func ValidateCPS(key, spec string) string {
 	fail := func(format string, args ...any) string {
 		return fmt.Sprintf("%s: %s", key, fmt.Sprintf(format, args...))
+	}
+
+	// A value is written into a client .conf as "I<n> = <value>", so a
+	// newline would end the line and start a directive of the caller's
+	// choosing - PostUp runs on the machine that imports that config. The
+	// grammar below already treats anything outside a tag as filler, which
+	// is exactly why this has to be a separate check.
+	for _, r := range spec {
+		if r < 0x20 || r == 0x7f {
+			return fail("control characters (a newline above all) are not part of a packet spec")
+		}
 	}
 
 	tags := 0
