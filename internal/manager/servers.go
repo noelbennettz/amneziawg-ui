@@ -439,6 +439,10 @@ func (m *Manager) StartServer(serverID string) error {
 
 	m.tools.SetupIPTables(srv.Interface, srv.Subnet, srv.SubnetV6)
 	m.setServerStatus(serverID, "running")
+	// The traffic poll may have marked this interface quiet while it was
+	// down; a server that just came up should not wait out that mark before
+	// its first numbers appear.
+	m.wake(srv.Interface)
 	m.noteServerStatus(srv.Interface, "running")
 	m.saveOrLog("server start")
 

@@ -54,6 +54,12 @@ type Manager struct {
 	traffic   api.TrafficSnapshot
 	trafficAt time.Time
 	trafficMu sync.Mutex
+
+	// quiet is when to ask awg about an interface again after it had nothing
+	// to say: a stopped server costs two processes per poll and has no
+	// counters. Guarded by quietMu, never taken while mu is held.
+	quiet   map[string]time.Time
+	quietMu sync.Mutex
 }
 
 // New loads the config from st and brings it up to the current schema. It

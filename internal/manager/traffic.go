@@ -29,6 +29,14 @@ func (m *Manager) TrafficSnapshot() api.TrafficSnapshot {
 	return snapshot
 }
 
+// quietTTL is how long an interface awg had nothing to say about is left
+// alone. A stopped interface costs two processes per poll - the dump call
+// fails, and the plain listing it falls back to fails as well - and has no
+// counters to report, so asking four times a minute buys nothing. Twenty
+// seconds keeps a server that was just started from waiting long for its first
+// numbers.
+const quietTTL = 20 * time.Second
+
 // collectTraffic walks every server and asks awg for its peers. Servers that
 // are down contribute nothing; the page keeps their last counters as they
 // were.
@@ -39,13 +47,18 @@ func (m *Manager) collectTraffic() api.TrafficSnapshot {
 	serverTraffic := map[string]api.InterfaceTraffic{}
 	for i := range servers {
 		srv := &servers[i]
+		if m.isQuiet(srv.Interface) {
+			continue
+		}
 		peers := m.tools.ShowPeers(srv.Interface)
 		if peers == nil {
+			m.markQuiet(srv.Interface)
 			continue
 		}
 		// Peers coming back is the interface being up, and this poll is
 		// the most frequent one: noting it here is what keeps the uptime
 		// running from the first sighting.
+		m.wake(srv.Interface)
 		m.noteServerStatus(srv.Interface, "running")
 		if t := peerTraffic(srv, peers); len(t) > 0 {
 			clientTraffic[srv.ID] = t
@@ -95,4 +108,37 @@ func peerTraffic(srv *api.Server, peers map[string]awg.PeerStats) map[string]api
 		}
 	}
 	return result
+}
+
+// isQuiet reports whether awg recently had nothing for this interface.
+func (m *Manager) isQuiet(iface string) bool {
+	m.quietMu.Lock()
+	defer m.quietMu.Unlock()
+	until, ok := m.quiet[iface]
+	if !ok {
+		return false
+	}
+	if time.Now().After(until) {
+		delete(m.quiet, iface)
+		return false
+	}
+	return true
+}
+
+// markQuiet keeps the next polls off an interface awg could not answer for.
+func (m *Manager) markQuiet(iface string) {
+	m.quietMu.Lock()
+	defer m.quietMu.Unlock()
+	if m.quiet == nil {
+		m.quiet = map[string]time.Time{}
+	}
+	m.quiet[iface] = time.Now().Add(quietTTL)
+}
+
+// wake drops a quiet mark, so a server that was just started is asked about on
+// the next poll rather than after the mark expires.
+func (m *Manager) wake(iface string) {
+	m.quietMu.Lock()
+	defer m.quietMu.Unlock()
+	delete(m.quiet, iface)
 }

@@ -127,3 +127,30 @@ func TestTrafficSnapshotIsSharedForAMoment(t *testing.T) {
 		t.Errorf("ran %d commands, want 1: %v", len(run.Commands), run.Commands)
 	}
 }
+
+// A server that is down has no counters, and asking awg about it costs two
+// processes per poll: the dump call fails, and the listing it falls back to
+// fails as well. The quiet mark keeps the next polls off it for a while.
+func TestStoppedServerIsNotAskedAgainForAWhile(t *testing.T) {
+	m, run := newTestManager(t)
+	run.Fail("/usr/bin/awg show wg-test-absent", awgtest.ErrNotInstalled)
+
+	for range 3 {
+		if snap := m.collectTraffic(); len(snap.ServerTraffic) != 0 {
+			t.Fatalf("a stopped server reported traffic: %+v", snap.ServerTraffic)
+		}
+	}
+
+	// Two commands for the first attempt (dump, then the fallback) and none
+	// for the two polls after it.
+	if len(run.Commands) != 2 {
+		t.Errorf("ran %d commands, want 2: %v", len(run.Commands), run.Commands)
+	}
+
+	// Starting it clears the mark: the next poll asks again.
+	m.wake("wg-test-absent")
+	m.collectTraffic()
+	if len(run.Commands) != 4 {
+		t.Errorf("after a wake, %d commands in total, want 4: %v", len(run.Commands), run.Commands)
+	}
+}
