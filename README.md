@@ -226,10 +226,6 @@ refused until the page is reloaded: the panel expects a CSRF token that the old
 bundle never sends, and a reload fetches the current one — the asset names do not
 change, so there is no cache to clear.
 
-> [!TIP]
-> Before updating, have a look at [CHANGELOG.md](CHANGELOG.md) — changes that
-> need an action on your side are called out there.
-
 ## Environment variables
 
 All of them only set **defaults** — almost everything can be overridden per
@@ -327,10 +323,6 @@ obfuscation parameters (`Jc`, `Jmin`, `Jmax`, `S1`–`S4`, `H1`–`H4`,
 NAT6, the architecture, building from source, profiling, backups and debugging:
 
 **[DOCS.md](DOCS.md)**
-
-## Changelog
-
-**[CHANGELOG.md](CHANGELOG.md)**
 
 ---
 

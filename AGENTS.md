@@ -212,7 +212,3 @@ The panel's app bar has a **Log out** action at the right-hand end, next to the
 refresh button; on a phone the bar drops both labels and leaves their icons. It
 follows `/logout` in the browser (`browser.Navigate`, which replaces the
 document) rather than calling the API, so the login page is what renders next.
-
-# Changelog
-
-`./CHANGELOG.md`
