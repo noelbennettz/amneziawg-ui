@@ -70,7 +70,9 @@ trailers) is built in and always on**, nothing to configure by hand.
 - **UI in six languages** — English, Russian, French, Spanish, Simplified and
   Traditional Chinese; the language comes from the browser settings, and the
   login page in front of the panel follows the same rule
-- **Small image**: Go + Alpine, ~35 MB, no interpreters and no extra services.
+- **Small image**: Go + Alpine, ~35 MB, no extra services — beyond the binary,
+  the image holds what `awg-quick` itself shells out to (bash, `ip`, `iptables`,
+  `resolvconf`).
   About 13 MB of that is the Chinese font, which the panel has to carry: a
   browser canvas has no system fonts to borrow a glyph from
 

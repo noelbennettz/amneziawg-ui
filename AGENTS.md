@@ -20,7 +20,7 @@ amnezialink, publicip, config, sysinfo}`:
   `/etc/amnezia/audit.log`; off unless `WEB_UI_AUDIT_LOG` is set
 - `manager` — the state and the operations on it; the only package that
   takes the config lock. Split by file (`servers.go`, `clients.go`,
-  `suspend.go`, `status.go`, `traffic.go`, `system.go`)
+  `suspend.go`, `status.go`, `traffic.go`, `system.go`, `reconcile.go`)
 - `awg` — the only package that shells out, behind the `Runner` interface;
   tests use `awg/awgtest` instead of the host
 - `sysinfo` — CPU/RAM/disk readings of the host via `gopsutil`, carried in

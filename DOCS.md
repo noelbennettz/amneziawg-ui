@@ -293,12 +293,17 @@ automatically.
 ├── AGENTS.md                  # Repository conventions for coding agents
 ├── e2e/                       # Browser tests on playwright-go, its own Go module (see e2e/README.md)
 │   ├── main_test.go           # TestMain (driver, Chrome), coordinate clicks, REST API checks
+│   ├── 00_login_test.go       # The login page, and a request without a session
 │   ├── 01_smoke_test.go       # Page load, login, canvas rendering
 │   ├── 02_create_test.go      # Creating a server through the UI
 │   ├── 03_client_test.go      # Adding a client
 │   ├── 04_config_test.go      # Viewing configs and the QR code
 │   ├── 05_polling_test.go     # Traffic polling keeps going
-│   └── 06_port_test.go        # A taken port is rejected by the form
+│   ├── 06_port_test.go        # A taken port is rejected by the form
+│   ├── 07_narrow_test.go      # The phone layout, 390 points wide
+│   ├── 08_resize_test.go      # Reflowing a desktop window without a reload
+│   ├── 09_dialog_test.go      # A dialog in a phone-sized window
+│   └── 10_defaults_test.go    # The second instance: defaults from the environment
 ├── scripts/
 │   ├── start.sh               # Container entry point (started through tini)
 │   ├── setup_iptables.sh
@@ -338,8 +343,9 @@ Docker. The local run settings live in `.env` (`COMPOSE_PROJECT_NAME`,
 `AUTO_START_SERVERS`, `DEFAULT_MTU`, …); whatever is missing falls back to the
 defaults — the web UI on `54845/tcp`, the VPN on `54844/udp`, password
 `changeme`. The production settings (their own ports and `WEB_UI_PASSWORD`) live
-separately in `deploy/.env`: `make deploy` puts exactly that file next to the
-`docker-compose.yml` on the server.
+separately in `deploy/.env` — git ignores it, so create it once on the machine
+you deploy from: `make deploy` copies exactly that file, next to the
+`docker-compose.yml`, onto the server.
 
 ### Browser tests
 
@@ -364,23 +370,30 @@ the machine.
 make e2e
 ```
 
-`make e2e` brings the backend into that state itself: `make e2e-reset` removes
-the container and its volume, rebuilds the image, starts it and waits for
-`/status` to answer. The instance is deliberately separate from the one
-`make run` leaves behind — its own container `awgui-test`, its own volume
-`awgui-test-data`, port `51836` — because wiping state before the tests must not
-touch the servers you are working on. It stays up after the run so a failing
-test can be inspected; `make e2e-down` removes the container together with the
-volume.
+`make e2e` brings the backends into that state itself: `make e2e-reset` removes
+both test containers and their volumes, rebuilds the image, starts them and
+waits for `/status` on both to answer. They are deliberately separate from the
+one `make run` leaves behind — their own containers `awgui-test` and
+`awgui-test-noautostart`, their own volumes `awgui-test-data` and
+`awgui-test-noautostart-data`, ports `51836` and `51837` — because wiping state
+before the tests must not touch the servers you are working on. The second
+instance runs with `AUTO_START_SERVERS=false`, which is the only thing
+`10_defaults_test.go` can see the effect of from outside the canvas. Both stay
+up after the run so a failing test can be inspected; `make e2e-down` removes
+the containers together with the volumes.
 
 These are overridden with Makefile variables: `E2E_PORT`, `E2E_NAME`,
-`E2E_VOLUME`, `E2E_URL`, `E2E_TIMEOUT`, `E2E_TEST_TIMEOUT`. Running the tests
+`E2E_VOLUME`, `E2E_URL`, `E2E_TIMEOUT`, `E2E_TEST_TIMEOUT`, and the `_NOAUTO`
+versions of the first four for the second instance. Running the tests
 against an instance that is already up, without recreating anything, still
 works directly:
 
 ```bash
 cd e2e && AWG_URL=http://localhost:54845 go test -count=1 -v .
 ```
+
+The defaults test is the exception: it reads `AWG_URL_NOAUTOSTART` and skips
+itself when that is not set.
 
 ## 🔧 API endpoints
 
@@ -559,6 +572,11 @@ Content-Type: application/json
 #### Delete a server
 
 `DELETE /api/servers/{server_id}`
+
+Stops the interface first if it is up, then removes the server's `.conf`, the
+parked blocks of its suspended clients, and the server with its clients from
+`web_config.json`. Its `suspended/` entries are keys on disk that nothing owns
+once the server is gone, which is why they go with it.
 
 #### Get a server's configuration
 
@@ -771,10 +789,13 @@ that `block` and `mutex` are always empty without
 ## 🐳 Deploying in Docker
 
 CI builds and publishes the image to GitHub Container Registry on every push to
-`main` (see `.github/workflows/docker.yaml`). Each build publishes exactly one
-tag, `latest`, replacing it in place: the package holds one version instead of
-one per release, and a `v*.*.*` tag no longer starts a build or produces
-`3.1.10` / `3.1` / `3` images. The image is `ghcr.io/<owner>/<repository>`,
+`main` (see `.github/workflows/docker.yaml`). Each build publishes two tags: a
+dated one (`2026.11.11`, the day the build was made) and `latest`, which always
+points at the newest commit on main. A day with several pushes moves that day's
+tag — the registry holds one image per tag, and the panel carries no version of
+its own to tell them apart — so pinning a dated tag is how an upgrade becomes a
+decision instead of a restart. A `v*.*.*` git tag does not start a build and
+produces no `3.1` / `3` images. The image is `ghcr.io/<owner>/<repository>`,
 built with the workflow's built-in `GITHUB_TOKEN` — no secret has to be
 configured.
 
@@ -783,7 +804,9 @@ A freshly created package is **private**: either make it public once under
 token that has `read:packages`) on the machine that pulls it. Or just build the
 image locally with `make run` / `docker compose build`.
 
-The image weighs about **35 MB**: no interpreters, no nginx, no supervisor. For
+The image weighs about **35 MB**: no nginx, no supervisor, no language runtime
+beyond the shell `awg-quick` itself needs (bash, `ip`, `iptables`,
+`resolvconf`). For
 comparison, [`ghcr.io/w0rng/amnezia-wg-easy:latest`](https://github.com/w0rng/amnezia-wg-easy)
 is ~80 MB.
 
@@ -1060,6 +1083,19 @@ containers); read it with:
 `docker logs -f amnezia-web-ui`
 
 The base `docker-compose.yml` caps the log at three 10 MB files.
+
+At start-up, and on every start or stop, a handful of lines are worth knowing:
+
+| Line | What it means |
+|---|---|
+| `Reconcile <server>: …` | the `.conf` and the clients the panel knows about disagreed, and this is what was fixed |
+| `Rebuilt <path> from the config: the file was missing` | the server's `.conf` was gone and was written again from `web_config.json` |
+| `Server <name> is up, but its NAT rules were not applied: …` | the tunnel is up and its clients will connect and reach nothing — see below |
+| `Reconcile <server>: open …: no such file or directory` | the `.conf` is missing *and* cannot be rebuilt (no key in the config) |
+
+Everything printed here is the panel's own work, not a request: the request log
+lines (method, route, status, address) come from Fiber's logger and carry no
+bodies or query strings.
 
 ## 🔄 Backup and restore
 
