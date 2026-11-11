@@ -103,8 +103,15 @@ type app struct {
 // and a test that wants to see the panel has to log in through the form first.
 func newApp(t *testing.T) *app {
 	t.Helper()
+	return newAppAt(t, baseURL)
+}
+
+// newAppAt opens a page against the instance at url, for the tests that need a
+// backend started with other environment variables.
+func newAppAt(t *testing.T, base string) *app {
+	t.Helper()
 	ctx, err := browser.NewContext(playwright.BrowserNewContextOptions{
-		BaseURL:  new(baseURL),
+		BaseURL:  new(base),
 		Viewport: &playwright.Size{Width: viewportWidth, Height: viewportHeight},
 		// The panel and the login page are translated into six languages
 		// and both take the language from the browser, so the suite has to
@@ -160,12 +167,19 @@ func newNarrowApp(t *testing.T, width, height int) *app {
 // therefore the only thing in the suite that can be driven by a selector.
 func (a *app) login() {
 	a.t.Helper()
+	a.loginAt(baseURL)
+}
+
+// loginAt is login against another instance, which is where the assertion on
+// the landing URL has to point.
+func (a *app) loginAt(base string) {
+	a.t.Helper()
 	a.submitLogin(user, password)
 
 	// A right pair answers 303 with the cookie and sends the browser to "/".
 	// Waiting for that URL rather than for the click to return is what proves
 	// the cookie was accepted and the request was not bounced again.
-	err := a.page.WaitForURL(baseURL+"/", playwright.PageWaitForURLOptions{
+	err := a.page.WaitForURL(base+"/", playwright.PageWaitForURLOptions{
 		WaitUntil: playwright.WaitUntilStateDomcontentloaded,
 		Timeout:   new(float64((30 * time.Second).Milliseconds())),
 	})
@@ -336,7 +350,14 @@ func (a *app) noPageErrors() {
 // the browser uses, failing the test on anything but 200.
 func apiGet(t *testing.T, path string) []byte {
 	t.Helper()
-	req, err := http.NewRequest(http.MethodGet, baseURL+path, nil)
+	return apiGetAt(t, baseURL, path)
+}
+
+// apiGetAt is apiGet against another instance: the suite drives one backend,
+// but a test that needs different environment variables brings its own.
+func apiGetAt(t *testing.T, base, path string) []byte {
+	t.Helper()
+	req, err := http.NewRequest(http.MethodGet, base+path, nil)
 	must(t, err)
 	req.SetBasicAuth(user, password)
 	resp, err := http.DefaultClient.Do(req)
@@ -353,8 +374,14 @@ func apiGet(t *testing.T, path string) []byte {
 // getJSON decodes the JSON the backend returns for path into a T.
 func getJSON[T any](t *testing.T, path string) T {
 	t.Helper()
+	return getJSONAt[T](t, baseURL, path)
+}
+
+// getJSONAt is getJSON against another instance.
+func getJSONAt[T any](t *testing.T, base, path string) T {
+	t.Helper()
 	var v T
-	if err := json.Unmarshal(apiGet(t, path), &v); err != nil {
+	if err := json.Unmarshal(apiGetAt(t, base, path), &v); err != nil {
 		t.Fatalf("GET %s: %v", path, err)
 	}
 	return v

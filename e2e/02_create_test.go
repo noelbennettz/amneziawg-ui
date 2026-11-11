@@ -55,6 +55,15 @@ func TestCreateServer(t *testing.T) {
 	if server.Subnet != status.Environment.DefaultSubnet {
 		t.Errorf("subnet = %q, want DEFAULT_SUBNET %q", server.Subnet, status.Environment.DefaultSubnet)
 	}
+	// MTU is generated too, from DEFAULT_MTU. It is a top-level field on the
+	// server and a separate one inside the obfuscation parameters, so this is
+	// also the check that the two agree.
+	if server.MTU != status.Environment.DefaultMTU {
+		t.Errorf("MTU = %d, want DEFAULT_MTU %d", server.MTU, status.Environment.DefaultMTU)
+	}
+	if params := server.ObfuscationParams; params != nil && params.MTU != 0 && params.MTU != server.MTU {
+		t.Errorf("obfuscation MTU = %d, server MTU = %d", params.MTU, server.MTU)
+	}
 	// The IPv6 half is generated too: a free ULA /64 and the server's address
 	// in it. Without it the ::/0 every client routes into the tunnel would be
 	// blackholed, which is the bug this covers.

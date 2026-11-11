@@ -96,6 +96,14 @@ E2E_NAME   ?= awgui-test
 E2E_VOLUME ?= awgui-test-data
 E2E_PORT   ?= 51836
 E2E_URL    ?= http://localhost:$(E2E_PORT)
+# A second instance, started with AUTO_START_SERVERS=false: the create form's
+# auto-start switch takes its value from the backend, and the only way to see
+# that from outside a canvas is to create a server and look at whether it came
+# up. Its own port and volume so the two instances cannot see each other.
+E2E_NAME_NOAUTO   ?= awgui-test-noautostart
+E2E_VOLUME_NOAUTO ?= awgui-test-noautostart-data
+E2E_PORT_NOAUTO   ?= 51837
+E2E_URL_NOAUTO    ?= http://localhost:$(E2E_PORT_NOAUTO)
 # base64 of the SHA-256 of "changeme" - the password the tests log in with.
 E2E_PASSWORD ?= BXugPWxEEEhj3HNh/kV4ll0YhzYPkKCJWILlimJI/IY=
 # How long to wait for the fresh container to answer, in seconds.
@@ -104,38 +112,50 @@ E2E_TIMEOUT ?= 120
 E2E_TEST_TIMEOUT ?= 20m
 
 .PHONY: e2e
-e2e: e2e-reset ## Rebuild the test instance from an empty volume and run the browser tests
-	cd e2e && AWG_URL=$(E2E_URL) go test -count=1 -v -timeout $(E2E_TEST_TIMEOUT) .
+e2e: e2e-reset ## Rebuild the test instances from empty volumes and run the browser tests
+	cd e2e && AWG_URL=$(E2E_URL) AWG_URL_NOAUTOSTART=$(E2E_URL_NOAUTO) go test -count=1 -v -timeout $(E2E_TEST_TIMEOUT) .
 
 .PHONY: e2e-reset
-e2e-reset: ## Recreate the test instance from scratch, discarding every server it holds
+e2e-reset: ## Recreate the test instances from scratch, discarding every server they hold
 	@$(MAKE) --no-print-directory e2e-down
 	docker build -t $(E2E_IMAGE) .
 	docker run -d --name $(E2E_NAME) -p $(E2E_PORT):$(E2E_PORT)/tcp \
 		-e WEB_UI_PORT=$(E2E_PORT) -e WEB_UI_USER=admin -e 'WEB_UI_PASSWORD=$(E2E_PASSWORD)' \
 		-e DEFAULT_SUBNET=10.9.0.0/24 -e 'DEFAULT_DNS=9.9.9.9,149.112.112.112' \
 		-v $(E2E_VOLUME):/etc/amnezia \
-		--cap-add NET_ADMIN --cap-add SYS_MODULE --device /dev/net/tun \
+		--cap-add NET_ADMIN --device /dev/net/tun \
 		--sysctl net.ipv4.ip_forward=1 --sysctl net.ipv4.conf.all.src_valid_mark=1 \
 		$(E2E_IMAGE)
-	@printf 'waiting for %s ' "$(E2E_URL)"; \
-	deadline=$$(( $$(date +%s) + $(E2E_TIMEOUT) )); \
-	until curl -fsS -o /dev/null "$(E2E_URL)/status" 2>/dev/null; do \
-		if [ "$$(date +%s)" -ge "$$deadline" ]; then \
-			echo "timed out after $(E2E_TIMEOUT)s"; \
-			docker logs --tail 50 $(E2E_NAME); \
-			exit 1; \
-		fi; \
-		printf '.'; sleep 2; \
-	done; \
-	echo ' ready'
+	docker run -d --name $(E2E_NAME_NOAUTO) -p $(E2E_PORT_NOAUTO):$(E2E_PORT_NOAUTO)/tcp \
+		-e WEB_UI_PORT=$(E2E_PORT_NOAUTO) -e WEB_UI_USER=admin -e 'WEB_UI_PASSWORD=$(E2E_PASSWORD)' \
+		-e AUTO_START_SERVERS=false \
+		-v $(E2E_VOLUME_NOAUTO):/etc/amnezia \
+		--cap-add NET_ADMIN --device /dev/net/tun \
+		--sysctl net.ipv4.ip_forward=1 --sysctl net.ipv4.conf.all.src_valid_mark=1 \
+		$(E2E_IMAGE)
+	@for url in $(E2E_URL) $(E2E_URL_NOAUTO); do \
+		printf 'waiting for %s ' "$$url"; \
+		deadline=$$(( $$(date +%s) + $(E2E_TIMEOUT) )); \
+		until curl -fsS -o /dev/null "$$url/status" 2>/dev/null; do \
+			if [ "$$(date +%s)" -ge "$$deadline" ]; then \
+				echo "timed out after $(E2E_TIMEOUT)s"; \
+				docker logs --tail 50 $(E2E_NAME); \
+				docker logs --tail 50 $(E2E_NAME_NOAUTO); \
+				exit 1; \
+			fi; \
+			printf '.'; sleep 2; \
+		done; \
+		echo ' ready'; \
+	done
 
 # Separate from e2e-reset so a finished run can be cleaned up without starting
-# another instance, and so the volume is gone even if the tests failed.
+# another instance, and so the volumes are gone even if the tests failed.
 .PHONY: e2e-down
-e2e-down: ## Remove the test instance and its volume
+e2e-down: ## Remove the test instances and their volumes
 	@docker rm -f $(E2E_NAME) >/dev/null 2>&1 || true
+	@docker rm -f $(E2E_NAME_NOAUTO) >/dev/null 2>&1 || true
 	@docker volume rm -f $(E2E_VOLUME) >/dev/null 2>&1 || true
+	@docker volume rm -f $(E2E_VOLUME_NOAUTO) >/dev/null 2>&1 || true
 
 ##@ Profiling
 
