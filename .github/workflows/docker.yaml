@@ -171,9 +171,13 @@ jobs:
   #
   # It runs whether the jobs above passed or failed - a red run is worth
   # keeping until it ages out, and a failed build is exactly when the logs are
-  # worth reading. The current run is always among the three kept, so a run
-  # never deletes itself; runs still in progress are left alone and age out on
-  # a later run.
+  # worth reading.
+  #
+  # "The three newest" is spelled out as "this run plus the two newest of the
+  # others" rather than as a slice of some filtered list: the first version
+  # filtered by status and then sliced, which kept three *completed* runs and
+  # deleted more than it meant to. A run that is still in progress is skipped
+  # and ages out on a later run, so an active build is never touched.
   prune:
     needs: [test, build-and-push]
     if: always()
@@ -190,25 +194,51 @@ jobs:
         continue-on-error: true
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_RUN_ID: ${{ github.run_id }}
+          REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
 
-          runs="repos/${GITHUB_REPOSITORY}/actions/workflows/docker.yaml/runs?per_page=100"
-          total=$(gh api "$runs" --jq '.workflow_runs | length')
-          echo "this workflow has ${total} run(s)"
+          gh api "repos/${REPO}/actions/workflows/docker.yaml/runs?per_page=100" \
+            > runs.json
 
-          if [ "$total" -le 3 ]; then
-            echo "three or fewer: nothing to delete"
-            exit 0
+          python3 - <<'PY'
+          import json, os, subprocess, sys
+
+          repo = os.environ["REPO"]
+          current = int(os.environ["GITHUB_RUN_ID"])
+          runs = json.load(open("runs.json"))["workflow_runs"]
+
+          others = [r for r in runs if r["id"] != current]
+          # This run is the first of the three; the two newest of the rest
+          # follow it.
+          keep = {r["id"] for r in others[:2]} | {current}
+          victims = [r for r in others[2:] if r["status"] == "completed"]
+
+          print(f"{len(runs)} run(s); keeping {sorted(keep)}")
+          for r in victims:
+              print(f"  delete {r['id']} {r['created_at']} {r['conclusion']}")
+
+          # Deleting the current run would kill the job doing the deleting, and
+          # deleting more than the list allows means the arithmetic went wrong.
+          budget = len(runs) - 3
+          if budget < 0:
+              budget = 0
+          if len(victims) > budget:
+              sys.exit(f"refusing: {len(victims)} deletions for a budget of {budget}")
+
+          for r in victims:
+              subprocess.run(
+                  ["gh", "run", "delete", str(r["id"]), "--repo", repo],
+                  check=True,
+              )
+
+          print(f"deleted {len(victims)}; {len(runs) - len(victims)} left")
+          PY
+
+          left=$(gh api "repos/${REPO}/actions/workflows/docker.yaml/runs?per_page=100" \
+            --jq '.workflow_runs | length')
+          echo "now ${left} run(s)"
+          if [ "$left" -lt 3 ]; then
+            echo "::warning::only ${left} run(s) left; the pruning kept fewer than it meant to"
           fi
-
-          # Only finished runs: an in-progress one is somebody's build, and the
-          # three newest are kept whatever state they are in.
-          gh api "$runs" \
-            --jq '[.workflow_runs[] | select(.status == "completed")][3:] | .[] | "\(.id) \(.created_at) \(.head_branch) \(.conclusion)"' \
-            | while read -r id created branch conclusion; do
-                echo "deleting run ${id} (${created}, ${branch}, ${conclusion})"
-                gh run delete "$id" --repo "$GITHUB_REPOSITORY"
-              done
-
-          echo "now $(gh api "$runs" --jq '.workflow_runs | length') run(s)"
