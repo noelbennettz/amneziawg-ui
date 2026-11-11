@@ -45,9 +45,18 @@ func Migrate(cfg *AppConfig) (changed bool) {
 
 	// Migrations go here, oldest first.
 	repairClientServerIDs(cfg)
-	addIPv6Addressing(cfg)
+	complete := addIPv6Addressing(cfg)
 
-	cfg.SchemaVersion = SchemaVersion
+	if complete {
+		cfg.SchemaVersion = SchemaVersion
+	} else {
+		// One revision behind on purpose: a server whose clients could not all
+		// be given an address is not "done", and stamping the current version
+		// would mean those clients never get one. The next start tries again;
+		// the migrations before this one are guarded by their own revision, so
+		// nothing runs twice.
+		cfg.SchemaVersion = schemaIPv6 - 1
+	}
 	return true
 }
 
@@ -83,18 +92,19 @@ const schemaIPv6 = 5
 
 // addIPv6Addressing gives every server a ULA /64 and every client an address
 // in it, so a config written by a release that only knew about IPv4 comes up
-// dual-stack.
+// dual-stack. It reports whether every client that needed an address got one.
 //
 // The addresses are only added to the config here; the manager fixes the .conf
 // files the servers were created with on the next start (see
 // Manager.reconcileIPv6Conf), because rendering them is that package's job.
 // Existing clients keep the addresses they were handed out in order - a client
 // that already has one is not moved.
-func addIPv6Addressing(cfg *AppConfig) {
+func addIPv6Addressing(cfg *AppConfig) (complete bool) {
 	if cfg.SchemaVersion >= schemaIPv6 {
-		return
+		return true
 	}
 
+	complete = true
 	for i := range cfg.Servers {
 		srv := &cfg.Servers[i]
 
@@ -129,6 +139,10 @@ func addIPv6Addressing(cfg *AppConfig) {
 			}
 			addr := netutil.NextFreeIPv6(srv.SubnetV6, used)
 			if addr == "" {
+				// Out of addresses here: the pass is not complete, and the
+				// caller leaves the schema one revision behind so it runs
+				// again rather than pretending these clients are done.
+				complete = false
 				break
 			}
 			srv.Clients[j].ClientIPV6 = addr
@@ -139,4 +153,5 @@ func addIPv6Addressing(cfg *AppConfig) {
 			srv.UnboundNATIPsV6 = []string{}
 		}
 	}
+	return complete
 }

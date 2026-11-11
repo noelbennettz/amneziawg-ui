@@ -92,3 +92,27 @@ func TestMigrationAddsIPv6Addressing(t *testing.T) {
 		t.Errorf("server 2 = %q / %q, want fd42:ab13::/64 / fd42:ab13::1", second.SubnetV6, second.ServerIPV6)
 	}
 }
+
+// A pass that could not give every client an address is not done, and the
+// schema is left one revision behind so the next start tries again instead of
+// treating those clients as finished for good.
+func TestMigrateDoesNotStampAPartialIPv6Pass(t *testing.T) {
+	cfg := &AppConfig{
+		SchemaVersion: 4,
+		Servers: []api.Server{{
+			ID:       "s1",
+			SubnetV6: "fd42:1::1/128", // no room for a client beside the server
+			Clients:  []api.Client{{ID: "c1"}},
+		}},
+	}
+
+	if !Migrate(cfg) {
+		t.Fatal("nothing was migrated")
+	}
+	if cfg.SchemaVersion != schemaIPv6-1 {
+		t.Errorf("schema = %d, want %d so the pass runs again", cfg.SchemaVersion, schemaIPv6-1)
+	}
+	if addr := cfg.Servers[0].Clients[0].ClientIPV6; addr != "" {
+		t.Errorf("client got %q out of a subnet with no room", addr)
+	}
+}
