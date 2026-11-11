@@ -75,6 +75,14 @@ func (b *Client) do(method, path string, body, out any) error {
 		return err
 	}
 	if resp.StatusCode >= 400 {
+		// A 401 is not a failed request, it is the end of the session: the
+		// cookie lasts 12 hours and then everything the panel asks for is
+		// refused. Showing "authentication required" in a snackbar over a
+		// page that can no longer do anything reads as a broken backend, so
+		// the browser goes where the password is asked for instead.
+		if resp.StatusCode == http.StatusUnauthorized {
+			browser.Navigate("/login")
+		}
 		return fmt.Errorf("%s", apiError(data, resp.StatusCode))
 	}
 	if out == nil {
