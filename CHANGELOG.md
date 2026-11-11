@@ -2,6 +2,68 @@
 
 ## Unreleased
 
+- **A value in a config can no longer become a directive.** Two ways in, both
+  reproduced against the real binary. The header protection key was the one
+  free-form field of the obfuscation set and nothing checked it, while it was
+  written into the server's `[Interface]` as `HeaderProtectionKey = <it>` — so
+  a `\n` in it started a line of the caller's choosing, and `awg-quick` runs
+  `PostUp` from that section as root. `POST /api/servers` with
+  `"HeaderProtectionKey": "AAAA\nPostUp = touch /tmp/pwned"` put exactly that
+  line in `wg-<id>.conf`. The same trick worked on `I1`–`I5`: the grammar parsed
+  the `<...>` tags and ignored everything outside them, and the raw string was
+  written to the client's config — which runs on the machine that imports it.
+  The key must now be a base64 32-byte key, a CPS spec may not contain a control
+  character, and every value that reaches a `.conf` passes through `singleLine`,
+  which is the second door: it protects a config written by an older version.
+  `TestHeaderProtectionKeyMustBeAKey`, `TestISettingsRejectControlCharacters`,
+  `TestStoredValuesCannotStartADirective`.
+
+- **Nothing waits forever any more.** `awg-quick` was run with no deadline, so a
+  command that hung took the HTTP request and the manager's write lock with it —
+  and at startup the same call runs before the listener, which meant the panel
+  never came up. Sixty seconds, and the error says so. The public IP probe asked
+  `http://ifconfig.me` first and its answer becomes the `Endpoint` of every
+  client config, so an on-path attacker could point every client at their own
+  server: HTTPS only, with one deadline per address family instead of one per
+  service. `/api` answers are `Cache-Control: no-store` (they carry private
+  keys), a server `.conf` is written atomically (it is the only copy of that
+  server's key), and the listener has read and idle timeouts.
+
+- **The session token carries a random nonce.** Two logins in the same second
+  produced the same token, which is one session nothing can tell apart from
+  another and nothing can revoke. Tokens minted before it existed are still
+  accepted, so an upgrade does not log anybody out.
+
+- **`WEB_UI_LOGIN_RATE_LIMIT`** (off by default): five failed logins from one
+  address block it for fifteen minutes, and each block after the first doubles,
+  to a day. A blocked address gets `429` and `Retry-After` whether it asks the
+  login form, the API or with a basic-auth header. The limit is consulted before
+  a password is looked at, and only for a request that is not already
+  authenticated — a working session is never locked out by somebody sharing its
+  address. Off by default because a panel behind a proxy that does not forward
+  the client address sees one address for everybody.
+
+- **Scrolling on a phone costs less.** A drag used to build a `WheelEvent` per
+  `touchmove` — 120 a second on a 120 Hz screen — before the one event per frame
+  the driver actually uses. The touch fix now feeds the wheel fix's accumulator
+  directly through a `__awgScroll` hook, so a burst of moves is one event
+  (measured: three deltas in one task, one wheel event), the canvas carries
+  `touch-action: none`, and `touchmove` is passive with no `preventDefault` —
+  the page cannot scroll, so there is nothing for the browser to wait for.
+  Verified in Chrome with touch emulation: the panel boots, a drag moves it, no
+  console errors.
+
+- **CI runs the tests before it publishes.** A `test` job (`go vet`, `go test`
+  for the server, vet and build for the wasm frontend, its unit tests when a
+  node is on PATH, vet for the e2e suite) gates `build-and-push`; until now a
+  commit that failed every test went straight to `latest`. Every action is
+  pinned to a commit sha, and the Alpine packages the panel shells out to are
+  pinned to the minor version the base image ships, so an `apk upgrade` cannot
+  change `iptables` behind a release.
+
+- **`GET /api/system/refresh-ip`** no longer rewrites `web_config.json` when the
+  address it finds is the one already stored.
+
 - **The audit log now keeps a window, not everything.** Entries live for
   `WEB_UI_AUDIT_RETENTION_HOURS` — 24 by default, 1 at the floor and 720 (30
   days) at the ceiling. The file is swept at most once an hour, and rewritten

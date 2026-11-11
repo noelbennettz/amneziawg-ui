@@ -120,13 +120,20 @@ FROM alpine:3.24.1
 # "iproute2-minimal" is the ip binary alone - tc, ss and friends from the full
 # package are never called. The health check runs on busybox wget, so curl and
 # the ~4.7 MB of libcurl/brotli/libunistring behind it stay out of the image.
+#
+# The versions are pinned to the minor Alpine 3.24 ships, so a routine
+# `apk upgrade` of the branch cannot change what the panel shells out to
+# without a commit here - iptables is the one that matters: a jump from 1.8 to
+# 1.9 changes the legacy/nft default, and that is what start.sh switches on.
+# `~` keeps the -rN rebuilds and patch releases flowing, which is where the
+# security fixes come from; bump the minor by hand, together with the base tag.
 RUN apk add --no-cache \
-    iptables \
-    iptables-legacy \
-    bash \
-    iproute2-minimal \
-    openresolv \
-    tini
+    iptables~1.8 \
+    iptables-legacy~1.8 \
+    bash~5.3 \
+    iproute2-minimal~7.0 \
+    openresolv~3.17 \
+    tini~0.19
 
 RUN mkdir -p /var/log/amnezia /etc/amnezia/amneziawg
 
