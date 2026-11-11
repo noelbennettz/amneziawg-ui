@@ -786,8 +786,11 @@ docker build --build-arg AWG_GO_VERSION=vX.Y.Z --build-arg AWG_TOOLS_VERSION=vX.
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `WEB_UI_PORT` | `54845` | Port the application listens on for the web UI. The same default is set in the image's `ENV`, in the binary and in `docker-compose.yml` (where it is also published on the host) |
+| `WEB_UI_BIND` | *every address* | Address the panel binds. Unset means `[::]` with `v6only` off, one listener for both stacks. `127.0.0.1` is what a deployment behind a reverse proxy wants: the published port then reaches nothing else |
 | `WEB_UI_USER` | `admin` | Login name for the panel's login page and for `curl -u` |
 | `WEB_UI_PASSWORD` | `changeme` | Login password — SHA-256 in base64: `printf 'secret' \| openssl dgst -binary -sha256 \| base64` |
+| `WEB_UI_SECURE_COOKIE` | *auto* | `true` marks every cookie `Secure`, `false` never does, unset follows the request and `X-Forwarded-Proto`. Behind a TLS proxy the container sees plain HTTP, so `true` (or a proxy that sends the header) is what makes the flag appear at all |
+| `WEB_UI_AUDIT_LOG` | `false` | Append logins, logouts and every change made through the API to `/etc/amnezia/audit.log`: time, address, user, route, status. Off by default — it records who reached the panel, and the file is never rotated |
 | `WEB_UI_PPROF` | `false` | Enables the profiler at `/debug/pprof` (behind the same login). Parsed as a boolean (`1`, `true`, `t`); anything else is "off" |
 | `AUTO_START_SERVERS` | `true` | Bring servers up automatically: on container start, and for a server created in the panel - the form's "Auto-start server on creation" switch starts from it |
 | `DEFAULT_MTU` | `1280` | Default MTU for new servers: what the panel's form starts from, and what an API request that omits `mtu` gets |
@@ -824,8 +827,9 @@ services:
     volumes:
       - data:/etc/amnezia
     cap_add:
+      # iptables, interfaces and routes: the tunnel runs in userspace, so no
+      # kernel module is loaded and SYS_MODULE is neither needed nor granted.
       - NET_ADMIN
-      - SYS_MODULE
     devices:
       - /dev/net/tun
     sysctls:
@@ -1112,18 +1116,55 @@ there is no user table. A wrong pair re-renders the page with `401` and
 
 ## The session cookie
 
-The cookie is called `awg_session`, is `HttpOnly` and `SameSite=Lax`, lives 12
-hours and is marked `Secure` only when the request itself arrived over TLS —
-behind a TLS-terminating proxy the container sees plain HTTP, and a `Secure`
-cookie there would be silently dropped by the browser. Its value is the user and
-the expiry, signed with an HMAC whose key is derived from the credentials, so
-nothing is kept on the server: a container restart keeps you logged in, and
-changing `WEB_UI_PASSWORD` ends every session at once.
+The cookie is called `awg_session`, is `HttpOnly` and `SameSite=Strict` (no other
+site gets to send it, not even by navigating the browser here — the cost is one
+redirect through `/login`, which turns straight back around), lives 12 hours and
+is marked `Secure` according to `WEB_UI_SECURE_COOKIE`: `true` always, `false`
+never, unset when the request itself arrived over TLS or a proxy said
+`X-Forwarded-Proto: https`. Behind a TLS-terminating proxy the container sees
+plain HTTP, which is why setting the variable is the normal deployment. Its
+value is the user and the expiry, signed with an HMAC whose key is derived from
+the credentials, so nothing is kept on the server: a container restart keeps you
+logged in, and changing `WEB_UI_PASSWORD` ends every session at once.
+
+## The CSRF token
+
+The session cookie is an ambient credential — the browser attaches it to
+anything that asks — so every `POST`, `PUT` and `DELETE` also has to carry a
+token that matches the one in a second cookie, `awg_csrf`. The panel's wasm
+client reads that cookie and echoes it in `X-CSRF-Token`; the login form carries
+it in a hidden field and the server rotates it when the session starts. Two
+kinds of request are exempt: one that authenticates with an `Authorization`
+header (no browser attaches one by itself, which is what keeps
+`curl -u admin:changeme -X DELETE ...` working), and nothing else. A write
+without the token is `403`.
 
 `/logout` — GET or POST — deletes the cookie and redirects to `/login`. The
 panel's app bar carries a **Log out** action at the right of the status light
 that simply follows `/logout`; there is no confirmation step, because there is
 nothing to lose that is not already on disk.
+
+## Security headers
+
+Every response carries `Content-Security-Policy`, `X-Frame-Options: DENY`,
+`X-Content-Type-Options: nosniff` and `Referrer-Policy: no-referrer`.
+
+The policy allows the panel's own origin and nothing else, plus what the wasm
+bundle needs: `'wasm-unsafe-eval'` for `WebAssembly.instantiate`, and one inline
+script by nonce — the loader page's startup code, which the server rewrites to
+carry a random value generated when the process starts. The bundle injects two
+more inline scripts of its own (the phone input handling and the wheel handler);
+they read the same nonce from a `<meta name="csp-nonce">` in the page. A loader
+page without the markers the rewrite needs (a future `fyne package`) is served
+untouched and the policy falls back to `'unsafe-inline'`, because a page the
+server cannot see into must not be broken by a header.
+
+`style-src` keeps `'unsafe-inline'`: fyne's driver injects a `<style>` element
+for the viewport fix. `frame-ancestors 'none'` and `X-Frame-Options: DENY` keep
+the panel out of someone else's frame, `form-action 'self'` keeps a form from
+posting elsewhere, and `base-uri 'none'` / `object-src 'none'` close the two
+classic leftovers. `SECURITY.md` in the repository says what the panel assumes
+and what it does not protect against.
 
 ## What a request without credentials gets
 

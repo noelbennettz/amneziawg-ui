@@ -1,10 +1,11 @@
 name: Build and Push Docker Image
 
-# Runs on every push to the default branch and publishes one tag, `latest`.
-# One tag means one thing to pull and one package version to keep: a release
-# does not upload a second copy of the same build under a version number, and
-# `docker pull ...:latest` is always the newest commit on main. Version tags
-# (`v*.*.*`) deliberately do not trigger a build.
+# Runs on every push to the default branch and publishes two tags: `latest`,
+# which always points at the newest commit on main, and the date the build was
+# made (`2026.11.11`), which does not move again. Pinning the dated tag is how
+# an upgrade becomes a decision instead of a restart. A day with several pushes
+# moves that day's tag: the registry holds one version per tag, and the panel
+# carries no version of its own to tell them apart.
 on:
   push:
     branches:
@@ -60,12 +61,9 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.IMAGE_NAME }}
-          # A single tag, replaced in place by every build. Semver tags and a
-          # per-branch tag would each leave their own version behind in the
-          # package, which is the storage this workflow is meant to keep small:
-          # the registry holds exactly one version, the current build of main.
           tags: |
             type=raw,value=latest
+            type=raw,value={{date 'YYYY.MM.DD'}}
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v6

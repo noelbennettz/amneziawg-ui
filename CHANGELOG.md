@@ -2,6 +2,62 @@
 
 ## Unreleased
 
+- **A write now has to prove it came from the panel.** The session cookie is an
+  ambient credential: the browser attaches it to anything that asks, so a form
+  on another site could make it delete a server. Every `POST`, `PUT` and
+  `DELETE` therefore also has to carry a token that matches the one in a second
+  cookie, `awg_csrf` — the cookie an attacker's page can cause to be sent but
+  cannot read, and cannot put into a header. The wasm client reads it and sends
+  `X-CSRF-Token`; the login form carries it in a hidden field and the server
+  rotates it when the session starts. A request that authenticates with an
+  `Authorization` header is exempt, because no browser attaches one by itself —
+  which is what keeps `curl -u` and the existing automation working. The session
+  cookie moves from `SameSite=Lax` to `Strict` with it. `TestWriteNeedsTheToken`,
+  `TestWriteWithBasicAuthNeedsNoToken`, `TestLoginFormNeedsTheToken`,
+  `TestLoginRotatesTheToken`.
+
+- **The panel is served under a Content-Security-Policy**, along with
+  `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff` and
+  `Referrer-Policy: no-referrer`. The policy allows the panel's own origin and
+  `'wasm-unsafe-eval'`, and exactly one inline script — by nonce, generated when
+  the process starts and written into the loader page the server already
+  rewrites. `fyne package` calls that script from an `onload` attribute, which
+  no nonce can rescue, so the call moves into the script as a load listener.
+  The two scripts the bundle injects at runtime (phone input, wheel handling)
+  read the same nonce from a `<meta name="csp-nonce">` the page now carries.
+  A loader page without the markers is served untouched and the policy falls
+  back to `'unsafe-inline'` rather than breaking a page the server cannot see
+  into. Verified in Chrome 157: the canvas boots, the injected scripts run under
+  touch emulation, and the console reports no violation.
+  `TestLoaderIsPreparedForTheNoncePolicy`, `TestContentSecurityPolicy`.
+
+- **`WEB_UI_SECURE_COOKIE`** pins the `Secure` flag on the cookies (`true`), or
+  off (`false`), or leaves it to the request and `X-Forwarded-Proto` when it is
+  not set. Behind a TLS-terminating proxy the container sees plain HTTP, so the
+  flag used to be absent exactly where it mattered. **`WEB_UI_BIND`** sets the
+  address the panel binds: unset is still the dual-stack listener, and
+  `127.0.0.1` is what a deployment behind a proxy wants.
+
+- **`WEB_UI_AUDIT_LOG`** (off by default) appends logins, logouts, rejected
+  writes and every change made through the API to `/etc/amnezia/audit.log`:
+  time, address, user, method, route and status, one JSON object per line.
+  Bodies are never recorded, and neither is the query string, so no key and no
+  `.conf` can end up there. A nil log takes every event and creates nothing,
+  so the default costs a branch and no file.
+  `TestAuditRecordsLoginsAndChanges`, `TestAuditIsOffByDefault`.
+
+- **`SYS_MODULE` is gone from the compose file.** The tunnel runs as a
+  userspace process and nothing in the image loads a kernel module, so the
+  capability was a door with no reason to be unlocked. `NET_ADMIN`, the TUN
+  device and the four `ip_forward`/`forwarding` sysctls are the whole set.
+
+- **The image is published under two tags**: `latest`, and the date the build
+  was made (`2026.11.11`). Pinning the dated tag turns an upgrade into a
+  decision; a second push on the same day moves that day's tag, because the
+  panel carries no version of its own and the registry holds one version per
+  tag. `SECURITY.md` documents the threat model, the reporting channel and what
+  is deliberately not implemented yet.
+
 - **The loading screen is dark whatever the browser prefers.** `fyne package`
   writes a loader page that picks between a light and a dark stylesheet *and* a
   light and a dark spinner with `prefers-color-scheme`, while the panel behind it

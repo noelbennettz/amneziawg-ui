@@ -15,8 +15,11 @@ services:
     volumes:
       - data:/etc/amnezia
     cap_add:
+      # The panel manages the tunnel from inside the container: iptables
+      # rules, interfaces, routes. Nothing else. The userspace implementation
+      # (amneziawg-go) cannot load kernel modules - it does not need one, and
+      # SYS_MODULE would hand the container the ability to load any of them.
       - NET_ADMIN
-      - SYS_MODULE
     devices:
       - /dev/net/tun
     sysctls:

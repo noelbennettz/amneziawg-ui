@@ -79,6 +79,9 @@ server:
 services:
   app:
     image: ghcr.io/noelbennettz/amneziawg-ui:latest
+    # Every build is also tagged with the date it was built, e.g. :2026.11.11.
+    # Pin that one if you want an upgrade to be a decision rather than a
+    # restart.
     restart: unless-stopped
     ports:
       - "54845:54845/tcp"   # web UI
@@ -91,8 +94,10 @@ services:
     volumes:
       - data:/etc/amnezia
     cap_add:
+      # iptables, interfaces and routes are all the panel needs. The
+      # tunnel runs as a userspace process, so no kernel module is loaded
+      # and SYS_MODULE is not needed - and not granted.
       - NET_ADMIN
-      - SYS_MODULE
     devices:
       - /dev/net/tun
     sysctls:
@@ -178,8 +183,11 @@ only at startup.
 | Variable | Default | Description |
 |---|---|---|
 | `WEB_UI_PORT` | `54845` | Web UI port. The same value is baked into the image and published in compose |
+| `WEB_UI_BIND` | *every address* | Address the panel binds. `127.0.0.1` is what a deployment behind a reverse proxy wants: the port then answers nothing else |
 | `WEB_UI_USER` | `admin` | Login name for the panel and for `curl -u` |
 | `WEB_UI_PASSWORD` | `changeme` | Login password as base64 of its SHA-256 (see the box above) |
+| `WEB_UI_SECURE_COOKIE` | *auto* | Force the `Secure` flag on the cookies: `true` behind a TLS proxy that does not send `X-Forwarded-Proto`, `false` to pin it off. Unset follows the request and that header |
+| `WEB_UI_AUDIT_LOG` | `false` | Append logins, logouts and every change made through the API to `/etc/amnezia/audit.log`: time, address, user, route, status. Off by default - it is a record of who reached the panel |
 | `WEB_UI_PPROF` | `false` | Profiler at `/debug/pprof` behind the same login. Parsed as a boolean (`1`, `true`, `t`), anything else is off |
 | `AUTO_START_SERVERS` | `true` | Bring servers up automatically: when the container starts, and for one created in the panel |
 | `DEFAULT_MTU` | `1280` | Default MTU for new servers |
@@ -229,11 +237,16 @@ clients come up as they were.
 
 The panel serves HTTP: the login page sits in front of every route except
 `/status`, and only that page posts the credentials, so no browser password
-prompt appears. The session cookie is marked `Secure` only when the request
-itself arrived over TLS — behind a proxy that terminates TLS the container sees
-plain HTTP and the flag is left off. For access from the internet, put a reverse
-proxy with TLS in front of it (Caddy, nginx, Traefik) or restrict port `54845`
-with a firewall.
+prompt appears. Behind a proxy that terminates TLS the container sees plain
+HTTP, so set `WEB_UI_SECURE_COOKIE=true` — or leave it unset and have the proxy
+send `X-Forwarded-Proto: https`, which the panel follows when the variable is
+not set. `WEB_UI_BIND=127.0.0.1` is worth setting at the same time: the port
+then answers the proxy and nothing else.
+
+For access from the internet, put a reverse proxy with TLS in front of it
+(Caddy, nginx, Traefik) or restrict port `54845` with a firewall.
+[SECURITY.md](SECURITY.md) says what the panel does and does not protect
+against.
 
 ## Documentation
 
