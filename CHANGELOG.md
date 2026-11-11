@@ -35,8 +35,11 @@
   off (`false`), or leaves it to the request and `X-Forwarded-Proto` when it is
   not set. Behind a TLS-terminating proxy the container sees plain HTTP, so the
   flag used to be absent exactly where it mattered. **`WEB_UI_BIND`** sets the
-  address the panel binds: unset is still the dual-stack listener, and
-  `127.0.0.1` is what a deployment behind a proxy wants.
+  address the panel binds inside the container: unset is still the dual-stack
+  listener, and `127.0.0.1` is for `network_mode: host` — with published ports
+  the restriction belongs on the host side of the mapping
+  (`"127.0.0.1:54845:54845/tcp"`), because Docker forwards to the container's
+  address and not to its loopback.
 
 - **`WEB_UI_AUDIT_LOG`** (off by default) appends logins, logouts, rejected
   writes and every change made through the API to `/etc/amnezia/audit.log`:

@@ -78,35 +78,62 @@ server:
 ```yaml
 services:
   app:
+    # Every build is published as :latest and under the date it was built -
+    # ghcr.io/noelbennettz/amneziawg-ui:2026.11.11 - so an upgrade can be a
+    # decision instead of a restart.
     image: ghcr.io/noelbennettz/amneziawg-ui:latest
-    # Every build is also tagged with the date it was built, e.g. :2026.11.11.
-    # Pin that one if you want an upgrade to be a decision rather than a
-    # restart.
     restart: unless-stopped
+
     ports:
-      - "54845:54845/tcp"   # web UI
-      - "54844:54844/udp"   # VPN (a range works too)
+      # Host port : container port. The container listens on WEB_UI_PORT and
+      # the image's health check asks 127.0.0.1 for /status, so keep the two
+      # sides the same number. In front of a reverse proxy, publish on the
+      # host's loopback instead: "127.0.0.1:54845:54845/tcp".
+      - "54845:54845/tcp"    # the panel
+      - "54844:54844/udp"    # the first VPN server; a range works too
+
     environment:
+      - WEB_UI_PORT=54845
       - WEB_UI_USER=admin
       # base64(sha256(password)); the value below is "changeme", replace it:
-      # printf 'your-password' | openssl dgst -binary -sha256 | base64
+      #   printf 'your-password' | openssl dgst -binary -sha256 | base64
       - WEB_UI_PASSWORD=BXugPWxEEEhj3HNh/kV4ll0YhzYPkKCJWILlimJI/IY=
+      # Behind a proxy that terminates TLS, the container still sees plain
+      # HTTP: say so, or the cookies go out without Secure.
+      # - WEB_UI_SECURE_COOKIE=true
+      # Logins, logouts and every change through the API, one JSON object per
+      # line, in /etc/amnezia/audit.log. Off unless asked for.
+      # - WEB_UI_AUDIT_LOG=true
+      # Only for network_mode: host. With published ports, leave it unset -
+      # Docker forwards to the container's address, not to its loopback.
+      # - WEB_UI_BIND=127.0.0.1
+
     volumes:
+      # Servers, client configs and web_config.json. Back this up and the
+      # panel moves to another host as it is.
       - data:/etc/amnezia
+
     cap_add:
-      # iptables, interfaces and routes are all the panel needs. The
-      # tunnel runs as a userspace process, so no kernel module is loaded
-      # and SYS_MODULE is not needed - and not granted.
+      # iptables, interfaces and routes: that is all the panel needs. The
+      # tunnel runs in userspace (amneziawg-go), so no kernel module is
+      # loaded and SYS_MODULE is neither needed nor granted.
       - NET_ADMIN
     devices:
       - /dev/net/tun
+
     sysctls:
+      # Forwarding for the tunnel. The IPv6 pair is what lets a client get a
+      # ULA address; the container still needs an IPv6 uplink of its own
+      # before anything can be routed out of it - see DOCS.md.
       - net.ipv4.ip_forward=1
       - net.ipv4.conf.all.src_valid_mark=1
       - net.ipv6.conf.all.disable_ipv6=0
       - net.ipv6.conf.all.forwarding=1
       - net.ipv6.conf.default.forwarding=1
+
     logging:
+      # The panel's own log is one line per request; client configs are
+      # responses, never logged, so this stays small.
       options:
         max-size: 10m
         max-file: 3
@@ -114,6 +141,11 @@ services:
 volumes:
   data:
 ```
+
+The image carries its own `HEALTHCHECK` (it asks the panel for `/status`
+every 30 s), so `docker compose ps` shows `healthy` without anything in the
+file above. It runs as root on purpose: `awg-quick` and `iptables` are what
+the panel drives, and both need it inside the container's network namespace.
 
 And bring it up with one command:
 
@@ -183,7 +215,7 @@ only at startup.
 | Variable | Default | Description |
 |---|---|---|
 | `WEB_UI_PORT` | `54845` | Web UI port. The same value is baked into the image and published in compose |
-| `WEB_UI_BIND` | *every address* | Address the panel binds. `127.0.0.1` is what a deployment behind a reverse proxy wants: the port then answers nothing else |
+| `WEB_UI_BIND` | *every address* | Address the panel binds **inside the container**. Leave it alone when the port is published in compose — Docker forwards to the container's address, not to its loopback, so `127.0.0.1` there makes the published port unreachable. It is for `network_mode: host`, where there is no port mapping and the process has to keep to the host's loopback itself |
 | `WEB_UI_USER` | `admin` | Login name for the panel and for `curl -u` |
 | `WEB_UI_PASSWORD` | `changeme` | Login password as base64 of its SHA-256 (see the box above) |
 | `WEB_UI_SECURE_COOKIE` | *auto* | Force the `Secure` flag on the cookies: `true` behind a TLS proxy that does not send `X-Forwarded-Proto`, `false` to pin it off. Unset follows the request and that header |
@@ -240,8 +272,13 @@ The panel serves HTTP: the login page sits in front of every route except
 prompt appears. Behind a proxy that terminates TLS the container sees plain
 HTTP, so set `WEB_UI_SECURE_COOKIE=true` — or leave it unset and have the proxy
 send `X-Forwarded-Proto: https`, which the panel follows when the variable is
-not set. `WEB_UI_BIND=127.0.0.1` is worth setting at the same time: the port
-then answers the proxy and nothing else.
+not set.
+
+With a proxy on the same host, publish the port on the host's loopback
+(`"127.0.0.1:54845:54845/tcp"`) rather than setting `WEB_UI_BIND`: inside a
+bridge network the container has to listen on its own address for the mapping
+to reach it. `WEB_UI_BIND=127.0.0.1` is for `network_mode: host`, where there is
+no mapping at all.
 
 For access from the internet, put a reverse proxy with TLS in front of it
 (Caddy, nginx, Traefik) or restrict port `54845` with a firewall.
