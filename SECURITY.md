@@ -61,6 +61,14 @@ What the panel does about the model above:
 * Request bodies are never logged. The API's own log line carries the method,
   the route, the status and the address; the URIs and private keys travel in
   response bodies only.
+* A suspended peer block is only ever written back into a `.conf` after its
+  public key has been compared with the client it is being restored for. The
+  `suspended/` directory is shared by every server and keyed by the client ID
+  — six hex characters — so a block that is not that client's is refused, not
+  relabelled onto its name and address; its preshared key and `AllowedIPs` are
+  taken from the config, never from the file.
+* Deleting a server deletes its clients' parked blocks with it, so a key that
+  belongs to nothing does not stay on the volume.
 
 ## What is not there yet
 

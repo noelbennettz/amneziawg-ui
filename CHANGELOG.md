@@ -2,6 +2,56 @@
 
 ## Unreleased
 
+- **A server that is up with no NAT now says so.** `scripts/setup_iptables.sh`
+  was run with its exit code thrown away, and skipped in silence when the file
+  was not there at all, so a panel without `NET_ADMIN` — or an image where
+  `scripts/` did not land — started every server "successfully": clients
+  handshook, nothing forwarded, and nothing anywhere said why. The firewall
+  step now returns the error, and `StartServer` prints it: `Server <name> is
+  up, but its NAT rules were not applied: …`. The start still succeeds, because
+  the tunnel is up; the line is what makes the symptom explainable.
+  `TestIPTablesScriptsReportWhenNotDeployed`,
+  `TestSetupIPTablesReportsAScriptThatFails`,
+  `TestStartSucceedsWhenTheFirewallScriptIsMissing`.
+
+- **Deleting a server deletes its suspended clients' peer blocks.** They live
+  in one `suspended/` directory shared by every server and were simply left
+  there — private keys, preshared keys and allowed addresses of clients that no
+  longer exist, and the directory grew with every deleted server. Reproduced:
+  suspend a client, delete the server, `suspended/<client>.conf` is still
+  there. The blocks are now removed with the server, the directory with them
+  when nothing else is in it, and a `.conf` that cannot be removed is reported
+  instead of ignored. `TestDeleteServerRemovesItsParkedPeers`,
+  `TestDeleteServerLeavesOtherServersParkedPeersAlone`.
+
+- **Reactivation checks the parked block against the client.** A parked block
+  is read back by client ID, which is six hex characters, and
+  `RetagPeerBlock` relabelled whatever it found: a block belonging to another
+  client would have been admitted under this client's name and address, so
+  whoever held that private key became a peer of this server. The public key is
+  now compared, and the preshared key and `AllowedIPs` are taken from the model
+  rather than from the file. Reproduced in the container: a parked file with a
+  foreign key is refused, the client stays suspended and the live config is
+  untouched. `TestRestoreRefusesAParkedBlockWithSomebodyElsesKey`,
+  `TestRestoreTakesKeysAndAddressesFromTheClient`.
+
+- **A missing `.conf` is rebuilt instead of being fatal.** Every start of that
+  server failed on the open, forever — the file was the only thing missing and
+  the config had everything needed to write it again. Now the start-up pass
+  rebuilds the interface section from the server (private key, addresses, port,
+  MTU, obfuscation) and the peers from the clients, then runs the usual
+  reconcile. Verified in the container: delete `wg-<id>.conf`, restart, the file
+  comes back dual-stack with its obfuscation parameters and its active clients,
+  while the suspended ones stay parked. Without a private key in the config
+  there is nothing to rebuild from, and it says that instead.
+  `TestReconcileRebuildsAMissingServerConf`,
+  `TestReconcileRefusesToRebuildWithoutAPrivateKey`,
+  `TestReconcileLeavesAnExistingConfAlone`.
+
+- **Deleting a server clears its quiet mark.** The traffic poll's "awg has
+  nothing to say about this interface" marks are keyed by interface name and
+  were never dropped for a server that had been deleted.
+
 - **A value in a config can no longer become a directive.** Two ways in, both
   reproduced against the real binary. The header protection key was the one
   free-form field of the obfuscation set and nothing checked it, while it was

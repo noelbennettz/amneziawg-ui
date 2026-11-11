@@ -1086,6 +1086,20 @@ knows about, and prints one `Reconcile <server>: ...` line when it had to change
 anything. A `.conf` edited by hand is otherwise left alone, except for peer
 blocks that carry no client marker: those are reported and kept.
 
+A `.conf` that is missing altogether is rebuilt first, from the config: the
+private key, addresses, port, MTU and obfuscation parameters come from the
+server, the peer blocks from its active clients, and the line
+`Rebuilt <path> from the config: the file was missing` says it happened. A
+server whose `.conf` cannot be rebuilt - no private key in the config - is
+reported instead of being started without one. Deleting a server also deletes
+the parked blocks of its suspended clients: they are keys on disk, and the
+`suspended/` directory belongs to no server in particular.
+
+A suspended client is only ever reactivated from its parked block after that
+block has been checked against the client's public key. Anything else in
+`suspended/<client id>.conf` is refused, with the key it found and the key it
+expected in the error, and the client stays suspended.
+
 A single server or client can also simply be downloaded through the UI or with
 `GET /api/servers/{server_id}/config` /
 `GET /api/servers/{server_id}/clients/{client_id}/config`.
@@ -1102,6 +1116,20 @@ not need the login page or a cookie.
 ### Check the iptables setup
 
 `curl -u admin:changeme "http://localhost/api/system/iptables-test?server_id=wg_abc123"`
+
+A start that could not apply the rules says so on stdout and still reports the
+server as running:
+
+```
+Server home is up, but its NAT rules were not applied: setup_iptables.sh is not deployed at /app/scripts/setup_iptables.sh: ...
+Clients on wg-1a2b3c can connect and will have no internet until that is fixed.
+```
+
+That is the first thing to look for when a client says it is connected and
+nothing loads: the tunnel is up, so the handshake succeeds, and only the
+forwarding and masquerade rules are missing. The causes are a `scripts/`
+directory that did not make it into the image, a container without
+`NET_ADMIN`, or a failing rule; the message carries which.
 
 ### Check that the container is alive (no credentials)
 
