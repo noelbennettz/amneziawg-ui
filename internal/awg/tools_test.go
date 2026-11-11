@@ -3,7 +3,10 @@ package awg_test
 import (
 	"encoding/base64"
 	"errors"
+	"os"
+	"path/filepath"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -119,13 +122,22 @@ func TestKeyGenerationUsesAwgWhenPresent(t *testing.T) {
 	}
 }
 
-func TestIPTablesScriptsAreSkippedWhenNotDeployed(t *testing.T) {
+// A server with no NAT is up, answers handshakes and forwards nothing, and
+// its clients report "connected, no internet". The caller can only say
+// something useful about that if the firewall step speaks up: a script that is
+// not deployed and a script that fails are the same silence otherwise.
+func TestIPTablesScriptsReportWhenNotDeployed(t *testing.T) {
 	run := awgtest.New()
 	tools := awg.New(run)
 	tools.ScriptsDir = t.TempDir()
 
-	tools.SetupIPTables("wg-x", "10.0.1.0/24", "fd42:ab12::/64")
-	tools.CleanupIPTables("wg-x", "10.0.1.0/24", "fd42:ab12::/64")
+	err := tools.SetupIPTables("wg-x", "10.0.1.0/24", "fd42:ab12::/64")
+	if err == nil || !strings.Contains(err.Error(), "not deployed") {
+		t.Errorf("SetupIPTables = %v, want an error saying the script is missing", err)
+	}
+	if err := tools.CleanupIPTables("wg-x", "10.0.1.0/24", ""); err == nil {
+		t.Error("CleanupIPTables reported success with no script")
+	}
 	if len(run.Commands) != 0 {
 		t.Errorf("scripts that do not exist were run: %v", run.Commands)
 	}
@@ -189,6 +201,31 @@ func TestShowPeersTakesTheDumpListingInOneCommand(t *testing.T) {
 	}
 	if p := peers["PEER2"]; p.Endpoint != "" || p.LastHandshake != "Never" || !p.HandshakeAt.IsZero() {
 		t.Errorf("PEER2 = %+v, want no endpoint and no handshake", p)
+	}
+}
+
+// A server with no NAT is up, answers handshakes and forwards nothing, and
+// its clients report "connected, no internet". A script that fails is the same
+// silence as a script that is not there unless the firewall step says so.
+func TestSetupIPTablesReportsAScriptThatFails(t *testing.T) {
+	dir := t.TempDir()
+	script := filepath.Join(dir, "setup_iptables.sh")
+	if err := os.WriteFile(script, []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	run := awgtest.New().Fail(script, errors.New("iptables: permission denied"))
+	tools := awg.New(run)
+	tools.ScriptsDir = dir
+
+	err := tools.SetupIPTables("wg-abc123", "10.0.1.0/24", "")
+	if err == nil {
+		t.Fatal("a failing setup_iptables.sh was reported as success")
+	}
+	if !strings.Contains(err.Error(), "permission denied") {
+		t.Errorf("error should carry what the script said, got %v", err)
+	}
+	if !run.Ran(script + " wg-abc123 10.0.1.0/24 ") {
+		t.Errorf("the script was not run with the interface and subnet: %v", run.Commands)
 	}
 }
 

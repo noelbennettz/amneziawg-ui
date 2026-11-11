@@ -17,8 +17,9 @@ type Tools struct {
 	run Runner
 
 	// ScriptsDir holds setup_iptables.sh and cleanup_iptables.sh. A
-	// deployment without them - a development tree - simply skips the
-	// firewall step.
+	// deployment without them - a development tree - gets an error from the
+	// firewall step rather than a silent skip: the rules the caller believes
+	// it applied are not there either way.
 	ScriptsDir string
 
 	// BinDir is where awg and awg-quick are installed.
@@ -113,21 +114,32 @@ func (t *Tools) InterfaceUp(iface string) bool {
 // script for it is deployed. subnetV6 is the server's ULA /64; the script adds
 // the matching ip6tables rules - the NAT66 masquerade included - only when it
 // is not empty.
-func (t *Tools) SetupIPTables(iface, subnet, subnetV6 string) {
-	t.runScript("setup_iptables.sh", iface, subnet, subnetV6)
+//
+// The error is the caller's to report: a server whose port and addresses are
+// wrong announces it by not working, but one that is up with no NAT accepts
+// every handshake and forwards nothing, which looks like a dead uplink from
+// the client's side.
+func (t *Tools) SetupIPTables(iface, subnet, subnetV6 string) error {
+	return t.runScript("setup_iptables.sh", iface, subnet, subnetV6)
 }
 
 // CleanupIPTables removes what SetupIPTables added.
-func (t *Tools) CleanupIPTables(iface, subnet, subnetV6 string) {
-	t.runScript("cleanup_iptables.sh", iface, subnet, subnetV6)
+func (t *Tools) CleanupIPTables(iface, subnet, subnetV6 string) error {
+	return t.runScript("cleanup_iptables.sh", iface, subnet, subnetV6)
 }
 
-func (t *Tools) runScript(name, iface, subnet, subnetV6 string) {
+// runScript runs one of the two iptables scripts. A script that is not
+// deployed and a script that fails are both errors: either way the rules the
+// caller believes it applied are not there.
+func (t *Tools) runScript(name, iface, subnet, subnetV6 string) error {
 	script := filepath.Join(t.ScriptsDir, name)
 	if _, err := os.Stat(script); err != nil {
-		return
+		return fmt.Errorf("%s is not deployed at %s: %w", name, script, err)
 	}
-	t.run.Run(fmt.Sprintf("%s %s %s %s", script, iface, subnet, subnetV6)) //nolint:errcheck
+	if _, err := t.run.Run(fmt.Sprintf("%s %s %s %s", script, iface, subnet, subnetV6)); err != nil {
+		return fmt.Errorf("%s %s: %w", name, iface, err)
+	}
+	return nil
 }
 
 // CheckIPTables looks for the rules SetupIPTables should have left, keyed by
