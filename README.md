@@ -35,6 +35,7 @@ trailers) is built in and always on**, nothing to configure by hand.
 - [Updating](#updating)
 - [Environment variables](#environment-variables)
 - [FAQ](#faq)
+- [License](#license)
 - [Documentation](#documentation)
 - [Changelog](#changelog)
 
@@ -55,7 +56,10 @@ trailers) is built in and always on**, nothing to configure by hand.
 - **A login page in front of the panel**: the same `WEB_UI_USER` and
   `WEB_UI_PASSWORD` as before, a signed session cookie for 12 hours, and an
   `Authorization: Basic` header still accepted on every route so `curl -u` and
-  existing scripts keep working
+  existing scripts keep working. Every write also needs a CSRF token — the
+  `awg_csrf` cookie echoed in `X-CSRF-Token` — unless it authenticated with that
+  header, which is why a script that uses `-u` needs no change and one that
+  carries only the cookie does
 - **REST API** for automation: everything the web UI does is reachable over
   HTTP endpoints behind the same login as the panel
 - **Auto-start of servers** after a container restart, **automatic iptables
@@ -198,11 +202,20 @@ docker compose pull
 docker compose up -d
 ```
 
+Every build is also published under the date it was made (`…:2026.11.11`), so
+the line above can be a decision instead of a habit: put that tag in the compose
+file and nothing moves until you change it.
+
 The servers, the clients and `web_config.json` live in the `/etc/amnezia` volume
 and updating does not touch them; after the start the container brings the
 servers created earlier back up on its own. VPN clients reconnect
 automatically. The old image can be removed with `docker image prune` (only if
 you know what that command does).
+
+An open browser tab from the previous version keeps reading, but its writes are
+refused until the page is reloaded: the panel expects a CSRF token that the old
+bundle never sends, and a reload fetches the current one — the asset names do not
+change, so there is no cache to clear.
 
 > [!TIP]
 > Before updating, have a look at [CHANGELOG.md](CHANGELOG.md) — changes that
@@ -263,10 +276,10 @@ while changing the password ends every session at once.
 
 ### How do I back up and move the VPN to another server?
 
-All the state lives in the `/etc/amnezia` volume: `web_config.json` and the
-`.conf` of every server. Copy it (`docker cp <container>:/etc/amnezia ./backup/`),
-restore the volume on the new machine and start the container — servers and
-clients come up as they were.
+All the state lives in the `/etc/amnezia` volume: `web_config.json`, the `.conf`
+of every server, and `audit.log` if you turned the audit log on. Copy it
+(`docker cp <container>:/etc/amnezia ./backup/`), restore the volume on the new
+machine and start the container — servers and clients come up as they were.
 
 ### Do I need HTTPS, and how do I enable it?
 

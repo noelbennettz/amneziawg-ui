@@ -767,7 +767,7 @@ A freshly created package is **private**: either make it public once under
 token that has `read:packages`) on the machine that pulls it. Or just build the
 image locally with `make run` / `docker compose build`.
 
-The image weighs just **~26 MB**: no interpreters, no nginx, no supervisor. For
+The image weighs about **35 MB**: no interpreters, no nginx, no supervisor. For
 comparison, [`ghcr.io/w0rng/amnezia-wg-easy:latest`](https://github.com/w0rng/amnezia-wg-easy)
 is ~80 MB.
 
