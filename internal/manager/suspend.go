@@ -109,8 +109,14 @@ func (m *Manager) runSuspender() {
 	}
 }
 
-// suspendDue is one pass of the suspender.
+// suspendDue is one pass of the suspender. The config is written once for the
+// whole pass and the live interfaces are synced after it, rather than per
+// client: a minute in which ten clients come due should not mean ten rewrites
+// of the same file.
 func (m *Manager) suspendDue(now time.Time) {
+	changed := false
+	ifaces := map[string]bool{}
+
 	for _, it := range m.findClientsPastSuspendTime(float64(now.Unix())) {
 		ifaceName, err := m.autoSuspendLocked(it.serverID, it.clientID, float64(now.Unix()))
 		if err != nil {
@@ -120,9 +126,17 @@ func (m *Manager) suspendDue(now time.Time) {
 		if ifaceName == "" {
 			continue
 		}
-		m.saveOrLog("client auto-suspend")
-		m.syncLiveConfig(ifaceName)
+		changed = true
+		ifaces[ifaceName] = true
 		fmt.Printf("Auto-suspended client %s at %s\n", it.clientID, now.Format(time.RFC1123))
+	}
+
+	if !changed {
+		return
+	}
+	m.saveOrLog("client auto-suspend")
+	for iface := range ifaces {
+		m.syncLiveConfig(iface)
 	}
 }
 
