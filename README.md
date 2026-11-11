@@ -295,11 +295,6 @@ panel as a network service, its users get the source of the version you run.
 Self-hosting, forking and selling support are all fine; closing your changes off
 from the people using them is not.
 
-The panel started as a fork of `mycelium-mesh/amneziawg-ui`, which is
-Apache-2.0. That text is kept in [LICENSE-APACHE](LICENSE-APACHE) with the
-notices it came with, and the combined work is distributed under the AGPL —
-which Apache-2.0 permits.
-
 ## Documentation
 
 Full description — the REST API, the reference of the AmneziaWG 3.1

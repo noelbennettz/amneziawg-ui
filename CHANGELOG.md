@@ -26,9 +26,7 @@
 
 - **The license is AGPL-3.0** (was Apache-2.0). The panel is a network service
   whose users should be able to get the source of the version they are talking
-  to. The Apache text the fork came from is kept in `LICENSE-APACHE`: Apache-2.0
-  permits distributing the combined work under the AGPL, and the notices travel
-  with it.
+  to, so section 13 is the point of the change rather than a formality.
 
 - **A write now has to prove it came from the panel.** The session cookie is an
   ambient credential: the browser attaches it to anything that asks, so a form
