@@ -7,12 +7,32 @@ import (
 	"amneziawg-web-ui/web-ui/api"
 )
 
-// TrafficSnapshot collects the peer counters of every server, plus the
-// host's own gauges, into the one response the page polls. A server's own
-// figure is the sum over its peers, so the card and the client rows below
-// it are read off the same counters and never disagree. Servers that are
-// down contribute nothing; the page keeps their last counters as they were.
+// trafficCacheTTL is how long one snapshot answers for. The panel polls every
+// five seconds per tab, and several tabs watch the same counters: sharing an
+// answer for a moment turns N tabs' worth of awg runs into one. The counters
+// are cumulative, so a snapshot a second or two old only shifts the rate graph
+// by that much - it cannot invent traffic that is not there.
+const trafficCacheTTL = 3 * time.Second
+
+// TrafficSnapshot returns the peer counters of every server, plus the host's
+// own gauges, from the cache when it is fresh enough.
 func (m *Manager) TrafficSnapshot() api.TrafficSnapshot {
+	m.trafficMu.Lock()
+	defer m.trafficMu.Unlock()
+
+	if !m.trafficAt.IsZero() && time.Since(m.trafficAt) < trafficCacheTTL {
+		return m.traffic
+	}
+
+	snapshot := m.collectTraffic()
+	m.traffic, m.trafficAt = snapshot, time.Now()
+	return snapshot
+}
+
+// collectTraffic walks every server and asks awg for its peers. Servers that
+// are down contribute nothing; the page keeps their last counters as they
+// were.
+func (m *Manager) collectTraffic() api.TrafficSnapshot {
 	servers := m.copyServers()
 
 	clientTraffic := map[string]map[string]api.ClientTraffic{}

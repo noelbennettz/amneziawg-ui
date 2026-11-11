@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"amneziawg-web-ui/internal/awg/awgtest"
 	"amneziawg-web-ui/web-ui/api"
 )
 
@@ -14,7 +15,10 @@ func TestTrafficSnapshotJoinsPeersWithClients(t *testing.T) {
 	quiet, _, _ := m.AddClient("s1", api.AddClientRequest{Name: "quiet"})
 
 	// A peer the interface knows but the panel does not (added by hand to
-	// the .conf) still counts towards the server's total.
+	// the .conf) still counts towards the server's total. The dump listing is
+	// asked for first and shares the prefix, so this test - which is about the
+	// three-listing fallback - refuses it.
+	run.Fail("/usr/bin/awg show wg-test-absent dump", awgtest.ErrNotInstalled)
 	run.Stub("/usr/bin/awg show wg-test-absent",
 		"interface: wg-test-absent\n\npeer: "+seen.ClientPublicKey+"\n  endpoint: 203.0.113.5:1\n\npeer: STRANGER\n")
 	run.Stub("/usr/bin/awg show wg-test-absent transfer",
@@ -106,5 +110,20 @@ func TestTrafficSnapshotCarriesSystemMetrics(t *testing.T) {
 	sys := m.TrafficSnapshot().System
 	if sys.CPU.Cores == 0 || sys.CPU.TotalSeconds == 0 || sys.Memory.Total == 0 {
 		t.Errorf("system metrics = %+v", sys)
+	}
+}
+
+// Two tabs asking within a few seconds get the same answer instead of each
+// running awg over every server: the counters are cumulative, so a snapshot a
+// second or two old only shifts the rate graph by that much.
+func TestTrafficSnapshotIsSharedForAMoment(t *testing.T) {
+	m, run := newTestManager(t)
+	run.Stub("/usr/bin/awg show wg-test-absent dump", "")
+
+	m.TrafficSnapshot()
+	m.TrafficSnapshot()
+
+	if len(run.Commands) != 1 {
+		t.Errorf("ran %d commands, want 1: %v", len(run.Commands), run.Commands)
 	}
 }

@@ -3,7 +3,9 @@ package awg_test
 import (
 	"encoding/base64"
 	"errors"
+	"strconv"
 	"testing"
+	"time"
 
 	"amneziawg-web-ui/internal/awg"
 	"amneziawg-web-ui/internal/awg/awgtest"
@@ -41,7 +43,11 @@ func TestParseShow(t *testing.T) {
 // The bytes come from the transfer listing, exact and for every peer, not
 // from the rounded "1.20 MiB" of the plain one.
 func TestShowPeersTakesBytesFromTheTransferListing(t *testing.T) {
+	// The dump listing is asked for first and the stub below shares its
+	// prefix, so it has to be refused explicitly for the fallback path to be
+	// the thing under test.
 	run := awgtest.New().
+		Fail("/usr/bin/awg show wg-up dump", awgtest.ErrNotInstalled).
 		Stub("/usr/bin/awg show wg-up", showOutput).
 		Stub("/usr/bin/awg show wg-up transfer", "PEER1\t1258291\t3565158\nPEER2\t0\t0\nbroken line\n")
 	tools := awg.New(run)
@@ -153,5 +159,53 @@ func TestQuickUpKeepsUntracedStderr(t *testing.T) {
 	err := awg.New(run).QuickUp("wg-1")
 	if want := "awg-quick up wg-1: exit status 1: awg-quick: `wg-1' already exists"; err == nil || err.Error() != want {
 		t.Fatalf("err = %q, want %q", err, want)
+	}
+}
+
+// The dump listing carries everything ShowPeers needs, so a poll costs one
+// awg process instead of three - each of which made the kernel dump the whole
+// peer table again.
+func TestShowPeersTakesTheDumpListingInOneCommand(t *testing.T) {
+	handshake := strconv.FormatInt(time.Now().Add(-63*time.Second).Unix(), 10)
+	run := awgtest.New().Stub("/usr/bin/awg show wg-up dump",
+		"PEER1\tPSK1\t203.0.113.5:51820\t10.0.0.2/32\t"+handshake+"\t1258291\t3565158\t25\n"+
+			"PEER2\tPSK2\t(none)\t10.0.0.3/32\t0\t0\t0\toff\n")
+
+	peers := awg.New(run).ShowPeers("wg-up")
+
+	if len(run.Commands) != 1 {
+		t.Errorf("ran %d commands, want 1: %v", len(run.Commands), run.Commands)
+	}
+	if p := peers["PEER1"]; p.RXBytes != 1258291 || p.TXBytes != 3565158 || p.Endpoint != "203.0.113.5:51820" {
+		t.Errorf("PEER1 = %+v", p)
+	}
+	// The age is worded the way the plain listing words it, from the
+	// timestamp the dump carries.
+	if got := peers["PEER1"].LastHandshake; got != "1 minute, 3 seconds ago" {
+		t.Errorf("PEER1 handshake = %q", got)
+	}
+	if !peers["PEER1"].HandshakeAt.After(time.Now().Add(-2 * time.Minute)) {
+		t.Errorf("PEER1 handshake time = %v", peers["PEER1"].HandshakeAt)
+	}
+	if p := peers["PEER2"]; p.Endpoint != "" || p.LastHandshake != "Never" || !p.HandshakeAt.IsZero() {
+		t.Errorf("PEER2 = %+v, want no endpoint and no handshake", p)
+	}
+}
+
+// The wording has to match awg's own, because the panel shows it verbatim.
+func TestFormatHandshakeAge(t *testing.T) {
+	cases := map[time.Duration]string{
+		0:                             "0 seconds ago",
+		time.Second:                   "1 second ago",
+		63 * time.Second:              "1 minute, 3 seconds ago",
+		2*time.Minute + 1*time.Second: "2 minutes, 1 second ago",
+		3*time.Hour + 4*time.Minute + 5*time.Second: "3 hours, 4 minutes, 5 seconds ago",
+		26 * time.Hour:       "1 day, 2 hours, 0 seconds ago",
+		400 * 24 * time.Hour: "1 year, 35 days, 0 seconds ago",
+	}
+	for age, want := range cases {
+		if got := awg.FormatHandshakeAge(age); got != want {
+			t.Errorf("FormatHandshakeAge(%v) = %q, want %q", age, got, want)
+		}
 	}
 }

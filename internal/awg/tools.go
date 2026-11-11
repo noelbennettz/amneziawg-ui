@@ -196,14 +196,20 @@ type PeerStats struct {
 	HandshakeAt             time.Time
 }
 
-// ShowPeers reads the peers of an interface, keyed by public key. The bytes
-// come from `awg show <iface> transfer` rather than the rounded figures of
-// the plain listing (or the interface counters of ifconfig, which count the
-// decrypted payload and so fall short of what the peers moved on the wire)
-// - the server card sums these same numbers, so it always agrees with its
-// client rows. A down interface yields nil.
+// ShowPeers reads the peers of an interface, keyed by public key.
+//
+// It asks for the dump format first: one call to awg that carries every figure
+// this needs, instead of three calls that each make the kernel dump the whole
+// peer table again. The panel polls this every few seconds for every open tab,
+// so the difference is three processes per server per poll against one. Older
+// amneziawg-tools without `dump` fall back to the three listings, unchanged.
 func (t *Tools) ShowPeers(iface string) map[string]PeerStats {
 	awg := filepath.Join(t.BinDir, "awg")
+
+	if dump, err := t.run.Run(fmt.Sprintf("%s show %s dump", awg, iface)); err == nil {
+		return ParsePeerDump(dump, time.Now())
+	}
+
 	output, err := t.run.Run(fmt.Sprintf("%s show %s", awg, iface))
 	if err != nil || output == "" {
 		return nil
@@ -223,6 +229,77 @@ func (t *Tools) ShowPeers(iface string) map[string]PeerStats {
 		}
 	}
 	return peers
+}
+
+// ParsePeerDump reads `awg show <iface> dump`, whose peer lines are
+//
+//	<pubkey> <psk> <endpoint> <allowed ips> <handshake> <rx> <tx> <keepalive>
+//
+// tab separated, with "(none)" for an endpoint or a handshake there is not.
+// The handshake is a unix timestamp here rather than the wording of the plain
+// listing, so its age is worded the way awg words it.
+func ParsePeerDump(output string, now time.Time) map[string]PeerStats {
+	peers := map[string]PeerStats{}
+	for _, line := range strings.Split(output, "\n") {
+		fields := strings.Split(line, "\t")
+		if len(fields) < 7 {
+			continue
+		}
+		rx, errRX := strconv.ParseUint(strings.TrimSpace(fields[5]), 10, 64)
+		tx, errTX := strconv.ParseUint(strings.TrimSpace(fields[6]), 10, 64)
+		if errRX != nil || errTX != nil {
+			continue
+		}
+		stats := PeerStats{RXBytes: rx, TXBytes: tx, LastHandshake: "Never"}
+		if endpoint := strings.TrimSpace(fields[2]); endpoint != "(none)" {
+			stats.Endpoint = endpoint
+		}
+		if sec, err := strconv.ParseInt(strings.TrimSpace(fields[4]), 10, 64); err == nil && sec > 0 {
+			stats.HandshakeAt = time.Unix(sec, 0)
+			stats.LastHandshake = FormatHandshakeAge(now.Sub(stats.HandshakeAt))
+		}
+		peers[strings.TrimSpace(fields[0])] = stats
+	}
+	return peers
+}
+
+// FormatHandshakeAge words an age the way `awg show` does: every non-zero unit
+// from years down, comma separated, always ending in seconds and " ago".
+func FormatHandshakeAge(age time.Duration) string {
+	seconds := int64(age / time.Second)
+	if seconds < 0 {
+		seconds = 0
+	}
+
+	units := []struct {
+		name    string
+		seconds int64
+	}{
+		{"year", 365 * 24 * 60 * 60},
+		{"day", 24 * 60 * 60},
+		{"hour", 60 * 60},
+		{"minute", 60},
+	}
+
+	var parts []string
+	for _, unit := range units {
+		if seconds < unit.seconds {
+			continue
+		}
+		n := seconds / unit.seconds
+		seconds %= unit.seconds
+		parts = append(parts, plural(n, unit.name))
+	}
+	parts = append(parts, plural(seconds, "second"))
+
+	return strings.Join(parts, ", ") + " ago"
+}
+
+func plural(n int64, unit string) string {
+	if n == 1 {
+		return "1 " + unit
+	}
+	return strconv.FormatInt(n, 10) + " " + unit + "s"
 }
 
 // ParseShow reads the output of `awg show`: who the peers are, where they
