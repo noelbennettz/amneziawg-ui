@@ -51,7 +51,7 @@ func main() {
 
 	// Off unless WEB_UI_AUDIT_LOG is set: the log names the addresses that
 	// reached the panel, and keeping that record is the operator's call.
-	auditLog := audit.New(settings.AuditLog, config.AuditFile)
+	auditLog := audit.New(settings.AuditLog, config.AuditFile, settings.AuditRetention)
 
 	// Everything except the health check and the login page is behind the
 	// login: the browser is sent to /login, which hands out a session cookie

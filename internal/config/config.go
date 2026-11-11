@@ -58,6 +58,10 @@ type Settings struct {
 	// the config volume, so it is the operator's decision.
 	AuditLog bool
 
+	// AuditRetention is how long an entry stays in that file. Default a day,
+	// ceiling a month, adjustable with WEB_UI_AUDIT_RETENTION_HOURS.
+	AuditRetention time.Duration
+
 	// AutoStart brings every server marked auto-start up when the backend
 	// boots, and is the default for new servers.
 	AutoStart bool
@@ -97,6 +101,7 @@ func FromEnv() Settings {
 		WebUIBind:            getenv("WEB_UI_BIND", ""),
 		SecureCookie:         secureMode(os.Getenv("WEB_UI_SECURE_COOKIE")),
 		AuditLog:             parseBool(os.Getenv("WEB_UI_AUDIT_LOG")),
+		AuditRetention:       auditRetention(os.Getenv("WEB_UI_AUDIT_RETENTION_HOURS")),
 		AutoStart:            strings.EqualFold(getenv("AUTO_START_SERVERS", "true"), "true"),
 		DefaultMTU:           atoiDefault(getenv("DEFAULT_MTU", ""), 1280),
 		DefaultSubnet:        getenv("DEFAULT_SUBNET", "10.0.0.0/24"),
@@ -158,6 +163,22 @@ func secureMode(s string) SecureMode {
 	default:
 		return SecureOff
 	}
+}
+
+// auditRetention reads WEB_UI_AUDIT_RETENTION_HOURS. A day by default, at least
+// an hour, at most a month: the log is a record of who reached the panel, and a
+// record that never ends is a liability.
+func auditRetention(s string) time.Duration {
+	const defaultHours, maxHours = 24, 720
+
+	hours := atoiDefault(s, defaultHours)
+	switch {
+	case hours < 1:
+		hours = 1
+	case hours > maxHours:
+		hours = maxHours
+	}
+	return time.Duration(hours) * time.Hour
 }
 
 // splitList parses a comma separated list, dropping blanks.

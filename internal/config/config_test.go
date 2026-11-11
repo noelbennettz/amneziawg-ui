@@ -3,6 +3,7 @@ package config
 import (
 	"slices"
 	"testing"
+	"time"
 )
 
 func TestFromEnvReadsTheDocumentedVariables(t *testing.T) {
@@ -44,6 +45,28 @@ func TestSecuritySettingsDefaultToOff(t *testing.T) {
 	}
 	if s.AuditLog {
 		t.Error("AuditLog is on by default")
+	}
+}
+
+// The audit log keeps a day of events by default, and the operator can widen
+// that to a month - no further.
+func TestAuditRetention(t *testing.T) {
+	if got := FromEnv().AuditRetention; got != 24*time.Hour {
+		t.Errorf("default retention = %v, want 24h", got)
+	}
+
+	for value, want := range map[string]time.Duration{
+		"6":    6 * time.Hour,
+		"720":  720 * time.Hour,
+		"0":    time.Hour,       // under the floor
+		"-5":   time.Hour,       // under the floor
+		"9999": 720 * time.Hour, // over the ceiling
+		"soon": 24 * time.Hour,  // not a number
+	} {
+		t.Setenv("WEB_UI_AUDIT_RETENTION_HOURS", value)
+		if got := FromEnv().AuditRetention; got != want {
+			t.Errorf("%s: retention = %v, want %v", value, got, want)
+		}
 	}
 }
 
