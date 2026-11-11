@@ -7,6 +7,7 @@ package browser
 
 import (
 	"encoding/base64"
+	"strings"
 	"syscall/js"
 )
 
@@ -19,6 +20,33 @@ import (
 // login page to each of them.
 func Origin() string {
 	return js.Global().Get("location").Get("origin").String()
+}
+
+// CSRFToken is the double-submit token the panel handed the browser in a
+// cookie. The page is the only place it can be read - a cookie another site
+// cannot read is one another site cannot echo - so every write sends it back
+// in a header the server compares against that cookie.
+func CSRFToken() string {
+	const name = "awg_csrf"
+	for _, part := range strings.Split(js.Global().Get("document").Get("cookie").String(), ";") {
+		key, value, ok := strings.Cut(strings.TrimSpace(part), "=")
+		if ok && key == name {
+			return value
+		}
+	}
+	return ""
+}
+
+// CSPNonce is the nonce the loader page carries, for the script the wasm
+// bundle injects once it starts. A policy that allows exactly one inline
+// script needs the injected one to be named as well, and the page is where
+// both sides agree on the value.
+func CSPNonce() string {
+	meta := js.Global().Get("document").Call("querySelector", `meta[name="csp-nonce"]`)
+	if !meta.Truthy() {
+		return ""
+	}
+	return meta.Call("getAttribute", "content").String()
 }
 
 // OpenURL asks the browser to follow a link in a new tab. Used for the

@@ -30,3 +30,43 @@ func TestFromEnvFallsBackOnGarbage(t *testing.T) {
 		t.Errorf("Settings = %+v", s)
 	}
 }
+
+// The three security settings are off unless asked for: the panel binds every
+// address, leaves the Secure flag to the request, and keeps no audit log.
+func TestSecuritySettingsDefaultToOff(t *testing.T) {
+	s := FromEnv()
+
+	if s.WebUIBind != "" {
+		t.Errorf("WebUIBind = %q, want empty (every address)", s.WebUIBind)
+	}
+	if s.SecureCookie != SecureAuto {
+		t.Errorf("SecureCookie = %v, want auto", s.SecureCookie)
+	}
+	if s.AuditLog {
+		t.Error("AuditLog is on by default")
+	}
+}
+
+func TestSecuritySettingsFromTheEnvironment(t *testing.T) {
+	t.Setenv("WEB_UI_BIND", "127.0.0.1")
+	t.Setenv("WEB_UI_SECURE_COOKIE", "true")
+	t.Setenv("WEB_UI_AUDIT_LOG", "1")
+
+	s := FromEnv()
+	if s.WebUIBind != "127.0.0.1" || s.SecureCookie != SecureOn || !s.AuditLog {
+		t.Errorf("Settings = %+v", s)
+	}
+
+	// An explicit false is not the same as unset: it pins the flag off even
+	// when a proxy reports https.
+	t.Setenv("WEB_UI_SECURE_COOKIE", "false")
+	if got := FromEnv().SecureCookie; got != SecureOff {
+		t.Errorf("SecureCookie = %v, want off", got)
+	}
+
+	// Anything that is not a boolean leaves the decision to the request.
+	t.Setenv("WEB_UI_SECURE_COOKIE", "sometimes")
+	if got := FromEnv().SecureCookie; got != SecureAuto {
+		t.Errorf("SecureCookie = %v, want auto", got)
+	}
+}

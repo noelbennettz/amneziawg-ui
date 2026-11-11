@@ -30,12 +30,31 @@ type Assets struct {
 	// loader is the page served for "/" and "/index.html": the packaged one,
 	// repainted. Nil when the tree has no index.html at all.
 	loader []byte
+	// nonce is what the loader page carries when it could be prepared for a
+	// strict CSP, and empty when it could not - see Nonce.
+	nonce string
 }
 
 // Open indexes the directory. A tree without any .gz - a development build -
 // simply has nothing packed, and every asset takes the ordinary static path.
-func Open(files fs.FS) *Assets {
-	return &Assets{files: files, packed: packedAssets(files, "."), loader: loaderPage(files)}
+//
+// nonce is the script nonce the loader page is rewritten around. An empty one
+// leaves the page exactly as packaged.
+func Open(files fs.FS, nonce string) *Assets {
+	page, ready := loaderPage(files, nonce)
+	a := &Assets{files: files, packed: packedAssets(files, "."), loader: page}
+	if ready {
+		a.nonce = nonce
+	}
+	return a
+}
+
+// Nonce is what the security headers have to name in the page's policy, or
+// empty when the packaged loader no longer has the markers the rewrite needs.
+// The headers then fall back to allowing inline scripts rather than breaking a
+// page they cannot see into.
+func (a *Assets) Nonce() string {
+	return a.nonce
 }
 
 // Compression is the compress middleware configured for these assets. The
@@ -87,38 +106,92 @@ const (
 
 // loaderPage reads the packaged index.html, or nil when the tree has none - a
 // test fixture, or a bundle that was not built yet; the static handler then
-// answers the request with whatever the tree does have.
-func loaderPage(files fs.FS) []byte {
-	page, err := fs.ReadFile(files, "index.html")
+// answers the request with whatever the tree does have. ready reports whether
+// the page came back prepared for a policy that allows no inline script but
+// its own.
+func loaderPage(files fs.FS, nonce string) (page []byte, ready bool) {
+	raw, err := fs.ReadFile(files, "index.html")
 	if err != nil {
-		return nil
+		return nil, false
 	}
-	return darkLoader(page)
+	return darkLoader(raw, nonce)
 }
 
 // darkLoader pins the loading screen to the dark variant and to the page colour
-// of everything around it.
+// of everything around it, and - when a nonce is given - turns the page into
+// one that runs under the panel's CSP.
 //
 // The palette of the panel is decided inside the wasm bundle, which has not
 // started yet while this page is on screen, so nothing in the bundle can be
 // asked to recolour it - the page has to be served that way. A page without the
 // markers (a loader from a future "fyne package") is returned untouched rather
 // than broken by a rewrite that no longer applies.
-func darkLoader(page []byte) []byte {
+func darkLoader(page []byte, nonce string) ([]byte, bool) {
 	if !bytes.Contains(page, []byte(darkMedia)) || !bytes.Contains(page, []byte(lightMedia)) {
-		return page
+		return page, false
 	}
 
 	pinned := bytes.ReplaceAll(page, []byte(darkMedia), []byte(anyMedia))
 	pinned = bytes.ReplaceAll(pinned, []byte(lightMedia), []byte(noMedia))
 
+	ready := false
+	if nonce != "" {
+		pinned, ready = nonceLoader(pinned, nonce)
+	}
+
 	// Last rule in the head: the dark stylesheet sets the body to its own
 	// #141415, and the injection has to win that tie on specificity.
-	style := []byte(`<style>html{background:` + loaderBackground + `;color-scheme:dark}body{background:` + loaderBackground + `}</style>`)
-	if at := bytes.Index(pinned, []byte("</head>")); at >= 0 {
-		pinned = append(pinned[:at:at], append(style, pinned[at:]...)...)
+	injected := `<style>html{background:` + loaderBackground + `;color-scheme:dark}body{background:` + loaderBackground + `}</style>`
+	if ready {
+		// The wasm bundle injects a <script> of its own once it starts (the
+		// phone input and drag handling); it reads this to give that script
+		// the nonce the policy names.
+		injected = `<meta name="csp-nonce" content="` + nonce + `">` + injected
 	}
-	return pinned
+	if at := bytes.Index(pinned, []byte("</head>")); at >= 0 {
+		pinned = append(pinned[:at:at], append([]byte(injected), pinned[at:]...)...)
+	}
+	return pinned, ready
+}
+
+// nonceLoader makes the packaged loader run under a policy that allows exactly
+// one inline script: the page's own.
+//
+// "fyne package" writes the startup code into an inline <script> and calls it
+// from an onload attribute; CSP allows neither without help, and an attribute
+// cannot be rescued by a nonce at all. So the attribute comes out - the call
+// moves into the script as a load listener - and the element gets the nonce the
+// panel's policy names.
+func nonceLoader(page []byte, nonce string) ([]byte, bool) {
+	const (
+		openTag  = "<script>"
+		closeTag = "</script>"
+		onload   = ` onload="download_application()"`
+	)
+	if !bytes.Contains(page, []byte(onload)) {
+		return page, false
+	}
+
+	open := bytes.Index(page, []byte(openTag))
+	if open < 0 {
+		return page, false
+	}
+	body := open + len(openTag)
+	closing := bytes.Index(page[body:], []byte(closeTag))
+	if closing < 0 {
+		return page, false
+	}
+	closing += body
+
+	code := append([]byte("\nwindow.addEventListener('load', download_application);\n"), page[body:closing]...)
+
+	out := make([]byte, 0, len(page)+len(nonce)+len(code))
+	out = append(out, page[:open]...)
+	out = append(out, `<script nonce="`+nonce+`">`...)
+	out = append(out, code...)
+	out = append(out, page[closing:]...)
+
+	return bytes.Replace(out, []byte(onload), nil, 1), true
 }
 
 // sendLoader answers / and /index.html with that page. It goes before the

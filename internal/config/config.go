@@ -17,7 +17,26 @@ const (
 	ConfigDir          = "/etc/amnezia"
 	WireguardConfigDir = "/etc/amnezia/amneziawg"
 	ConfigFile         = "/etc/amnezia/web_config.json"
-	LogDir             = "/var/log/amnezia"
+	// AuditFile is where the security log is appended when it is switched on.
+	// It lives on the same volume as the config, so it survives a restart of
+	// the container and is the operator's to read.
+	AuditFile = "/etc/amnezia/audit.log"
+	LogDir    = "/var/log/amnezia"
+)
+
+// SecureMode is how the Secure flag on the cookies is decided.
+type SecureMode int
+
+const (
+	// SecureAuto marks a cookie Secure when the request itself arrived over
+	// TLS, or when a proxy in front of the panel said it did.
+	SecureAuto SecureMode = iota
+	// SecureOn marks every cookie Secure. Behind a TLS proxy the container
+	// sees plain HTTP, so this is the setting that matches reality.
+	SecureOn
+	// SecureOff never marks a cookie Secure, for a deployment on plain HTTP
+	// where a Secure cookie would be dropped by the browser.
+	SecureOff
 )
 
 // Settings are the environment-driven defaults, resolved once at startup.
@@ -25,6 +44,19 @@ type Settings struct {
 	// WebUIPort is the TCP port the panel listens on. It is also reserved
 	// against server ports: see Manager.CreateServer.
 	WebUIPort int
+
+	// WebUIBind is the address the panel binds. Empty means every address on
+	// both stacks; "127.0.0.1" is what a deployment behind a reverse proxy
+	// and a published port wants.
+	WebUIBind string
+
+	// SecureCookie is the policy for the Secure flag on the panel's cookies.
+	SecureCookie SecureMode
+
+	// AuditLog appends login, logout and every change made through the API
+	// to AuditFile. Off by default: it writes personal data (addresses) to
+	// the config volume, so it is the operator's decision.
+	AuditLog bool
 
 	// AutoStart brings every server marked auto-start up when the backend
 	// boots, and is the default for new servers.
@@ -62,6 +94,9 @@ type Settings struct {
 func FromEnv() Settings {
 	s := Settings{
 		WebUIPort:            atoiDefault(getenv("WEB_UI_PORT", ""), 54845),
+		WebUIBind:            getenv("WEB_UI_BIND", ""),
+		SecureCookie:         secureMode(os.Getenv("WEB_UI_SECURE_COOKIE")),
+		AuditLog:             parseBool(os.Getenv("WEB_UI_AUDIT_LOG")),
 		AutoStart:            strings.EqualFold(getenv("AUTO_START_SERVERS", "true"), "true"),
 		DefaultMTU:           atoiDefault(getenv("DEFAULT_MTU", ""), 1280),
 		DefaultSubnet:        getenv("DEFAULT_SUBNET", "10.0.0.0/24"),
@@ -108,6 +143,21 @@ func atoiDefault(s string, def int) int {
 func parseBool(s string) bool {
 	enabled, err := strconv.ParseBool(s)
 	return err == nil && enabled
+}
+
+// secureMode reads WEB_UI_SECURE_COOKIE: an explicit true or false pins the
+// Secure flag, anything else - unset above all - leaves the decision to the
+// request.
+func secureMode(s string) SecureMode {
+	enabled, err := strconv.ParseBool(s)
+	switch {
+	case err != nil:
+		return SecureAuto
+	case enabled:
+		return SecureOn
+	default:
+		return SecureOff
+	}
 }
 
 // splitList parses a comma separated list, dropping blanks.

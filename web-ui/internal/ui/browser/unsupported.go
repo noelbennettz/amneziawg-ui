@@ -19,6 +19,14 @@ func Origin() string {
 	panic(unsupportedPlatform)
 }
 
+func CSRFToken() string {
+	panic(unsupportedPlatform)
+}
+
+func CSPNonce() string {
+	panic(unsupportedPlatform)
+}
+
 func OpenURL(string) {
 	panic(unsupportedPlatform)
 }

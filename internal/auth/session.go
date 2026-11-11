@@ -78,11 +78,16 @@ func (a *Auth) setSession(c fiber.Ctx) {
 		// the server let go of the session at the same moment.
 		Expires:  now.Add(SessionTTL),
 		HTTPOnly: true,
-		// Secure only where the connection is encrypted. The panel is
-		// normally reached over plain HTTP with a TLS proxy in front of it,
-		// and a Secure cookie there is one the browser silently drops.
-		Secure:   c.Secure(),
-		SameSite: fiber.CookieSameSiteLaxMode,
+		// Secure follows WEB_UI_SECURE_COOKIE and, when that is left alone,
+		// the request: the panel is normally reached over plain HTTP with a
+		// TLS proxy in front of it, and a Secure cookie there is one the
+		// browser silently drops.
+		Secure: a.cookieSecure(c),
+		// Strict: no other site gets to send this cookie, not even by
+		// navigating the browser here. The cost is a redirect through
+		// /login when someone follows a link from elsewhere, which the
+		// login page turns straight back around.
+		SameSite: fiber.CookieSameSiteStrictMode,
 	})
 }
 
@@ -95,7 +100,7 @@ func (a *Auth) clearSession(c fiber.Ctx) {
 		MaxAge:   -1,
 		Expires:  time.Unix(0, 0),
 		HTTPOnly: true,
-		Secure:   c.Secure(),
-		SameSite: fiber.CookieSameSiteLaxMode,
+		Secure:   a.cookieSecure(c),
+		SameSite: fiber.CookieSameSiteStrictMode,
 	})
 }

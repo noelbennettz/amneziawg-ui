@@ -8,11 +8,16 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/gofiber/fiber/v3"
+
+	"amneziawg-web-ui/internal/audit"
+	"amneziawg-web-ui/internal/config"
 )
 
 // The defaults the image ships and the e2e suite logs in with.
@@ -148,16 +153,23 @@ func TestSafeNext(t *testing.T) {
 
 // newTestApp is the panel as main.go wires it, minus the manager and the
 // assets: the guard in front of one page, one API route and the health check.
-func newTestApp(t *testing.T) *fiber.App {
+// The options are what a test varies - the cookie policy and the audit log.
+func newTestApp(t *testing.T, opts ...Option) *fiber.App {
 	t.Helper()
 
-	guard := newTestAuth()
+	guard := New(testUser, testHash, opts...)
+	guard.now = func() time.Time { return time.Unix(testNow, 0) }
 	app := fiber.New(fiber.Config{Immutable: true})
 	app.Use(guard.Middleware())
+	app.Use(guard.CSRF())
+	app.Use(audit.Middleware(guard.audit))
 	app.Get(StatusPath, func(c fiber.Ctx) error { return c.SendString("uptime") })
 	app.Get("/", func(c fiber.Ctx) error { return c.SendString("<html>panel</html>") })
 	app.Get("/api/system/status", func(c fiber.Ctx) error {
 		return c.JSON(map[string]string{"ok": "yes"})
+	})
+	app.Post("/api/servers", func(c fiber.Ctx) error {
+		return c.JSON(map[string]string{"created": "yes"})
 	})
 	guard.Register(app)
 
@@ -191,14 +203,77 @@ func get(t *testing.T, app *fiber.App, path string, cookie *http.Cookie, header 
 	return do(t, app, req)
 }
 
-// login posts the form and returns the response.
+// csrfToken loads the login page and returns the double-submit token it hands
+// out, along with the cookie that holds it.
+func csrfToken(t *testing.T, app *fiber.App) (string, *http.Cookie) {
+	t.Helper()
+
+	resp := get(t, app, LoginPath, nil, nil)
+	for _, cookie := range resp.Cookies() {
+		if cookie.Name == CSRFCookieName && cookie.Value != "" {
+			return cookie.Value, cookie
+		}
+	}
+	t.Fatal("the login page sets no CSRF cookie")
+	return "", nil
+}
+
+// login posts the form the way the browser would: with the token the page gave
+// it, in the body and in the cookie.
 func login(t *testing.T, app *fiber.App, user, password, next string) *http.Response {
 	t.Helper()
 
-	form := url.Values{"username": {user}, "password": {password}, "next": {next}}
+	token, cookie := csrfToken(t, app)
+	return postLogin(t, app, user, password, next, token, cookie)
+}
+
+// postLogin posts the form with the token and cookie given, so a test can leave
+// one of them out.
+func postLogin(t *testing.T, app *fiber.App, user, password, next, token string, cookie *http.Cookie) *http.Response {
+	t.Helper()
+
+	form := url.Values{"username": {user}, "password": {password}, "next": {next}, "csrf": {token}}
 	req := httptest.NewRequest(http.MethodPost, LoginPath, strings.NewReader(form.Encode()))
 	req.Header.Set(fiber.HeaderContentType, fiber.MIMEApplicationForm)
+	if cookie != nil {
+		req.AddCookie(cookie)
+	}
 	return do(t, app, req)
+}
+
+// write posts to the API with the cookies and headers given.
+func write(t *testing.T, app *fiber.App, cookies []*http.Cookie, header map[string]string) *http.Response {
+	t.Helper()
+
+	req := httptest.NewRequest(http.MethodPost, "/api/servers", nil)
+	for _, cookie := range cookies {
+		req.AddCookie(cookie)
+	}
+	for k, v := range header {
+		req.Header.Set(k, v)
+	}
+	return do(t, app, req)
+}
+
+// loginCookies logs in and returns the session and the rotated CSRF cookie: the
+// pair a browser holds once it is past the form.
+func loginCookies(t *testing.T, app *fiber.App) (*http.Cookie, *http.Cookie) {
+	t.Helper()
+
+	resp := login(t, app, testUser, testPassword, "/")
+	var session, csrf *http.Cookie
+	for _, cookie := range resp.Cookies() {
+		switch {
+		case cookie.Name == CookieName && cookie.Value != "":
+			session = cookie
+		case cookie.Name == CSRFCookieName && cookie.Value != "":
+			csrf = cookie
+		}
+	}
+	if session == nil || csrf == nil {
+		t.Fatalf("a successful login set session=%v csrf=%v", session, csrf)
+	}
+	return session, csrf
 }
 
 // sessionCookie returns the session cookie a response sets, if any.
@@ -306,8 +381,8 @@ func TestLoginSetsTheSession(t *testing.T) {
 	if !cookie.HttpOnly {
 		t.Error("the session cookie is not HttpOnly")
 	}
-	if cookie.SameSite != http.SameSiteLaxMode {
-		t.Errorf("SameSite = %v, want Lax", cookie.SameSite)
+	if cookie.SameSite != http.SameSiteStrictMode {
+		t.Errorf("SameSite = %v, want Strict", cookie.SameSite)
 	}
 	if cookie.Path != "/" {
 		t.Errorf("Path = %q, want /", cookie.Path)
@@ -413,5 +488,232 @@ func TestBasicAuthStillWorksForScripts(t *testing.T) {
 		fiber.HeaderAuthorization: "Basic !!!",
 	}); resp.StatusCode != fiber.StatusUnauthorized {
 		t.Errorf("a malformed Authorization header = %d, want 401", resp.StatusCode)
+	}
+}
+
+// The session cookie is attached to anything that asks, which is what a write
+// forged on another site relies on. The token in the second cookie is what an
+// attacker's page can cause to be sent but not read, so a write without it is
+// not the panel's.
+func TestWriteNeedsTheToken(t *testing.T) {
+	app := newTestApp(t)
+	session, csrf := loginCookies(t, app)
+
+	if resp := write(t, app, []*http.Cookie{session}, nil); resp.StatusCode != fiber.StatusForbidden {
+		t.Errorf("a write with the session and no token = %d, want 403", resp.StatusCode)
+	}
+
+	// A token that is not the one in the cookie is no better than none.
+	resp := write(t, app, []*http.Cookie{session, csrf}, map[string]string{CSRFHeader: "not-the-token"})
+	if resp.StatusCode != fiber.StatusForbidden {
+		t.Errorf("a write with a forged token = %d, want 403", resp.StatusCode)
+	}
+
+	// A token with no session is a request from nowhere: it is answered as
+	// one, before the token is even looked at.
+	resp = write(t, app, nil, map[string]string{CSRFHeader: csrf.Value})
+	if resp.StatusCode != fiber.StatusUnauthorized {
+		t.Errorf("a write with a token and no session = %d, want 401", resp.StatusCode)
+	}
+
+	resp = write(t, app, []*http.Cookie{session, csrf}, map[string]string{CSRFHeader: csrf.Value})
+	if resp.StatusCode != fiber.StatusOK {
+		t.Errorf("a write with the right token = %d, want 200", resp.StatusCode)
+	}
+}
+
+// A request that proves itself with an Authorization header is not ambient: no
+// browser attaches one on its own, so "curl -u" keeps working without a token.
+func TestWriteWithBasicAuthNeedsNoToken(t *testing.T) {
+	app := newTestApp(t)
+
+	header := map[string]string{
+		fiber.HeaderAuthorization: "Basic " + base64Std(testUser+":"+testPassword),
+	}
+	if resp := write(t, app, nil, header); resp.StatusCode != http.StatusOK {
+		t.Errorf("a write with basic auth = %d, want 200", resp.StatusCode)
+	}
+}
+
+// A form posted from somewhere else carries no token and no cookie, and must
+// not log anybody in: that is the whole of login CSRF.
+func TestLoginFormNeedsTheToken(t *testing.T) {
+	app := newTestApp(t)
+
+	token, cookie := csrfToken(t, app)
+
+	cases := map[string]struct {
+		token  string
+		cookie *http.Cookie
+	}{
+		"no token":         {"", cookie},
+		"wrong token":      {"not-the-token", cookie},
+		"token, no cookie": {token, nil},
+		"wrong cookie":     {token, &http.Cookie{Name: CSRFCookieName, Value: "other"}},
+	}
+
+	for name, tc := range cases {
+		resp := postLogin(t, app, testUser, testPassword, "/", tc.token, tc.cookie)
+		if resp.StatusCode != fiber.StatusSeeOther {
+			t.Errorf("%s: POST /login = %d, want 303", name, resp.StatusCode)
+		}
+		if cookie := sessionCookie(resp); cookie != nil {
+			t.Errorf("%s: a form without a valid token set a session", name)
+		}
+	}
+
+	// The form the page handed out does work, token and cookie together.
+	if resp := postLogin(t, app, testUser, testPassword, "/", token, cookie); sessionCookie(resp) == nil {
+		t.Error("the form the page handed out does not log in")
+	}
+}
+
+// The token is replaced when the session starts: a value that was handed out
+// before the login had a chance to be fixed.
+func TestLoginRotatesTheToken(t *testing.T) {
+	app := newTestApp(t)
+
+	before, _ := csrfToken(t, app)
+	resp := login(t, app, testUser, testPassword, "/")
+
+	for _, cookie := range resp.Cookies() {
+		if cookie.Name == CSRFCookieName {
+			if cookie.Value == "" || cookie.Value == before {
+				t.Errorf("the CSRF token was not rotated: %q", cookie.Value)
+			}
+			return
+		}
+	}
+	t.Error("a successful login set no CSRF cookie")
+}
+
+// The token cookie is meant to be read by the page - that is the whole
+// mechanism - and it is not a credential on its own.
+func TestCSRFCookieIsReadableByThePage(t *testing.T) {
+	app := newTestApp(t)
+
+	resp := get(t, app, LoginPath, nil, nil)
+	for _, cookie := range resp.Cookies() {
+		if cookie.Name != CSRFCookieName {
+			continue
+		}
+		if cookie.HttpOnly {
+			t.Error("the CSRF cookie is HttpOnly: the page cannot echo what it cannot read")
+		}
+		if cookie.SameSite != http.SameSiteLaxMode {
+			t.Errorf("SameSite = %v, want Lax", cookie.SameSite)
+		}
+		return
+	}
+	t.Fatal("no CSRF cookie")
+}
+
+// Secure is off by default behind a TLS proxy, which is why it has to be
+// possible to force it on - and off again for a deployment on plain HTTP.
+func TestSecureCookiePolicy(t *testing.T) {
+	t.Run("forced on", func(t *testing.T) {
+		app := newTestApp(t, WithSecureCookies(config.SecureOn))
+
+		session, csrf := loginCookies(t, app)
+		if !csrf.Secure {
+			t.Error("the CSRF cookie is not Secure")
+		}
+		if !session.Secure {
+			t.Error("the session cookie is not Secure")
+		}
+	})
+
+	t.Run("auto reads X-Forwarded-Proto", func(t *testing.T) {
+		app := newTestApp(t, WithSecureCookies(config.SecureAuto))
+
+		req := httptest.NewRequest(http.MethodGet, LoginPath, nil)
+		req.Header.Set(fiber.HeaderXForwardedProto, "https")
+		resp := do(t, app, req)
+
+		var seen bool
+		for _, cookie := range resp.Cookies() {
+			if cookie.Name == CSRFCookieName {
+				seen = true
+				if !cookie.Secure {
+					t.Error("a request a proxy reported as https set a cookie without Secure")
+				}
+			}
+		}
+		if !seen {
+			t.Fatal("no CSRF cookie")
+		}
+	})
+
+	t.Run("forced off", func(t *testing.T) {
+		app := newTestApp(t, WithSecureCookies(config.SecureOff))
+
+		req := httptest.NewRequest(http.MethodGet, LoginPath, nil)
+		req.Header.Set(fiber.HeaderXForwardedProto, "https")
+		resp := do(t, app, req)
+
+		for _, cookie := range resp.Cookies() {
+			if cookie.Name == CSRFCookieName && cookie.Secure {
+				t.Error("Secure was pinned off and the cookie is still Secure")
+			}
+		}
+	})
+}
+
+// With auditing on, a login, a rejected login and a change each leave a line
+// behind - and a read does not, because a panel polls every 30 seconds.
+func TestAuditRecordsLoginsAndChanges(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "audit.log")
+
+	app := newTestApp(t, WithAudit(audit.New(true, path)))
+
+	login(t, app, testUser, "wrong", "/")
+	postLogin(t, app, testUser, testPassword, "/", "", nil) // rejected: no token
+	session, csrf := loginCookies(t, app)
+	write(t, app, []*http.Cookie{session, csrf}, map[string]string{CSRFHeader: csrf.Value})
+	get(t, app, "/api/system/status", session, nil)
+	get(t, app, LogoutPath, session, nil)
+
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("no audit log: %v", err)
+	}
+
+	counts := map[string]int{}
+	for _, line := range strings.Split(strings.TrimSpace(string(raw)), "\n") {
+		var event audit.Event
+		if err := json.Unmarshal([]byte(line), &event); err != nil {
+			t.Fatalf("audit line %q is not JSON: %v", line, err)
+		}
+		if event.IP == "" {
+			t.Errorf("%s: no address recorded", event.Event)
+		}
+		if event.Time.IsZero() {
+			t.Errorf("%s: no time recorded", event.Event)
+		}
+		counts[event.Event]++
+	}
+
+	for event, want := range map[string]int{
+		audit.EventLoginFailed:  1,
+		audit.EventCSRFRejected: 1,
+		audit.EventLogin:        1,
+		audit.EventChange:       1,
+		audit.EventLogout:       1,
+	} {
+		if counts[event] != want {
+			t.Errorf("%s: recorded %d times, want %d (all: %v)", event, counts[event], want, counts)
+		}
+	}
+}
+
+// Off is the default, and off has to cost nothing: a nil log takes every
+// Record and does not create a file.
+func TestAuditIsOffByDefault(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "audit.log")
+	app := newTestApp(t, WithAudit(audit.New(false, path)))
+
+	loginCookies(t, app)
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Errorf("a disabled audit log created %s", path)
 	}
 }

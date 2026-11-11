@@ -58,6 +58,11 @@ func (b *Client) do(method, path string, body, out any) error {
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
+	// A write carries the double-submit token: the session cookie alone is
+	// an ambient credential, and the browser sends it to anything that asks.
+	if method != http.MethodGet && method != http.MethodHead {
+		req.Header.Set("X-CSRF-Token", browser.CSRFToken())
+	}
 
 	resp, err := b.http.Do(req)
 	if err != nil {

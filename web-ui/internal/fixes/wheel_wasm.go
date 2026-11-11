@@ -2,7 +2,11 @@
 
 package fixes
 
-import "syscall/js"
+import (
+	"syscall/js"
+
+	"amneziawg-web-ui/web-ui/internal/ui/browser"
+)
 
 // wheelScript is the page-side half of installWheelInput.
 //
@@ -142,5 +146,10 @@ func installWheelInput() {
 	document := js.Global().Get("document")
 	script := document.Call("createElement", "script")
 	script.Set("textContent", wheelScript)
+	// The page's policy allows one inline script by nonce; this is another
+	// one, so it has to carry the value the server put in the markup.
+	if nonce := browser.CSPNonce(); nonce != "" {
+		script.Set("nonce", nonce)
+	}
 	document.Get("head").Call("appendChild", script)
 }

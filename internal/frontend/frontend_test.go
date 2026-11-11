@@ -31,7 +31,7 @@ func newApp(t *testing.T) *fiber.App {
 		"bundle.wasm.gz": {Data: gzipped(t, "\x00asm")},
 	}
 	app := fiber.New()
-	assets := Open(files)
+	assets := Open(files, "")
 	app.Use(assets.Compression())
 	assets.Mount(app)
 	return app
@@ -141,7 +141,7 @@ func newLoaderApp(t *testing.T) *fiber.App {
 		"index.html": {Data: []byte(loaderFixture)},
 		"dark.css":   {Data: []byte("body { background-color: #141415; }")},
 		"light.css":  {Data: []byte("body { background-color: white; }")},
-	})
+	}, "")
 	assets.Mount(app)
 	return app
 }
@@ -191,5 +191,83 @@ func TestLoaderWithoutTheMarkersIsServedUntouched(t *testing.T) {
 		if resp.StatusCode != 200 || string(body) != "<html>loader</html>" {
 			t.Errorf("%s: %d %q", path, resp.StatusCode, body)
 		}
+	}
+}
+
+// scriptedLoader is the packaged page as far as the policy is concerned: the
+// two stylesheets that are pinned, an inline <script> holding the startup code,
+// and the onload attribute that calls it.
+const scriptedLoader = `<!DOCTYPE html>
+<html>
+	<head>
+		<link rel="stylesheet" href="dark.css" media="(prefers-color-scheme: dark)" />
+		<link rel="stylesheet" href="light.css" media="(prefers-color-scheme: light)" />
+		<script>
+			function download_application() {
+				async_load("wasm_exec.js", function () {});
+			}
+		</script>
+	</head>
+	<body scroll="no" style="overflow: hidden" onload="download_application()">
+	</body>
+</html>
+`
+
+// The page runs under a policy that allows one inline script by nonce, so the
+// packaged startup code has to be named by that nonce - and the call the page
+// used to make from an onload attribute has to come from inside it, because CSP
+// has no way to allow an attribute.
+func TestLoaderIsPreparedForTheNoncePolicy(t *testing.T) {
+	const nonce = "dGVzdC1ub25jZQ"
+
+	app := fiber.New()
+	assets := Open(fstest.MapFS{
+		"index.html": {Data: []byte(scriptedLoader)},
+		"dark.css":   {Data: []byte("body { color: white; }")},
+		"light.css":  {Data: []byte("body { color: black; }")},
+	}, nonce)
+	assets.Mount(app)
+
+	if got := assets.Nonce(); got != nonce {
+		t.Fatalf("Nonce() = %q, want %q", got, nonce)
+	}
+
+	resp := get(t, app, "/", nil)
+	raw, _ := io.ReadAll(resp.Body)
+	body := string(raw)
+
+	for _, want := range []string{
+		`<script nonce="` + nonce + `">`,
+		`<meta name="csp-nonce" content="` + nonce + `">`,
+		`window.addEventListener('load', download_application);`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("the served page does not contain %q:\n%s", want, body)
+		}
+	}
+	if strings.Contains(body, "onload=") {
+		t.Errorf("the page still calls its script from an onload attribute:\n%s", body)
+	}
+}
+
+// A page whose packaged script no longer sits where the rewrite expects it is
+// not claimed as ready: the policy then has to fall back to allowing inline
+// scripts, or the panel would not start at all.
+func TestLoaderWithoutTheScriptIsNotClaimedAsReady(t *testing.T) {
+	app := fiber.New()
+	assets := Open(fstest.MapFS{
+		"index.html": {Data: []byte(loaderFixture)},
+		"dark.css":   {Data: []byte("body { color: white; }")},
+		"light.css":  {Data: []byte("body { color: black; }")},
+	}, "dGVzdC1ub25jZQ")
+	assets.Mount(app)
+
+	if got := assets.Nonce(); got != "" {
+		t.Errorf("Nonce() = %q, want empty", got)
+	}
+	resp := get(t, app, "/", nil)
+	raw, _ := io.ReadAll(resp.Body)
+	if strings.Contains(string(raw), "csp-nonce") {
+		t.Errorf("a page that was not prepared still names a nonce:\n%s", raw)
 	}
 }

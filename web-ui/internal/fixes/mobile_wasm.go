@@ -4,6 +4,8 @@ package fixes
 
 import (
 	"syscall/js"
+
+	"amneziawg-web-ui/web-ui/internal/ui/browser"
 )
 
 // installViewport makes the page use the phone's own width.
@@ -102,6 +104,12 @@ func installTouchInput() {
 	document := js.Global().Get("document")
 	script := document.Call("createElement", "script")
 	script.Set("textContent", touchScript)
+	// The page is served under a policy that allows one inline script by
+	// nonce, and this is the second one. The value is the server's, put in
+	// the loader page's markup for exactly this.
+	if nonce := browser.CSPNonce(); nonce != "" {
+		script.Set("nonce", nonce)
+	}
 	document.Get("head").Call("appendChild", script)
 
 	go followFocus()

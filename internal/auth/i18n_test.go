@@ -75,12 +75,15 @@ func TestLoginPageSpeaksTheBrowsersLanguage(t *testing.T) {
 
 	// A wrong pair re-renders the form: the error has to be translated too,
 	// which is the whole reason the wording is picked per request.
+	token, cookie := csrfToken(t, app)
 	req := httptest.NewRequest(http.MethodPost, LoginPath, strings.NewReader(url.Values{
 		"username": {"admin"},
 		"password": {"wrong"},
+		"csrf":     {token},
 	}.Encode()))
 	req.Header.Set(fiber.HeaderContentType, fiber.MIMEApplicationForm)
 	req.Header.Set("Accept-Language", "zh-TW")
+	req.AddCookie(cookie)
 	html := body(t, do(t, app, req))
 	if !strings.Contains(html, "使用者名稱或密碼不正確。") {
 		t.Error("the 401 does not carry the translated error")
