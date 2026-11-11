@@ -15,6 +15,7 @@ import (
 	"amneziawg-web-ui/internal/publicip"
 	"amneziawg-web-ui/internal/store"
 	"amneziawg-web-ui/internal/sysinfo"
+	"amneziawg-web-ui/web-ui/api"
 )
 
 // Manager orchestrates all AmneziaWG operations.
@@ -44,6 +45,15 @@ type Manager struct {
 	// never waits on a config write.
 	statuses map[string]statusObservation
 	statusMu sync.Mutex
+
+	// traffic is the last snapshot, with the moment it was taken. Every open
+	// tab polls the same counters every few seconds, and each collection runs
+	// awg once per server: sharing one answer for a moment turns N tabs into
+	// one set of commands. Guarded by trafficMu, which is never taken while mu
+	// is held.
+	traffic   api.TrafficSnapshot
+	trafficAt time.Time
+	trafficMu sync.Mutex
 }
 
 // New loads the config from st and brings it up to the current schema. It
@@ -76,6 +86,13 @@ func (m *Manager) Start() {
 	// the .conf on the way up, and a server that starts IPv4-only because of a
 	// stale file would need a restart to gain its IPv6 address.
 	m.reconcileIPv6Conf()
+
+	// Same idea for the peers: the .conf and the config store are written one
+	// after the other, and a crash in between leaves them disagreeing - a
+	// peer that still connects but that the panel cannot see, or a client the
+	// panel lists whose block the tunnel never got. Settle it before anything
+	// is started from those files.
+	m.reconcilePeers()
 
 	if m.settings.AutoStart {
 		m.autoStartServers()

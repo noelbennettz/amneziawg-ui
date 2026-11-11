@@ -250,6 +250,14 @@ func (m *Manager) deleteClientLocked(serverID, clientID string) (serverName stri
 	if _, err := wgconf.RemovePeer(srv.ConfigPath, target); err != nil {
 		return "", api.Client{}, "", fmt.Errorf("removing the peer from %s: %w", srv.ConfigPath, err)
 	}
+	// A suspended client has no block in the live config, only a parked copy;
+	// deleting the client has to take that too, or the peer's public key, its
+	// preshared key and its addresses stay on the volume for good.
+	if err := wgconf.ForgetPeer(srv.ConfigPath, clientID); err != nil {
+		// The peer is out of the live config already, so a parked file that
+		// will not go away is a line in the log, not a failed deletion.
+		fmt.Printf("ForgetPeer %s: %v\n", clientID, err)
+	}
 
 	newClients := make([]api.Client, 0, len(srv.Clients)-1)
 	for _, c := range srv.Clients {
