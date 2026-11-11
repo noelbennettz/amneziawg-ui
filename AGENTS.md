@@ -10,9 +10,14 @@ amnezialink, publicip, config, sysinfo}`:
   exported `manager` API and errors map to status codes in `fail`
 - `auth` — the way into the panel: the credential check against
   `WEB_UI_USER`/`WEB_UI_PASSWORD` (constant time), the signed `awg_session`
-  cookie, the login page embedded from `internal/auth/login.html` with its four
-  strings in `i18n.go` (picked per request from `Accept-Language`), and the
-  middleware that guards every route but `/status`, `/login` and `/logout`
+  cookie, the double-submit token, the login page embedded from
+  `internal/auth/login.html` with its four strings in `i18n.go` (picked per
+  request from `Accept-Language`), and the middleware that guards every route
+  but `/status`, `/login` and `/logout`
+- `security` — the response headers and the CSP nonce, which is generated once
+  per process and written into the loader page
+- `audit` — logins, logouts, rejected writes and API changes, as JSON lines in
+  `/etc/amnezia/audit.log`; off unless `WEB_UI_AUDIT_LOG` is set
 - `manager` — the state and the operations on it; the only package that
   takes the config lock. Split by file (`servers.go`, `clients.go`,
   `suspend.go`, `status.go`, `traffic.go`, `system.go`)
@@ -148,9 +153,25 @@ Three paths are public: `/status` (the docker health check), `/login` (GET rende
 the page, POST checks the form) and `/logout` (GET or POST, drops the cookie and
 redirects to `/login`). Everything else — the wasm bundle and `/debug/pprof`
 included — needs either the `awg_session` cookie or an `Authorization: Basic`
-header. The cookie is `HttpOnly`, `SameSite=Lax`, `Secure` only when the request
-itself is TLS, lives 12 hours, and is signed with an HMAC keyed from the
-credentials: a restart keeps sessions, changing `WEB_UI_PASSWORD` ends them all.
+header. The cookie is `HttpOnly`, `SameSite=Strict`, `Secure` according to
+`WEB_UI_SECURE_COOKIE` (unset: the request and `X-Forwarded-Proto`), lives 12
+hours, and is signed with an HMAC keyed from the credentials: a restart keeps
+sessions, changing `WEB_UI_PASSWORD` ends them all.
+
+Every `POST`, `PUT` and `DELETE` also has to carry the CSRF token: the `awg_csrf`
+cookie (not `HttpOnly` — the page has to read it) echoed in `X-CSRF-Token`, or
+the hidden `csrf` field on the login form, which the server rotates when the
+session starts. A request that authenticates with an `Authorization` header is
+exempt, because no browser attaches one by itself. Two more things the panel
+answers with, both in `internal/security`: a `Content-Security-Policy` that
+allows the panel's own origin, `'wasm-unsafe-eval'` and one inline script by
+nonce, and `X-Frame-Options: DENY`, `nosniff`, `no-referrer`.
+
+`internal/audit` writes what an operator needs after the fact — login, logout,
+a rejected write, a change through the API — to `/etc/amnezia/audit.log` as one
+JSON object per line: time, address, user, method, route, status. It is off
+unless `WEB_UI_AUDIT_LOG` is set, keeps `WEB_UI_AUDIT_RETENTION_HOURS` (24 by
+default, 720 at most), and never records a body or a query string.
 
 A request carrying neither proof is answered according to what it asked for:
 anything under `/api` or `/debug`, or any request with `Accept:

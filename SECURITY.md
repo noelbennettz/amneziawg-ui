@@ -74,8 +74,11 @@ Written down rather than left to be discovered:
   password the operator chooses, in an environment variable they can read.
 * **No CSRF token on `GET /logout`.** It is a state change, it is reachable
   from another site, and `SameSite=Strict` is what keeps that from mattering.
-* **The audit log is opt-in and unbounded.** `WEB_UI_AUDIT_LOG=true` appends to
-  `/etc/amnezia/audit.log` and never rotates it.
+* **The audit log is opt-in.** `WEB_UI_AUDIT_LOG=true` appends to
+  `/etc/amnezia/audit.log`; entries are kept for `WEB_UI_AUDIT_RETENTION_HOURS`
+  (24 hours by default, 30 days at most). The file is swept at most once an
+  hour, so an entry can outlive the window by up to an hour, and the panel holds
+  no lock on it — an operator who deletes the file just loses the record.
 
 ## The tunnel
 

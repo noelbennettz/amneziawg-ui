@@ -2,6 +2,34 @@
 
 ## Unreleased
 
+- **The audit log now keeps a window, not everything.** Entries live for
+  `WEB_UI_AUDIT_RETENTION_HOURS` — 24 by default, 1 at the floor and 720 (30
+  days) at the ceiling. The file is swept at most once an hour, and rewritten
+  atomically only when something has actually aged out, so a panel that logs
+  nothing pays nothing. A line the package cannot parse is kept: a record it
+  cannot read is still a record.
+  `TestSweepDropsWhatAgedOut`, `TestSweepRunsAtMostOnceAnHour`, `TestAuditRetention`.
+
+- **A restart no longer pins open browsers to a dead page.** The loading page
+  carries the CSP nonce, and its ETag was hashed from `index.html` on disk — a
+  file that does not change when the nonce does. A browser that revalidated
+  after a restart got `304` and kept the page with the *old* nonce, which the new
+  policy refuses: the panel then loaded nothing until someone forced a reload.
+  The validator is now the hash of the bytes that are actually served, so the
+  nonce change shows up as a new ETag. Reproduced against a real container
+  (`304` before, `200` with a new tag after), `TestLoaderETagFollowsTheNonce`.
+
+- **The health check no longer gets a cookie.** `/status` is asked by docker
+  every 30 seconds and keeps nothing; the CSRF token is now issued only on an
+  authenticated request, which is the only kind that can echo it back.
+  `TestPublicPathsSetNoCookie`.
+
+- **The license is AGPL-3.0** (was Apache-2.0). The panel is a network service
+  whose users should be able to get the source of the version they are talking
+  to. The Apache text the fork came from is kept in `LICENSE-APACHE`: Apache-2.0
+  permits distributing the combined work under the AGPL, and the notices travel
+  with it.
+
 - **A write now has to prove it came from the panel.** The session cookie is an
   ambient credential: the browser attaches it to anything that asks, so a form
   on another site could make it delete a server. Every `POST`, `PUT` and

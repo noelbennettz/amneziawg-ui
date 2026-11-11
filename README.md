@@ -102,8 +102,10 @@ services:
       # HTTP: say so, or the cookies go out without Secure.
       # - WEB_UI_SECURE_COOKIE=true
       # Logins, logouts and every change through the API, one JSON object per
-      # line, in /etc/amnezia/audit.log. Off unless asked for.
+      # line, in /etc/amnezia/audit.log. Off unless asked for; entries are
+      # kept for a day, or for WEB_UI_AUDIT_RETENTION_HOURS (1..720).
       # - WEB_UI_AUDIT_LOG=true
+      # - WEB_UI_AUDIT_RETENTION_HOURS=24
       # Only for network_mode: host. With published ports, leave it unset -
       # Docker forwards to the container's address, not to its loopback.
       # - WEB_UI_BIND=127.0.0.1
@@ -219,7 +221,8 @@ only at startup.
 | `WEB_UI_USER` | `admin` | Login name for the panel and for `curl -u` |
 | `WEB_UI_PASSWORD` | `changeme` | Login password as base64 of its SHA-256 (see the box above) |
 | `WEB_UI_SECURE_COOKIE` | *auto* | Force the `Secure` flag on the cookies: `true` behind a TLS proxy that does not send `X-Forwarded-Proto`, `false` to pin it off. Unset follows the request and that header |
-| `WEB_UI_AUDIT_LOG` | `false` | Append logins, logouts and every change made through the API to `/etc/amnezia/audit.log`: time, address, user, route, status. Off by default - it is a record of who reached the panel |
+| `WEB_UI_AUDIT_LOG` | `false` | Append logins, logouts and every change made through the API to `/etc/amnezia/audit.log`: time, address, user, route, status. Off by default — it records who reached the panel |
+| `WEB_UI_AUDIT_RETENTION_HOURS` | `24` | How long an entry stays in that file before it is dropped: at least `1`, at most `720` (30 days). Swept once an hour, and the file is rewritten only when something has aged out |
 | `WEB_UI_PPROF` | `false` | Profiler at `/debug/pprof` behind the same login. Parsed as a boolean (`1`, `true`, `t`), anything else is off |
 | `AUTO_START_SERVERS` | `true` | Bring servers up automatically: when the container starts, and for one created in the panel |
 | `DEFAULT_MTU` | `1280` | Default MTU for new servers |
@@ -284,6 +287,18 @@ For access from the internet, put a reverse proxy with TLS in front of it
 (Caddy, nginx, Traefik) or restrict port `54845` with a firewall.
 [SECURITY.md](SECURITY.md) says what the panel does and does not protect
 against.
+
+## License
+
+**[AGPL-3.0](LICENSE)**. Section 13 is the point of it: if you run a modified
+panel as a network service, its users get the source of the version you run.
+Self-hosting, forking and selling support are all fine; closing your changes off
+from the people using them is not.
+
+The panel started as a fork of `mycelium-mesh/amneziawg-ui`, which is
+Apache-2.0. That text is kept in [LICENSE-APACHE](LICENSE-APACHE) with the
+notices it came with, and the combined work is distributed under the AGPL —
+which Apache-2.0 permits.
 
 ## Documentation
 
