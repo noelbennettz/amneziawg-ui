@@ -164,3 +164,51 @@ jobs:
           echo "The package is private until you change its visibility at"
           echo "https://github.com/users/${{ github.repository_owner }}/packages/container/${GITHUB_REPOSITORY#*/}/settings"
           echo "A private package needs 'docker login ghcr.io' on the host that pulls it."
+
+  # Housekeeping: this workflow deletes its own older runs, keeping the three
+  # newest. The history of a workflow that runs on every push is mostly noise
+  # after a while, and every run carries its logs and artifacts with it.
+  #
+  # It runs whether the jobs above passed or failed - a red run is worth
+  # keeping until it ages out, and a failed build is exactly when the logs are
+  # worth reading. The current run is always among the three kept, so a run
+  # never deletes itself; runs still in progress are left alone and age out on
+  # a later run.
+  prune:
+    needs: [test, build-and-push]
+    if: always()
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # Deleting runs is an actions write, not a contents one.
+      actions: write
+
+    steps:
+      - name: Delete every run but the three newest
+        # Housekeeping must not turn a good release red: a warning in the run
+        # summary is the right weight for "the history is piling up".
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          runs="repos/${GITHUB_REPOSITORY}/actions/workflows/docker.yaml/runs?per_page=100"
+          total=$(gh api "$runs" --jq '.workflow_runs | length')
+          echo "this workflow has ${total} run(s)"
+
+          if [ "$total" -le 3 ]; then
+            echo "three or fewer: nothing to delete"
+            exit 0
+          fi
+
+          # Only finished runs: an in-progress one is somebody's build, and the
+          # three newest are kept whatever state they are in.
+          gh api "$runs" \
+            --jq '[.workflow_runs[] | select(.status == "completed")][3:] | .[] | "\(.id) \(.created_at) \(.head_branch) \(.conclusion)"' \
+            | while read -r id created branch conclusion; do
+                echo "deleting run ${id} (${created}, ${branch}, ${conclusion})"
+                gh run delete "$id" --repo "$GITHUB_REPOSITORY"
+              done
+
+          echo "now $(gh api "$runs" --jq '.workflow_runs | length') run(s)"
