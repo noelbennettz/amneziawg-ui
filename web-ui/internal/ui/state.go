@@ -11,6 +11,7 @@ import (
 	"fyne.io/fyne/v2/lang"
 
 	"amneziawg-web-ui/web-ui/api"
+	"amneziawg-web-ui/web-ui/internal/ui/browser"
 	"amneziawg-web-ui/web-ui/internal/ui/newserver"
 	"amneziawg-web-ui/web-ui/internal/ui/style"
 	"amneziawg-web-ui/web-ui/internal/ui/widgets"
@@ -200,8 +201,10 @@ func (u *UI) Start() {
 
 	go func() {
 		for {
-			u.loadSystemStatus()
-			time.Sleep(statusInterval)
+			if browser.Visible() {
+				u.loadSystemStatus()
+			}
+			wait(statusInterval)
 		}
 	}()
 	go u.loadDefaultISettings()
@@ -212,16 +215,38 @@ func (u *UI) Start() {
 	// need a second one on top of that.
 	go func() {
 		for {
-			u.refreshTraffic()
-			time.Sleep(trafficInterval)
+			if browser.Visible() {
+				u.refreshTraffic()
+			}
+			wait(trafficInterval)
 		}
 	}()
 	go func() {
 		for {
-			time.Sleep(serversInterval)
-			u.reloadServers()
+			wait(serversInterval)
+			if browser.Visible() {
+				u.reloadServers()
+			}
 		}
 	}()
+}
+
+// wait pauses for d, and returns as soon as the page is visible again, so a
+// tab that comes back refreshes at once instead of waiting out the rest of the
+// interval. While it stays hidden the polls are skipped altogether: every one
+// of them is a set of awg commands on the server for a page nobody is looking
+// at.
+func wait(d time.Duration) {
+	deadline := time.Now().Add(d)
+	wasHidden := !browser.Visible()
+	for time.Now().Before(deadline) {
+		hidden := !browser.Visible()
+		if wasHidden && !hidden {
+			return
+		}
+		wasHidden = hidden
+		time.Sleep(500 * time.Millisecond)
+	}
 }
 
 func (u *UI) loadSystemStatus() {

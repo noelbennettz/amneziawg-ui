@@ -22,6 +22,17 @@ func Origin() string {
 	return js.Global().Get("location").Get("origin").String()
 }
 
+// Visible reports whether the page is in front of the user.
+//
+// A hidden tab keeps running its timers - throttled by the browser, but
+// running - and for this panel every poll behind a timer is a set of awg
+// commands on the server for a page nobody is looking at. The polling loops
+// skip a round while this is false, and the wait between rounds returns early
+// when it becomes true again.
+func Visible() bool {
+	return js.Global().Get("document").Get("visibilityState").String() != "hidden"
+}
+
 // CSRFToken is the double-submit token the panel handed the browser in a
 // cookie. The page is the only place it can be read - a cookie another site
 // cannot read is one another site cannot echo - so every write sends it back
@@ -37,7 +48,6 @@ func CSRFToken() string {
 	return ""
 }
 
-// CSPNonce is the nonce the loader page carries, for the script the wasm
 // bundle injects once it starts. A policy that allows exactly one inline
 // script needs the injected one to be named as well, and the page is where
 // both sides agree on the value.

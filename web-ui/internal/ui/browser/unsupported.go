@@ -19,6 +19,10 @@ func Origin() string {
 	panic(unsupportedPlatform)
 }
 
+func Visible() bool {
+	panic(unsupportedPlatform)
+}
+
 func CSRFToken() string {
 	panic(unsupportedPlatform)
 }
