@@ -81,7 +81,6 @@ func (r *menuRow) CreateRenderer() fyne.WidgetRenderer {
 	label := canvas.NewText(r.item.Label, style.Text)
 	label.TextSize = style.SizeBody
 
-	row := []fyne.CanvasObject{bg}
 	left := container.NewHBox()
 	if r.item.Icon != nil {
 		left.Add(container.NewCenter(Icon(r.item.Icon, 18)))
@@ -89,9 +88,8 @@ func (r *menuRow) CreateRenderer() fyne.WidgetRenderer {
 	left.Add(container.NewCenter(label))
 
 	content := container.NewStack(bg, container.New(&insetLayout{h: style.Space3, v: style.Space2}, left))
-	row = []fyne.CanvasObject{content}
 
-	rr := &menuRowRenderer{r: r, bg: bg, objects: row}
+	rr := &menuRowRenderer{r: r, bg: bg, objects: []fyne.CanvasObject{content}}
 	rr.Refresh()
 	return rr
 }

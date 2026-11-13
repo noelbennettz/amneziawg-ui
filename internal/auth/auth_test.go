@@ -791,7 +791,8 @@ func TestSessionsAreDistinctAndLegacyTokensSurvive(t *testing.T) {
 	a := newTestAuth()
 	now := time.Unix(testNow, 0)
 
-	if a.issue(now) == a.issue(now) {
+	first, second := a.issue(now), a.issue(now)
+	if first == second {
 		t.Error("two logins in the same second produced the same token")
 	}
 

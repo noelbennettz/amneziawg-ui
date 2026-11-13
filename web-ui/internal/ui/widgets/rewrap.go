@@ -34,7 +34,7 @@ func Rewrapped(content fyne.CanvasObject) fyne.CanvasObject {
 	return container.New(&twiceLayout{}, content)
 }
 
-// twiceLayout is Rewrapped's layout: layout.NewMaxLayout, run twice.
+// twiceLayout is Rewrapped's layout: layout.NewStackLayout, run twice.
 type twiceLayout struct{}
 
 func (l *twiceLayout) MinSize(objects []fyne.CanvasObject) fyne.Size {
@@ -53,7 +53,7 @@ func (l *twiceLayout) Layout(objects []fyne.CanvasObject, size fyne.Size) {
 	// an object already has, so it cannot be the size the second pass asks
 	// for, and no height is needed to learn where the text breaks - the box
 	// layouts below measure their children rather than fill the space.
-	inner := layout.NewMaxLayout()
+	inner := layout.NewStackLayout()
 	inner.Layout(objects, fyne.NewSize(size.Width, 0))
 	inner.Layout(objects, size)
 }

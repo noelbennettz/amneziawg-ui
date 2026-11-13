@@ -48,9 +48,11 @@ func CSRFToken() string {
 	return ""
 }
 
-// bundle injects once it starts. A policy that allows exactly one inline
-// script needs the injected one to be named as well, and the page is where
-// both sides agree on the value.
+// CSPNonce is the nonce the page was served with, read from the meta tag the
+// server writes into it. The wasm bundle injects a style and a couple of
+// scripts of its own once it starts, and a policy that allows exactly one
+// inline script needs those to be named as well; the page is where both sides
+// agree on the value.
 func CSPNonce() string {
 	meta := js.Global().Get("document").Call("querySelector", `meta[name="csp-nonce"]`)
 	if !meta.Truthy() {

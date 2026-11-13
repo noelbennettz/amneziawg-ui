@@ -50,7 +50,7 @@ func read(t *testing.T, path string) []Event {
 // A disabled log is a nil one: every call is accepted and nothing is created.
 func TestDisabledLogWritesNothing(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "audit.log")
-	var log *Log = New(false, path, time.Hour)
+	log := New(false, path, time.Hour)
 
 	log.Record(Event{Event: EventLogin, IP: "10.0.0.1"})
 	if _, err := os.Stat(path); !os.IsNotExist(err) {

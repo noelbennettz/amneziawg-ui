@@ -6,7 +6,6 @@
 // and an almost-square card - so none of this page's dialogs call dialog.Show*
 // directly; what is kept from fyne's version is the behaviour callers rely on:
 // a click outside dismisses and Escape closes.
-
 package dialogs
 
 import (
