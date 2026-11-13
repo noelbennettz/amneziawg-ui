@@ -27,8 +27,10 @@ func TestReconcileRebuildsAMissingServerConf(t *testing.T) {
 	srv.ServerIPV6 = "fd42:ab12::1"
 	m.cfg.Servers[0] = srv
 
-	alice := api.Client{ID: "aaa", Name: "alice", Status: "active", ServerID: srv.ID,
-		ClientPublicKey: "APUB", PresharedKey: "APSK", ClientIP: "10.0.1.2"}
+	alice := api.Client{
+		ID: "aaa", Name: "alice", Status: "active", ServerID: srv.ID,
+		ClientPublicKey: "APUB", PresharedKey: "APSK", ClientIP: "10.0.1.2",
+	}
 	addClient(m, alice)
 
 	if err := os.Remove(srv.ConfigPath); err != nil {
@@ -108,8 +110,10 @@ func TestReconcileLeavesAnExistingConfAlone(t *testing.T) {
 func TestDeleteServerRemovesItsParkedPeers(t *testing.T) {
 	m, _ := newTestManager(t)
 	srv := m.cfg.Servers[0]
-	alice := api.Client{ID: "aaa", Name: "alice", Status: "active", ServerID: srv.ID,
-		ClientPublicKey: "APUB", PresharedKey: "APSK", ClientIP: "10.0.1.2"}
+	alice := api.Client{
+		ID: "aaa", Name: "alice", Status: "active", ServerID: srv.ID,
+		ClientPublicKey: "APUB", PresharedKey: "APSK", ClientIP: "10.0.1.2",
+	}
 	addClient(m, alice)
 	if err := wgconf.AppendPeer(srv.ConfigPath, &alice, wgconf.PeerAllowedIPs(&alice)); err != nil {
 		t.Fatal(err)

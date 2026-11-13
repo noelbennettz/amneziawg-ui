@@ -1,10 +1,10 @@
 package wgconf
 
 import (
-	"amneziawg-web-ui/web-ui/api"
-
 	"strings"
 	"testing"
+
+	"amneziawg-web-ui/web-ui/api"
 )
 
 func TestParsePeerMarker(t *testing.T) {

@@ -67,9 +67,13 @@ func (p *ObfuscationParams) Validate(mtu int) []string {
 		value int
 		lo    int
 	}{
-		{"Jc", p.Jc, 0}, {"Jmin", p.Jmin, 1}, {"Jmax", p.Jmax, 1},
-		{"S1", p.S1, MinPadding}, {"S2", p.S2, MinPadding},
-		{"S3", p.S3, MinPadding}, {"S4", p.S4, MinPadding},
+		{"Jc", p.Jc, 0},
+		{"Jmin", p.Jmin, 1},
+		{"Jmax", p.Jmax, 1},
+		{"S1", p.S1, MinPadding},
+		{"S2", p.S2, MinPadding},
+		{"S3", p.S3, MinPadding},
+		{"S4", p.S4, MinPadding},
 	} {
 		if field.value < field.lo || field.value > MaxUint16 {
 			problems = append(problems, fmt.Sprintf("%s (%d) must be in [%d, %d]", field.name, field.value, field.lo, MaxUint16))

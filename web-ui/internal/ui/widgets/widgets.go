@@ -315,7 +315,7 @@ func (c *chipInset) MinSize(objects []fyne.CanvasObject) fyne.Size {
 	return min.Add(fyne.NewSize(style.Space3*2, chipPadTop+chipPadBottom))
 }
 
-func pill(text string, bg color.NRGBA, fg color.NRGBA, leading fyne.CanvasObject) fyne.CanvasObject {
+func pill(text string, bg, fg color.NRGBA, leading fyne.CanvasObject) fyne.CanvasObject {
 	label := canvas.NewText(text, fg)
 	label.TextSize = style.SizeLabel
 

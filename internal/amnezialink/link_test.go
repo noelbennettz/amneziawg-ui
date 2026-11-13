@@ -39,8 +39,10 @@ func decode(t *testing.T, link string) map[string]any {
 }
 
 func TestAwg31FlagsOnInLink(t *testing.T) {
-	p := &api.ObfuscationParams{S1: 50, S2: 60, S3: 20, S4: 16, MTU: 1280,
-		HeaderProtectionKey: "KEY", RandomTrailers: true, DisableCookies: true}
+	p := &api.ObfuscationParams{
+		S1: 50, S2: 60, S3: 20, S4: 16, MTU: 1280,
+		HeaderProtectionKey: "KEY", RandomTrailers: true, DisableCookies: true,
+	}
 	srv, cl := fixture(p)
 
 	link, err := Build(srv, cl, "vpn.example")

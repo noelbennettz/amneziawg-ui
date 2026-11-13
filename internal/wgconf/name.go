@@ -11,7 +11,7 @@ const MaxNameRunes = 64
 // turn the rest of the name into config directives, and "[id:" would forge a
 // marker. Control characters collapse into spaces rather than being rejected,
 // so a name pasted with a stray tab still works.
-func SanitizeName(name string, fallback string) string {
+func SanitizeName(name, fallback string) string {
 	var b strings.Builder
 	for _, r := range name {
 		switch {

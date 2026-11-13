@@ -12,8 +12,10 @@ import (
 func newServerConf(t *testing.T) string {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "wg-s1.conf")
-	iface := ServerInterface{PrivateKey: "PRIV", Address: "10.0.1.1/24", ListenPort: 54844, MTU: 1280,
-		Obfuscation: &api.ObfuscationParams{S1: 50}}
+	iface := ServerInterface{
+		PrivateKey: "PRIV", Address: "10.0.1.1/24", ListenPort: 54844, MTU: 1280,
+		Obfuscation: &api.ObfuscationParams{S1: 50},
+	}
 	if err := WriteServerConf(path, iface); err != nil {
 		t.Fatal(err)
 	}

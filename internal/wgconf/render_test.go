@@ -24,8 +24,10 @@ func fixture(p *api.ObfuscationParams) (*api.Server, *api.Client) {
 }
 
 func TestAwg31FlagsOnInClientConf(t *testing.T) {
-	p := &api.ObfuscationParams{S1: 50, S2: 60, S3: 20, S4: 16, MTU: 1280,
-		HeaderProtectionKey: "KEY", RandomTrailers: true, DisableCookies: true}
+	p := &api.ObfuscationParams{
+		S1: 50, S2: 60, S3: 20, S4: 16, MTU: 1280,
+		HeaderProtectionKey: "KEY", RandomTrailers: true, DisableCookies: true,
+	}
 	srv, cl := fixture(p)
 
 	conf := ClientConf(srv, cl, "vpn.example", false)
@@ -78,8 +80,10 @@ func TestAwg31FlagsOffAreOmitted(t *testing.T) {
 // The server's [Interface] and the client's carry the same parameter lines:
 // obfuscation only works when both ends were issued the same values.
 func TestServerAndClientAgreeOnObfuscationLines(t *testing.T) {
-	p := &api.ObfuscationParams{Jc: 4, Jmin: 8, Jmax: 80, S1: 50, S2: 60, S3: 20, S4: 16,
-		H1: 1, H2: 2, H3: 3, H4: 4, HeaderProtectionKey: "KEY", RandomTrailers: true}
+	p := &api.ObfuscationParams{
+		Jc: 4, Jmin: 8, Jmax: 80, S1: 50, S2: 60, S3: 20, S4: 16,
+		H1: 1, H2: 2, H3: 3, H4: 4, HeaderProtectionKey: "KEY", RandomTrailers: true,
+	}
 	srv, cl := fixture(p)
 
 	server := ServerInterface{PrivateKey: "SPRIV", Address: "10.0.1.1/24", ListenPort: 54844, MTU: 1280, Obfuscation: p}.Render()
