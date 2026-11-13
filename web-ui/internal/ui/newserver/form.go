@@ -718,7 +718,7 @@ func (f *Form) build() (api.CreateServerRequest, []string) {
 	}
 	for _, dns := range servers {
 		// Either stack: a resolver the client cannot reach is no resolver.
-		if !api.IsIPAddress(dns) {
+		if _, ok := api.CanonicalIPAddress(dns); !ok {
 			problems = append(problems, lang.L("Invalid DNS server IP: {{.IP}}", map[string]any{"IP": dns}))
 			break
 		}

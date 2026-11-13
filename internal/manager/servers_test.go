@@ -3,6 +3,7 @@ package manager
 import (
 	"errors"
 	"os"
+	"slices"
 	"strings"
 	"testing"
 
@@ -224,5 +225,25 @@ func TestDeleteServerStopsARunningInterfaceFirst(t *testing.T) {
 	}
 	if _, ok := m.Server("s1"); ok {
 		t.Error("the server is still listed")
+	}
+}
+
+// The resolvers in a client config are written canonically, by the same rule
+// the create form applies: both stacks, no port, no zone. A value the form
+// refuses must not reach a config, and one it accepts must not fail here.
+func TestNormalizeDNSWritesCanonicalResolvers(t *testing.T) {
+	got, err := normalizeDNS([]string{" 8.8.8.8 ", "0:0:0:0:0:0:0:1", "::ffff:1.1.1.1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"8.8.8.8", "::1", "1.1.1.1"}
+	if !slices.Equal(got, want) {
+		t.Errorf("normalizeDNS = %q, want %q", got, want)
+	}
+
+	for _, in := range []string{"dns.google", "8.8.8.8:53", "fe80::1%eth0", "::1/128"} {
+		if _, err := normalizeDNS([]string{in}); err == nil {
+			t.Errorf("normalizeDNS(%q) accepted it", in)
+		}
 	}
 }

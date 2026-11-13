@@ -112,10 +112,20 @@ func EndpointAddress(host string, port int) string {
 	return net.JoinHostPort(strings.TrimSpace(strings.Trim(host, "[]")), strconv.Itoa(port))
 }
 
-// IsIPAddress reports whether s is an IPv4 or IPv6 literal. The DNS field
-// takes addresses only: a resolver named by a host name could not be resolved
-// before the tunnel that needs it is up.
-func IsIPAddress(s string) bool {
-	_, err := netip.ParseAddr(strings.TrimSpace(s))
-	return err == nil
+// CanonicalIPAddress returns s spelled the way the config formats write it
+// when s is an IPv4 or IPv6 literal, and reports whether it was one at all.
+// Whitespace around the value is dropped; a zone (fe80::1%eth0), a port and a
+// prefix are not part of an address and are refused.
+//
+// It is the one rule both ends apply: the create form asks whether a resolver
+// is acceptable, and the manager asks what to write into the client configs,
+// so the two cannot drift into accepting different things. A resolver has to
+// be an address rather than a name: a name could not be resolved before the
+// tunnel that needs it is up.
+func CanonicalIPAddress(s string) (string, bool) {
+	addr, err := netip.ParseAddr(strings.TrimSpace(s))
+	if err != nil || addr.Zone() != "" {
+		return "", false
+	}
+	return addr.Unmap().String(), true
 }

@@ -85,15 +85,28 @@ func TestEndpointAddressBracketsOnlyIPv6(t *testing.T) {
 	}
 }
 
-func TestIsIPAddressTakesBothStacks(t *testing.T) {
-	for _, in := range []string{"8.8.8.8", "1.1.1.1", "2606:4700:4700::1111", "2001:4860:4860::8888", " ::1 "} {
-		if !IsIPAddress(in) {
-			t.Errorf("IsIPAddress(%q) = false, want true", in)
+// The canonical spelling is what goes into a client config, so the value that
+// is accepted and the value that is written are decided by the same call. Both
+// stacks count; a zone is refused, because it names a local interface and the
+// client on the other end of the tunnel has no such interface.
+func TestCanonicalIPAddressSpellsItTheWayConfigsDo(t *testing.T) {
+	cases := []struct{ in, want string }{
+		{" 8.8.8.8 ", "8.8.8.8"},
+		{"::1", "::1"},
+		{"0:0:0:0:0:0:0:1", "::1"},
+		{"::ffff:8.8.8.8", "8.8.8.8"},
+		{"2606:4700:4700:0:0:0:0:1111", "2606:4700:4700::1111"},
+	}
+	for _, tc := range cases {
+		got, ok := CanonicalIPAddress(tc.in)
+		if !ok || got != tc.want {
+			t.Errorf("CanonicalIPAddress(%q) = %q, %v; want %q, true", tc.in, got, ok, tc.want)
 		}
 	}
-	for _, in := range []string{"", "dns.google", "8.8.8.8:53", "[::1]", "::1/128"} {
-		if IsIPAddress(in) {
-			t.Errorf("IsIPAddress(%q) = true, want false", in)
+
+	for _, in := range []string{"", "dns.google", "8.8.8.8:53", "[::1]", "::1/128", "fe80::1%eth0"} {
+		if got, ok := CanonicalIPAddress(in); ok {
+			t.Errorf("CanonicalIPAddress(%q) = %q, true; want false", in, got)
 		}
 	}
 }

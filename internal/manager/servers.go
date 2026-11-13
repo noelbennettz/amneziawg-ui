@@ -2,7 +2,6 @@ package manager
 
 import (
 	"fmt"
-	"net"
 	"os"
 	"path/filepath"
 	"strings"
@@ -317,15 +316,18 @@ func parseDNS(raw interface{}) []string {
 // refusing the v6 form left those clients without a working resolver at all.
 // Canonical spelling matters for the same reason it does in subnets - two
 // spellings of one address would otherwise look like two resolvers, and the
-// configs would stop lining up with what the panel shows.
+// configs would stop lining up with what the panel shows. Which strings are
+// addresses at all is api.CanonicalIPAddress, the same rule the create form
+// applies, so a value the form lets through cannot fail here on a technicality
+// and a value it refuses cannot quietly reach a config.
 func normalizeDNS(servers []string) ([]string, error) {
 	out := make([]string, 0, len(servers))
 	for _, server := range servers {
-		ip := net.ParseIP(strings.TrimSpace(server))
-		if ip == nil {
+		canonical, ok := api.CanonicalIPAddress(server)
+		if !ok {
 			return nil, fmt.Errorf("invalid DNS server IP %s", server)
 		}
-		out = append(out, ip.String())
+		out = append(out, canonical)
 	}
 	return out, nil
 }
