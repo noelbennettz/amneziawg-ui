@@ -67,7 +67,7 @@ web-ui-clean: ## Remove the built frontend bundle
 
 .PHONY: run
 run: ## Build image from sources and run via docker-compose
-	docker compose -f docker-compose.yml -f docker-compose.build.yml up --build
+	IMAGE=amneziawg-ui:local docker compose -f docker-compose.yml -f docker-compose.build.yml up --build
 
 .PHONY: build
 build: web-ui ## Build the frontend bundle and the server binary that serves it
@@ -263,7 +263,7 @@ deploy: ## Deploy via docker (host name is requested at runtime)
 		proxy.tar \
 		"$$HOST:/usr/local/include/proxy/"; \
 	echo "deploying on $$HOST"; \
-	ssh "$$HOST" "cd /usr/local/include/proxy && (docker compose down || true) && (docker image rm -f 'proxy:latest' || true) && docker load < proxy.tar && docker compose up -d && rm -rf /usr/local/include/proxy"
+	ssh "$$HOST" "cd /usr/local/include/proxy && (docker compose down || true) && (docker image rm -f 'proxy:latest' || true) && docker load < proxy.tar && IMAGE=proxy:latest docker compose up -d && rm -rf /usr/local/include/proxy"
 
 ##@ Updates
 

@@ -336,6 +336,7 @@ automatically.
 ├── docker-compose.yml         # Base compose file (runs the ready image, no build)
 ├── docker-compose.build.yml   # Overlay that adds `build: .` (used by `make run`)
 ├── docker-compose.host.yml    # Overlay for network_mode: host (IPv4 and IPv6 egress)
+├── .env.example               # Documented copy of the optional `.env`
 └── Makefile
 ```
 
@@ -363,13 +364,15 @@ make deploy        # build the image, save it to proxy.tar and deploy over ssh (
 
 `make run` is the simplest way to get a fully working container (with the real
 AmneziaWG engine in user space, v3 capable) without installing anything but
-Docker. The local run settings live in `.env` (`COMPOSE_PROJECT_NAME`,
-`AUTO_START_SERVERS`, `DEFAULT_MTU`, …); whatever is missing falls back to the
-defaults — the web UI on `54845/tcp`, the VPN on `54844/udp`, password
-`changeme`. The production settings (their own ports and `WEB_UI_PASSWORD`) live
-separately in `deploy/.env` — git ignores it, so create it once on the machine
-you deploy from: `make deploy` copies exactly that file, next to the
-`docker-compose.yml`, onto the server.
+Docker. It tags the result `amneziawg-ui:local`, so a locally built image never
+overwrites the published one. Settings are optional: `.env.example` lists every
+variable with its default, and `.env` is read when it exists — a clone without
+one starts on `54845/tcp` for the web UI, `54844/udp` for the VPN and the
+password `changeme`. The production settings (their own ports and
+`WEB_UI_PASSWORD`) live separately in `deploy/.env` — git ignores it, so create
+it once on the machine you deploy from: `make deploy` builds the image, saves it
+as `proxy.tar`, copies it together with that file and `docker-compose.yml` to
+the server, and starts it with `IMAGE=proxy:latest`.
 
 ### Browser tests
 
@@ -870,15 +873,19 @@ docker build --build-arg AWG_GO_VERSION=vX.Y.Z --build-arg AWG_TOOLS_VERSION=vX.
 ### docker compose example
 
 The repository already ships three compose files: `docker-compose.yml` (the
-base one, running a ready `image:`, no build), `docker-compose.build.yml` (an
-overlay adding `build: .`) and `docker-compose.host.yml` (an overlay switching
-the service to host networking, which is what gives the clients IPv4 and IPv6
-egress on a host with a public address of each). `make run` merges the first
-two to build from source and run; to bring up an image that is already built
-or pulled, use the base file alone:
-`docker compose -f docker-compose.yml up -d`. The base file reads ports
-and settings from `.env`; if the variables are not there, the same defaults as
-in the image apply — `54845/tcp` for the web UI and `54844/udp` for the VPN.
+base one, running the published `image:` and reading an optional `.env`), 
+`docker-compose.build.yml` (an overlay adding `build: .`) and
+`docker-compose.host.yml` (an overlay switching the service to host networking,
+which is what gives the clients IPv4 and IPv6 egress on a host with a public
+address of each). `make run` merges the first two to build from source and run;
+to bring up the published image, use the base file alone:
+`docker compose -f docker-compose.yml up -d`. It needs a `.env` only if you want
+to change something: `cp .env.example .env` and edit it, or set `IMAGE`,
+`WEB_UI_PORT`, `DEFAULT_PORT` and the credentials in the environment. Without
+`.env`, the defaults the image already carries apply — `54845/tcp` for the web
+UI and `54844/udp` for the VPN. `env_file` is declared with
+`required: false` (Compose 2.24+), which is why a missing `.env` is not an
+error.
 
 A standalone `docker-compose.yml` for a VPS with the ready image from GitHub
 Container Registry:
@@ -1318,6 +1325,70 @@ and always sees the login page instead.
 By default the image is built with the user `admin` and the password
 `changeme`. To change that, pass the Docker environment variables `WEB_UI_USER`
 and `WEB_UI_PASSWORD` (the password as SHA-256 in base64, see the table above).
+## FAQ
+
+### How is AmneziaWG different from WireGuard?
+
+The cryptography and the speed are WireGuard's; the packet format is not, and
+that is the point. Junk packets, padding and altered headers keep DPI from
+recognising the protocol, AmneziaWG 3.0 encrypts the 16-byte WireGuard packet
+header itself, and 3.1 adds random trailers and disables the cookie exchange.
+The parameters are described in
+[AmneziaWG 3.1 — the essentials](#-amneziawg-31--the-essentials).
+
+### Which clients can connect?
+
+The official AmneziaVPN app, 5.0.1.5 or newer, on Windows, macOS, Linux,
+Android and iOS: paste the `vpn://` link or scan the QR code. For older clients,
+clear `RandomTrailers` and `DisableCookies` in the server form; the rest of the
+3.x parameters stay compatible with them.
+
+### How do I change the panel password?
+
+`WEB_UI_PASSWORD` holds base64 of the password's SHA-256, never the password:
+
+```bash
+printf 'your-password' | openssl dgst -binary -sha256 | base64
+```
+
+Put the result into `.env` (or `docker-compose.yml`) and restart the container.
+The session cookie is signed with a key derived from the credentials, so a
+restart keeps everyone logged in while a password change ends every session at
+once.
+
+### How do I back up and move the VPN to another server?
+
+Everything is in the `/etc/amnezia` volume: `web_config.json`, the `.conf` of
+every server, and `audit.log` when the audit log is on. Copy it out
+(`docker cp <container>:/etc/amnezia ./backup/`), restore the volume on the new
+machine, start the container, and the servers and clients come up as they were.
+[Backup and restore](#-backup-and-restore) has the volume-level version.
+
+### How do I update?
+
+`docker compose pull && docker compose up -d` from the directory holding the
+compose file. Pinning the dated tag (`…:2026.11.11`) instead of `latest` turns
+an upgrade into a decision. State is untouched, and the container brings the
+servers it finds back up on its own; VPN clients reconnect by themselves. A
+browser tab left open from the previous version can still read, but its writes
+are refused until it is reloaded, because the old bundle never sends the CSRF
+token the new one expects.
+
+### Do I need HTTPS, and how do I enable it?
+
+The container speaks plain HTTP; the login page is what stands in front of every
+route except `/status`, and only that page posts the credentials, so the browser
+never shows its own password prompt. For anything reachable from the internet,
+put a TLS-terminating proxy (Caddy, nginx, Traefik) in front of it, or restrict
+port `54845` with a firewall. Behind a proxy the container sees plain HTTP, so
+either set `WEB_UI_SECURE_COOKIE=true` or let the proxy send
+`X-Forwarded-Proto: https`, which the panel follows when the variable is unset.
+Publishing the port on the host's loopback
+(`"127.0.0.1:54845:54845/tcp"`) is the right way to keep it off the network —
+`WEB_UI_BIND` is for `network_mode: host` and must stay unset with published
+ports.
+
+
 
 # Support
 

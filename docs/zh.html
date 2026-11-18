@@ -73,8 +73,8 @@
     </a>
     <nav class="nav" aria-label="主要導覽">
       <a class="hide-sm" href="#features">功能</a>
-      <a class="hide-sm" href="#how">運作方式</a>
-      <a class="nav-cta" href="#deploy">部署</a>
+      <a class="hide-sm" href="#requirements">需求</a>
+      <a class="nav-cta" href="#deploy">安裝</a>
       <a class="hide-sm" href="https://github.com/noelbennettz/amneziawg-ui">GitHub</a>
       <button class="theme-toggle" type="button" aria-pressed="false">夜間</button>
       <a class="lang" href="index.html" hreflang="en" lang="en">English</a>
@@ -88,16 +88,16 @@
   <div class="container">
     <div>
       <span class="eyebrow"><span class="dot"></span>AmneziaWG 3.1 · Docker · AGPL-3.0</span>
-      <h1>你的 VPN，<br><span class="grad">一個容器搞定。</span></h1>
+      <h1>AmneziaWG VPN，<br><span class="grad">附一個網頁面板。</span></h1>
       <p class="lede">
-        自架的 AmneziaWG 管理面板。AmneziaWG 是 WireGuard 的混淆分支，能穿過 DPI 封鎖。
+        自架的 AmneziaWG 面板。AmneziaWG 是 WireGuard 的混淆分支，能穿過 DPI 封鎖。
         在瀏覽器裡開伺服器、加用戶端，發 <code>.conf</code>、QR 或 <code>vpn://</code>，
-        即時看流量。單一約 35 MB image，不需要 Node、nginx 或 supervisor。
+        即時看流量。單一 image 約 35 MB，不需要 Node、nginx 或 supervisor。
       </p>
       <div class="actions">
         <a class="btn btn-primary" href="#deploy">
           <svg aria-hidden="true"><use href="#i-terminal"/></svg>
-          一分鐘部署
+          安裝
         </a>
         <a class="btn btn-ghost" href="https://github.com/noelbennettz/amneziawg-ui">
           <svg aria-hidden="true"><use href="#i-code"/></svg>
@@ -126,13 +126,13 @@
 <section id="features">
   <div class="container">
     <div class="section-head">
-      <h2>不擋路的管理面板。</h2>
-      <p>跑一台 AmneziaWG 伺服器需要的東西，就在一個 image、一個瀏覽器分頁裡。</p>
+      <h2>面板做什麼</h2>
+      <p>伺服器、用戶端、匯出與流量，都在一個瀏覽器分頁裡。</p>
     </div>
     <div class="grid">
       <article class="card">
         <div class="icon"><svg aria-hidden="true"><use href="#i-box"/></svg></div>
-        <h3>單一 image，沒有側車</h3>
+        <h3>一個容器</h3>
         <p>Go + Fiber 同時提供 API 與前端，Fyne 介面編成 WebAssembly。沒有 Node、nginx、supervisor 或額外資料庫，大約 35 MB。</p>
       </article>
       <article class="card">
@@ -152,17 +152,17 @@
       </article>
       <article class="card">
         <div class="icon"><svg aria-hidden="true"><use href="#i-chart"/></svg></div>
-        <h3>即時流量，不是猜測</h3>
+        <h3>即時流量</h3>
         <p>流量與 handshake 圖表、每個用戶端最後的 endpoint、伺服器狀態，面板開著時自動更新。</p>
       </article>
       <article class="card">
         <div class="icon"><svg aria-hidden="true"><use href="#i-lock"/></svg></div>
-        <h3>所有路由前面都有登入</h3>
+        <h3>面板前有登入</h3>
         <p>12 小時簽章 cookie、每次寫入都要 CSRF token，同時保留 <code>Authorization: Basic</code>，所以 <code>curl -u</code> 腳本照樣能用。審計日誌一個開關。</p>
       </article>
       <article class="card">
         <div class="icon"><svg aria-hidden="true"><use href="#i-code"/></svg></div>
-        <h3>真正的 REST API</h3>
+        <h3>REST API</h3>
         <p>面板做的每件事都是同一組登入後方的 HTTP endpoint，可以用腳本自動化，不必手動點。</p>
       </article>
       <article class="card">
@@ -174,28 +174,27 @@
   </div>
 </section>
 
-<section id="how" class="alt">
+<section id="requirements" class="alt">
   <div class="container">
     <div class="section-head">
-      <h2>從瀏覽器到通道</h2>
-      <p>三層，一個容器，不需要 kernel module。</p>
+      <h2>需求</h2>
+      <p>一台裝好 Docker 與 Docker Compose 2.24 以上版本的 Linux 主機。</p>
     </div>
-    <div class="grid">
-      <article class="card">
-        <div class="icon"><svg aria-hidden="true"><use href="#i-terminal"/></svg></div>
-        <h3>面板</h3>
-        <p>Fyne v2.8 編成 WebAssembly，由同一個行程提供。英文、俄文、法文、西班牙文、簡中與繁中，依瀏覽器語言自動選擇。</p>
-      </article>
-      <article class="card">
-        <div class="icon"><svg aria-hidden="true"><use href="#i-code"/></svg></div>
-        <h3>API</h3>
-        <p>Go + Fiber：認證、CSRF、REST API、伺服器與用戶端狀態，以及選用的 JSON 審計日誌，都放在同一個資料 volume。</p>
-      </article>
-      <article class="card">
-        <div class="icon"><svg aria-hidden="true"><use href="#i-shield"/></svg></div>
-        <h3>資料平面</h3>
-        <p><code>amneziawg-go</code> 在使用者空間執行，所以只需要 <code>NET_ADMIN</code> 與 <code>/dev/net/tun</code>，不必載入 kernel module，也不用 <code>SYS_MODULE</code>。</p>
-      </article>
+    <div class="split">
+      <ul class="checks">
+        <li><strong>Docker Engine 與 Compose 2.24+。</strong>compose 檔用到 <code>env_file.required</code> 與 <code>!reset</code>。</li>
+        <li><strong><code>/dev/net/tun</code> 與 <code>NET_ADMIN</code>。</strong><code>amneziawg-go</code> 在使用者空間執行，不必載入 kernel module，也不用 <code>SYS_MODULE</code>。</li>
+        <li><strong>一個對外 IPv4 位址。</strong>IPv6 是每個伺服器選配；下一段說明 bridge 網路做不到什麼。</li>
+        <li><strong>兩個主機埠。</strong><code>54845/tcp</code> 給面板，每個伺服器一個 UDP 埠，預設 <code>54844/udp</code>。</li>
+      </ul>
+      <div>
+        <div class="copy-wrap">
+          <button class="copy" type="button" data-copy>複製</button>
+          <pre><code>docker --version
+docker compose version   # 需要 v2.24 以上
+ls -l /dev/net/tun</code></pre>
+        </div>
+      </div>
     </div>
     <p class="note">
       <strong>狀態就是一個 volume。</strong>伺服器、用戶端設定與 <code>web_config.json</code> 都在
@@ -208,8 +207,8 @@
 <section id="deploy">
   <div class="container">
     <div class="section-head">
-      <h2>一分鐘部署</h2>
-      <p>一台裝好 Docker 與 Compose 的 Linux 主機。三個步驟，面板就在 54845 port。</p>
+      <h2>安裝</h2>
+      <p>一台裝好 Docker 與 Compose 的 Linux 主機。面板會開在 54845 埠。</p>
     </div>
     <div class="steps">
       <div class="step">
@@ -222,7 +221,7 @@
       </div>
       <div class="step">
         <h3>存成 compose.yaml</h3>
-        <p>把上一步的結果填進 <code>WEB_UI_PASSWORD</code>，使用者名稱也順便改掉。</p>
+        <p>把上一步的結果填進 <code>WEB_UI_PASSWORD</code>，使用者名稱也順便改掉。改成 clone 這個 repo 並把 <code>.env.example</code> 複製成 <code>.env</code>，是同一個服務，只是 hash 填在 <code>.env</code> 裡。</p>
         <div class="copy-wrap">
           <button class="copy" type="button" data-copy>複製</button>
           <pre><code>services:
@@ -272,7 +271,7 @@ volumes:
 <section id="ipv6" class="alt">
   <div class="container">
     <div class="section-head">
-      <h2>IPv6 內建，但有一個必須講清楚的限制</h2>
+      <h2>IPv4 與 IPv6</h2>
       <p>面板與通道都是雙棧；用戶端有沒有 IPv6 <em>上網</em>，取決於 Docker 網路。</p>
     </div>
     <div class="split">
@@ -305,8 +304,8 @@ sysctl -w net.ipv4.ip_forward=1 \
 <section id="security">
   <div class="container">
     <div class="section-head">
-      <h2>為公開 VPS 而做</h2>
-      <p>預設值是保守的；必須改的東西也寫得很清楚。</p>
+      <h2>對外之前</h2>
+      <p>預設值是保守的；公開主機上必須改的就這幾項。</p>
     </div>
     <div class="grid">
       <article class="card">
@@ -331,8 +330,8 @@ sysctl -w net.ipv4.ip_forward=1 \
 <section id="specs" class="alt">
   <div class="container">
     <div class="section-head">
-      <h2>技術細節</h2>
-      <p>image 裡有什麼，主機需要什麼。</p>
+      <h2>規格</h2>
+      <p>版本、連接埠與資料位置。</p>
     </div>
     <dl class="specs">
       <div><dt>Image</dt><dd class="mono">ghcr.io/noelbennettz/amneziawg-ui</dd></div>
@@ -355,7 +354,7 @@ sysctl -w net.ipv4.ip_forward=1 \
   <div class="container">
     <div class="section-head">
       <h2>常見問題</h2>
-      <p>第一個用戶端連上之前，最常被問的幾件事。</p>
+      <p>安裝與使用上最常被問的幾件事。</p>
     </div>
     <div class="faq">
       <details>

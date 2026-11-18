@@ -1,6 +1,10 @@
 services:
   app:
-    image: proxy:latest
+    # The published image by default, so `docker compose up -d` in a fresh clone
+    # pulls instead of looking for a local build. `make run` layers
+    # docker-compose.build.yml on top of this file to build from source, and
+    # `make deploy` sets IMAGE=proxy:latest to run the image it just shipped.
+    image: ${IMAGE:-ghcr.io/noelbennettz/amneziawg-ui:latest}
     restart: unless-stopped
     # The port mapping serves the panel and the tunnel on both stacks, but the
     # container has no IPv6 uplink on this bridge: clients get an IPv6 tunnel
@@ -12,8 +16,13 @@ services:
     ports:
       - "${WEB_UI_PORT:-54845}:${WEB_UI_PORT:-54845}/tcp"
       - "${DEFAULT_PORT:-54844}:${DEFAULT_PORT:-54844}/udp"
+    # Optional: `.env` is not committed (`.env.example` is). Every variable in it
+    # only overrides a default the image already carries, so a clone without a
+    # `.env` starts with the documented defaults. `required: false` needs
+    # Compose 2.24 or newer, the same version docker-compose.host.yml needs.
     env_file:
-      - .env
+      - path: .env
+        required: false
     volumes:
       - data:/etc/amnezia
     cap_add:
