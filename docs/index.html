@@ -274,6 +274,7 @@ docker compose ps        # expected: Up ... (healthy)
 curl -s localhost:54845/status   # expected: Container Uptime: 0d 0h 0m 3s</code></pre>
         </div>
         <p>If the container restarts instead of staying up, <code>docker compose logs app</code> names the reason: a port already in use, or a host without <code>/dev/net/tun</code>.</p>
+        <p>After signing in, <strong>Create server → Add client</strong> produces the <code>.conf</code>, QR code and <code>vpn://</code> link; a client that imports one shows a handshake time and traffic in the panel within seconds (the page polls every 5 seconds).</p>
       </div>
     </div>
     <p class="note">

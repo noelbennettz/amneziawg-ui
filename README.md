@@ -1,5 +1,9 @@
 # AmneziaWG Web UI — a self-hosted admin panel for AmneziaWG VPN in Docker
 
+> Applies to the current `main`, published under the dated image tags
+> (`ghcr.io/noelbennettz/amneziawg-ui:2026.11.18` at the time of writing). An
+> older tag keeps its documentation under `docs/versions/<tag>/`.
+
 [![Container image](https://img.shields.io/badge/ghcr.io-amneziawg--ui-blue?logo=github)](https://github.com/noelbennettz/amneziawg-ui/pkgs/container/amneziawg-ui)
 [![Website](https://img.shields.io/badge/website-noelbennettz.github.io%2Famneziawg--ui-5b7cff)](https://noelbennettz.github.io/amneziawg-ui/)
 [![Go](https://img.shields.io/badge/Go-1.26-00ADD8?logo=go&logoColor=white)](go.mod)
@@ -37,7 +41,8 @@ docker compose up -d
 ```
 
 `docker compose up -d` pulls `ghcr.io/noelbennettz/amneziawg-ui:latest` and
-starts it; `.env` is optional, and leaving it out keeps the defaults. Open
+starts it. `.env` is optional, but without it the panel runs with the image's
+default password (`changeme`) — see the warning below. Open
 `http://<server-ip>:54845`, sign in as `admin` with the password you hashed,
 then **Create server → Add client** and take the `.conf`, the QR code or the
 `vpn://` link. Update with `docker compose pull && docker compose up -d`.
@@ -49,7 +54,10 @@ Check it came up:
   the environment block and the listening address.
 - `curl -s http://127.0.0.1:54845/status` answers `Container Uptime: 0d 0h 0m 3s`
   without a login.
-- `http://<server-ip>:54845/` shows the login page.
+- `http://<server-ip>:54845/` shows the login page; an empty server list, then
+  **Create server → Add client** gives a `.conf`, a QR code and a `vpn://` link.
+  A client that imports one shows a handshake and traffic in the panel within
+  a few seconds.
 
 > [!IMPORTANT]
 > The image's default login is `admin` / `changeme`. Anyone who reaches the port

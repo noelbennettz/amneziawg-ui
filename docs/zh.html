@@ -271,6 +271,7 @@ docker compose ps        # 預期：Up ... (healthy)
 curl -s localhost:54845/status   # 預期：Container Uptime: 0d 0h 0m 3s</code></pre>
         </div>
         <p>如果容器一直重啟而不是穩定執行，<code>docker compose logs app</code> 會說原因：埠被佔用，或主機沒有 <code>/dev/net/tun</code>。</p>
+        <p>登入後建立伺服器、新增用戶端，會拿到 <code>.conf</code>、QR 與 <code>vpn://</code>。用戶端匯入後幾秒內，面板該出現 handshake 時間與流量（頁面每 5 秒更新一次）。</p>
       </div>
     </div>
     <p class="note">

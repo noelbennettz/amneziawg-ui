@@ -1,4 +1,8 @@
-# AmneziaWG Web UI
+# AmneziaWG Web UI documentation
+
+> Applies to the current `main`, published under the dated image tags
+> (`ghcr.io/noelbennettz/amneziawg-ui:2026.11.18` at the time of writing). An
+> older tag keeps its documentation under `docs/versions/<tag>/`.
 
 A self-hosted web panel for **AmneziaWG** — the obfuscated, DPI-resistant fork
 of WireGuard. It is a single Go/Fiber binary: create several AmneziaWG servers,
@@ -915,6 +919,10 @@ docker build --build-arg AWG_GO_VERSION=vX.Y.Z --build-arg AWG_TOOLS_VERSION=vX.
 - `http://<server>:54845/` serves the login page; after signing in with the
   credentials the container was started with, the server list is empty and
   **Create server** is the only action.
+- **Create server → Add client** produces a `.conf`, a QR code and a `vpn://`
+  link. A client that imports one shows the server as reachable within a few
+  seconds, and the panel's server row gains a handshake time and traffic in the
+  same interval (the page polls every 5 seconds).
 
 If the container restarts instead of staying up, `docker compose logs app` is
 the first place to look: a port already in use and a missing `/dev/net/tun` are
@@ -927,7 +935,7 @@ the two failures that happen before anything is logged by the panel itself.
 | `WEB_UI_PORT` | `54845` | Port the application listens on for the web UI. The same default is set in the image's `ENV`, in the binary and in `docker-compose.yml` (where it is also published on the host) |
 | `WEB_UI_BIND` | *every address* | Address the panel binds **inside the container**. Unset means `[::]` with `v6only` off, one listener for both stacks. With published ports this has to stay unset — Docker forwards to the container's address, not to its loopback — and the restriction belongs on the host side of the mapping (`"127.0.0.1:54845:54845/tcp"`). It exists for `network_mode: host`, where there is no mapping |
 | `WEB_UI_USER` | `admin` | Login name for the panel's login page and for `curl -u` |
-| `WEB_UI_PASSWORD` | `changeme` | Login password — SHA-256 in base64: `printf 'secret' \| openssl dgst -binary -sha256 \| base64` |
+| `WEB_UI_PASSWORD` | `changeme` | Login password — SHA-256 in base64: `printf 'secret' \| openssl dgst -binary -sha256 \| base64`. The image default is the hash of `changeme`, which anyone can type: set this before the port is reachable, or the panel is an open door |
 | `WEB_UI_SECURE_COOKIE` | *auto* | `true` marks every cookie `Secure`, `false` never does, unset follows the request and `X-Forwarded-Proto`. Behind a TLS proxy the container sees plain HTTP, so `true` (or a proxy that sends the header) is what makes the flag appear at all |
 | `WEB_UI_AUDIT_LOG` | `false` | Append logins, logouts and every change made through the API to `/etc/amnezia/audit.log`: time, address, user, route, status. Off by default — it records who reached the panel |
 | `WEB_UI_AUDIT_RETENTION_HOURS` | `24` | How long an entry stays in that file: a value below `1` is raised to `1`, one above `720` (30 days) is lowered to `720`, and anything that is not a number falls back to `24`. The file is swept at most once an hour, and rewritten atomically only when something has aged out |
@@ -951,7 +959,7 @@ spelled out and the optional ones commented. What each key does:
 | --- | --- |
 | `image` | The image to run. `${IMAGE:-ghcr.io/noelbennettz/amneziawg-ui:latest}` lets `make run` and `make deploy` substitute their own build; pin a dated tag (`…:2026.11.18`) to keep an upgrade a decision |
 | `ports` | `"host address:host port:container port"`. Naming the host address (`127.0.0.1:54845:54845/tcp`) binds that address only — the usual setup behind a local TLS proxy. A UDP range (`54844-54864:54844-54864/udp`) publishes several servers at once |
-| `environment` / `env_file` | The variables from the table above. `.env` is optional (`required: false`), because every one of them has a default — in the image's `ENV` (`WEB_UI_PORT`) or in the binary |
+| `environment` / `env_file` | The variables from the table above. `.env` is optional (`required: false`) because every one of them has a default — but the password default is `changeme`, so a deployment without `.env` is open to anyone who reaches the port |
 | `volumes` | `/etc/amnezia` holds `web_config.json` and `audit.log`, plus the servers' `.conf` files under `amneziawg/`, `suspended/` included. A named volume or a host directory both work; this is the only state to back up |
 | `cap_add: NET_ADMIN` | Needed to write iptables rules, create the interface and manage routes inside the container's network namespace |
 | `devices: /dev/net/tun` | The TUN device the userspace engine attaches to. No kernel module, so no `SYS_MODULE` |
@@ -1284,13 +1292,17 @@ What each command removes:
 | --- | --- | --- |
 | `docker compose stop` | the running container (process) | container, volume, image, `.env` |
 | `docker compose down` | the container and the compose network | the `data` volume, the image, `.env`, `docker-compose.yml` |
-| `docker compose down -v` | the above **and the `data` volume**: every server, every client, every private key, the obfuscation parameters and `audit.log` | the image, `.env`, the compose file |
+| `docker compose down -v` | the above **and the `data` volume**: every server, every client, every private key and obfuscation parameter, `web_config.json` and `audit.log` | the image, `.env`, the compose file |
 | `docker image rm ghcr.io/noelbennettz/amneziawg-ui:latest` | the downloaded image only | — |
 
 `down -v` cannot be undone: the client private keys are not stored anywhere
-else, so a client whose `.conf` was handed out cannot be recreated — only
-issued again with a new key. Copy the volume out first
-([Backup and restore](#backup-and-restore)).
+else. The `.conf` files already on client devices do not disappear, but every
+handshake with them fails from then on, because the server side of the key pair
+was in the volume. Export the configs (or the QR/`vpn://` links) before removing
+it; a recreated server generates new keys and old configs no longer match.
+
+The image itself stays in the local Docker cache. Removing it is a separate step
+(`docker image rm`, or `docker image prune`) and does not touch the volume.
 
 Three details the table does not show:
 
