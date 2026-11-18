@@ -1,0 +1,401 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AmneziaWG Web UI — 一個容器跑起自架 VPN 面板</title>
+<meta name="description" content="自架的 AmneziaWG 3.1 管理面板，約 35 MB 的 Docker image。建立伺服器與用戶端、匯出 .conf／QR／vpn://、即時看流量，支援 IPv4 與 IPv6。">
+<meta name="theme-color" content="#0b1220">
+<link rel="canonical" href="https://noelbennettz.github.io/amneziawg-ui/zh.html">
+<link rel="alternate" hreflang="en" href="index.html">
+<link rel="icon" href="assets/icon.png" type="image/png">
+<link rel="apple-touch-icon" href="assets/icon.png">
+<link rel="stylesheet" href="style.css">
+<meta property="og:type" content="website">
+<meta property="og:title" content="AmneziaWG Web UI — 一個容器跑起自架 VPN">
+<meta property="og:description" content="自架 AmneziaWG 3.1 面板：伺服器、用戶端、QR、vpn:// 與即時流量。單一約 35 MB Docker image，IPv4 + IPv6。">
+<meta property="og:url" content="https://noelbennettz.github.io/amneziawg-ui/zh.html">
+<meta property="og:image" content="https://noelbennettz.github.io/amneziawg-ui/assets/dashboard.png">
+<meta name="twitter:card" content="summary_large_image">
+<script src="app.js" defer></script>
+</head>
+<body>
+<a class="skip" href="#main">跳到內容</a>
+
+<svg class="visually-hidden" aria-hidden="true" focusable="false">
+  <symbol id="i-box" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3 8 4.5v9L12 21l-8-4.5v-9L12 3Z"/><path d="m4 7.5 8 4.5 8-4.5M12 12v9"/></symbol>
+  <symbol id="i-shield" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 5 6v5c0 4.5 3 8 7 10 4-2 7-5.5 7-10V6l-7-3Z"/><path d="m9 12 2 2 4-4"/></symbol>
+  <symbol id="i-server" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="7" rx="2"/><rect x="3" y="13" width="18" height="7" rx="2"/><path d="M7 7.5h.01M7 16.5h.01"/></symbol>
+  <symbol id="i-users" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.2"/><path d="M3 20c0-3.2 2.7-5.5 6-5.5s6 2.3 6 5.5"/><path d="M16 5.5a3 3 0 0 1 0 5.8M17 14.8c2.4.5 4 2.4 4 5.2"/></symbol>
+  <symbol id="i-chart" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V4M4 20h16"/><path d="m7 15 4-5 3 3 4-6"/></symbol>
+  <symbol id="i-lock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="10" width="16" height="11" rx="3"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></symbol>
+  <symbol id="i-code" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m8 8-4 4 4 4m8-8 4 4-4 4M14 4l-4 16"/></symbol>
+  <symbol id="i-globe" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.7 3.8 5.7 3.8 9S14.5 18.3 12 21c-2.5-2.7-3.8-5.7-3.8-9S9.5 5.7 12 3Z"/></symbol>
+  <symbol id="i-terminal" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="m7 9 3 3-3 3M13 15h4"/></symbol>
+  <symbol id="i-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14m0 0-5-5m5 5-5 5"/></symbol>
+</svg>
+
+<header class="site-header">
+  <div class="container">
+    <a class="brand" href="zh.html">
+      <img src="assets/icon.png" alt="" width="34" height="34">
+      AmneziaWG Web UI
+    </a>
+    <nav class="nav" aria-label="主要導覽">
+      <a class="hide-sm" href="#features">功能</a>
+      <a class="hide-sm" href="#how">運作方式</a>
+      <a href="#deploy">部署</a>
+      <a class="hide-sm" href="https://github.com/noelbennettz/amneziawg-ui">GitHub</a>
+      <a class="lang" href="index.html" hreflang="en" lang="en">English</a>
+    </nav>
+  </div>
+</header>
+
+<main id="main">
+
+<section class="hero">
+  <div class="container">
+    <div>
+      <span class="eyebrow"><span class="dot"></span>AmneziaWG 3.1 · Docker · AGPL-3.0</span>
+      <h1>你的 VPN，<br><span class="grad">一個容器搞定。</span></h1>
+      <p class="lede">
+        自架的 AmneziaWG 管理面板。AmneziaWG 是 WireGuard 的混淆分支，能穿過 DPI 封鎖。
+        在瀏覽器裡開伺服器、加用戶端，發 <code>.conf</code>、QR 或 <code>vpn://</code>，
+        即時看流量。單一約 35 MB image，不需要 Node、nginx 或 supervisor。
+      </p>
+      <div class="actions">
+        <a class="btn btn-primary" href="#deploy">
+          <svg aria-hidden="true"><use href="#i-terminal"/></svg>
+          一分鐘部署
+        </a>
+        <a class="btn btn-ghost" href="https://github.com/noelbennettz/amneziawg-ui">
+          <svg aria-hidden="true"><use href="#i-code"/></svg>
+          原始碼與文件
+        </a>
+      </div>
+      <div class="pills">
+        <span class="pill">AmneziaWG 3.1</span>
+        <span class="pill">IPv4 + IPv6</span>
+        <span class="pill">六種介面語言</span>
+        <span class="pill">約 35 MB</span>
+        <span class="pill">amd64 + arm64</span>
+      </div>
+    </div>
+    <div class="browser">
+      <div class="browser-bar" aria-hidden="true">
+        <span></span><span></span><span></span>
+        <div class="browser-url">http://your-server:54845/</div>
+      </div>
+      <img src="assets/dashboard.png" width="1380" height="851" alt="AmneziaWG Web UI 儀表板：流量、CPU、RAM、儲存圖表，以及含 IPv4/IPv6 子網欄位的建立伺服器表單">
+    </div>
+  </div>
+</section>
+
+
+<section id="features">
+  <div class="container">
+    <div class="section-head">
+      <h2>不擋路的管理面板。</h2>
+      <p>跑一台 AmneziaWG 伺服器需要的東西，就在一個 image、一個瀏覽器分頁裡。</p>
+    </div>
+    <div class="grid">
+      <article class="card">
+        <div class="icon"><svg aria-hidden="true"><use href="#i-box"/></svg></div>
+        <h3>單一 image，沒有側車</h3>
+        <p>Go + Fiber 同時提供 API 與前端，Fyne 介面編成 WebAssembly。沒有 Node、nginx、supervisor 或額外資料庫，大約 35 MB。</p>
+      </article>
+      <article class="card">
+        <div class="icon"><svg aria-hidden="true"><use href="#i-shield"/></svg></div>
+        <h3>AmneziaWG 3.1 永遠開啟</h3>
+        <p>標頭保護、隨機 trailer、停用 cookie、junk 封包與 padding 全部內建。標頭金鑰與每個混淆參數自動產生，並與用戶端設定保持同步。</p>
+      </article>
+      <article class="card">
+        <div class="icon"><svg aria-hidden="true"><use href="#i-server"/></svg></div>
+        <h3>一台主機多個伺服器</h3>
+        <p>每個伺服器有自己的 port、子網、MTU、DNS、endpoint 與混淆參數。在面板新增或修改，容器重啟後會自動把它們帶回來。</p>
+      </article>
+      <article class="card">
+        <div class="icon"><svg aria-hidden="true"><use href="#i-users"/></svg></div>
+        <h3>用戶端三種匯出</h3>
+        <p>新增、編輯、暫停或排程用戶端。可匯出 <code>.conf</code>、給手機掃的 QR，或給 AmneziaVPN 用的原生 <code>vpn://</code> 連結。</p>
+      </article>
+      <article class="card">
+        <div class="icon"><svg aria-hidden="true"><use href="#i-chart"/></svg></div>
+        <h3>即時流量，不是猜測</h3>
+        <p>流量與 handshake 圖表、每個用戶端最後的 endpoint、伺服器狀態，面板開著時自動更新。</p>
+      </article>
+      <article class="card">
+        <div class="icon"><svg aria-hidden="true"><use href="#i-lock"/></svg></div>
+        <h3>所有路由前面都有登入</h3>
+        <p>12 小時簽章 cookie、每次寫入都要 CSRF token，同時保留 <code>Authorization: Basic</code>，所以 <code>curl -u</code> 腳本照樣能用。審計日誌一個開關。</p>
+      </article>
+      <article class="card">
+        <div class="icon"><svg aria-hidden="true"><use href="#i-code"/></svg></div>
+        <h3>真正的 REST API</h3>
+        <p>面板做的每件事都是同一組登入後方的 HTTP endpoint，可以用腳本自動化，不必手動點。</p>
+      </article>
+      <article class="card">
+        <div class="icon"><svg aria-hidden="true"><use href="#i-globe"/></svg></div>
+        <h3>IPv4 與 IPv6</h3>
+        <p>面板同時監聽兩種位址族別，每個伺服器配一個 ULA /64 與 NAT6；用戶端的 endpoint 與 DNS 清單都接受任一雙棧位址。</p>
+      </article>
+    </div>
+  </div>
+</section>
+
+<section id="how" class="alt">
+  <div class="container">
+    <div class="section-head">
+      <h2>從瀏覽器到通道</h2>
+      <p>三層，一個容器，不需要 kernel module。</p>
+    </div>
+    <div class="grid">
+      <article class="card">
+        <div class="icon"><svg aria-hidden="true"><use href="#i-terminal"/></svg></div>
+        <h3>面板</h3>
+        <p>Fyne v2.8 編成 WebAssembly，由同一個行程提供。英文、俄文、法文、西班牙文、簡中與繁中，依瀏覽器語言自動選擇。</p>
+      </article>
+      <article class="card">
+        <div class="icon"><svg aria-hidden="true"><use href="#i-code"/></svg></div>
+        <h3>API</h3>
+        <p>Go + Fiber：認證、CSRF、REST API、伺服器與用戶端狀態，以及選用的 JSON 審計日誌，都放在同一個資料 volume。</p>
+      </article>
+      <article class="card">
+        <div class="icon"><svg aria-hidden="true"><use href="#i-shield"/></svg></div>
+        <h3>資料平面</h3>
+        <p><code>amneziawg-go</code> 在使用者空間執行，所以只需要 <code>NET_ADMIN</code> 與 <code>/dev/net/tun</code>，不必載入 kernel module，也不用 <code>SYS_MODULE</code>。</p>
+      </article>
+    </div>
+    <p class="note">
+      <strong>狀態就是一個 volume。</strong>伺服器、用戶端設定與 <code>web_config.json</code> 都在
+      <code>/etc/amnezia</code>；備份這個 volume，換主機時整組搬過去就好。
+    </p>
+  </div>
+</section>
+
+
+<section id="deploy">
+  <div class="container">
+    <div class="section-head">
+      <h2>一分鐘部署</h2>
+      <p>一台裝好 Docker 與 Compose 的 Linux 主機。三個步驟，面板就在 54845 port。</p>
+    </div>
+    <div class="steps">
+      <div class="step">
+        <h3>先算面板密碼的 hash</h3>
+        <p>容器存的是 <code>base64(sha256(密碼))</code>，不是密碼本身。</p>
+        <div class="copy-wrap">
+          <button class="copy" type="button" data-copy>複製</button>
+          <pre><code>printf 'your-password' | openssl dgst -binary -sha256 | base64</code></pre>
+        </div>
+      </div>
+      <div class="step">
+        <h3>存成 compose.yaml</h3>
+        <p>把上一步的結果填進 <code>WEB_UI_PASSWORD</code>，使用者名稱也順便改掉。</p>
+        <div class="copy-wrap">
+          <button class="copy" type="button" data-copy>複製</button>
+          <pre><code>services:
+  app:
+    image: ghcr.io/noelbennettz/amneziawg-ui:latest
+    restart: unless-stopped
+    ports:
+      - "54845:54845/tcp"   # 面板
+      - "54844:54844/udp"   # 第一個 VPN 伺服器
+    environment:
+      WEB_UI_PORT: "54845"
+      WEB_UI_USER: "admin"
+      WEB_UI_PASSWORD: "REPLACE_WITH_HASH"
+    volumes:
+      - data:/etc/amnezia
+    cap_add:
+      - NET_ADMIN
+    devices:
+      - /dev/net/tun
+    sysctls:
+      net.ipv4.ip_forward: "1"
+      net.ipv4.conf.all.src_valid_mark: "1"
+      net.ipv6.conf.all.disable_ipv6: "0"
+      net.ipv6.conf.all.forwarding: "1"
+      net.ipv6.conf.default.forwarding: "1"
+
+volumes:
+  data:</code></pre>
+        </div>
+      </div>
+      <div class="step">
+        <h3>啟動並登入</h3>
+        <p>然後開 <code>http://your-server:54845/</code>，用步驟 1 的使用者與密碼登入。</p>
+        <div class="copy-wrap">
+          <button class="copy" type="button" data-copy>複製</button>
+          <pre><code>docker compose up -d</code></pre>
+        </div>
+      </div>
+    </div>
+    <p class="note">
+      <strong>Image 已經公開在 GHCR。</strong>若 pull 仍要求登入，用有 <code>read:packages</code>
+      的 token 執行 <code>docker login ghcr.io</code>。面板本身是 HTTP：前面請放一層 TLS 反向代理，
+      並設 <code>WEB_UI_SECURE_COOKIE=true</code>（或讓代理送出 <code>X-Forwarded-Proto: https</code>）。
+    </p>
+  </div>
+</section>
+
+<section id="ipv6" class="alt">
+  <div class="container">
+    <div class="section-head">
+      <h2>IPv6 內建，但有一個必須講清楚的限制</h2>
+      <p>面板與通道都是雙棧；用戶端有沒有 IPv6 <em>上網</em>，取決於 Docker 網路。</p>
+    </div>
+    <div class="split">
+      <div>
+        <ul class="checks">
+          <li><strong>預設雙棧。</strong>面板同時聽 <code>0.0.0.0</code> 與 <code>[::]</code>；用戶端設定接受 IPv4 或 IPv6 的 endpoint，DNS 也能填任一雙棧位址。</li>
+          <li><strong>每個伺服器一個 ULA /64 與 NAT6。</strong>防火牆腳本按位址族別判斷，只有該族有 default route 且 uplink 有可路由來源時才寫 forwarding 與 masquerade。</li>
+          <li><strong>一般 Docker bridge 沒有 IPv6 上行。</strong>用戶端會拿到 IPv6 通道但沒有 IPv6 egress，<code>nat6.state</code> 顯示 <code>ula-only</code>。</li>
+          <li><strong>用 host network 或 routed prefix 修正。</strong>疊上 <code>docker-compose.host.yml</code>，或給 Docker 網路一個 global IPv6 prefix，<code>nat6.state</code> 就會變 <code>ok</code>。</li>
+        </ul>
+      </div>
+      <div>
+        <div class="copy-wrap">
+          <button class="copy" type="button" data-copy>複製</button>
+          <pre><code>docker compose \
+  -f docker-compose.yml \
+  -f docker-compose.host.yml up -d
+
+# 主機上執行一次：
+sysctl -w net.ipv4.ip_forward=1 \
+         net.ipv6.conf.all.forwarding=1 \
+         net.ipv6.conf.default.forwarding=1</code></pre>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+
+<section id="security">
+  <div class="container">
+    <div class="section-head">
+      <h2>為公開 VPS 而做</h2>
+      <p>預設值是保守的；必須改的東西也寫得很清楚。</p>
+    </div>
+    <div class="grid">
+      <article class="card">
+        <div class="icon"><svg aria-hidden="true"><use href="#i-lock"/></svg></div>
+        <h3>先改密碼</h3>
+        <p>範例 hash 對應的是 <code>changeme</code>。在 port 對外之前換掉：面板只存 hash、簽 12 小時 cookie，改密碼會同時結束所有 session。</p>
+      </article>
+      <article class="card">
+        <div class="icon"><svg aria-hidden="true"><use href="#i-shield"/></svg></div>
+        <h3>最小權限</h3>
+        <p>容器以 root 執行，因為 <code>awg-quick</code> 與 <code>iptables</code> 在自己的 network namespace 裡需要；它只拿到 <code>NET_ADMIN</code> 與 <code>/dev/net/tun</code>，沒有 <code>SYS_MODULE</code>，除非你要求也不會用 host network。</p>
+      </article>
+      <article class="card">
+        <div class="icon"><svg aria-hidden="true"><use href="#i-terminal"/></svg></div>
+        <h3>TLS 與審計</h3>
+        <p>用 Caddy、nginx 或 Traefik 終結 TLS，並設 <code>WEB_UI_SECURE_COOKIE=true</code>。打開 <code>WEB_UI_AUDIT_LOG</code> 會為每次登入與變更寫一行 JSON，保留時間可調。</p>
+      </article>
+    </div>
+  </div>
+</section>
+
+<section id="specs" class="alt">
+  <div class="container">
+    <div class="section-head">
+      <h2>技術細節</h2>
+      <p>image 裡有什麼，主機需要什麼。</p>
+    </div>
+    <dl class="specs">
+      <div><dt>Image</dt><dd class="mono">ghcr.io/noelbennettz/amneziawg-ui</dd></div>
+      <div><dt>Tags</dt><dd class="mono">latest、YYYY.MM.DD</dd></div>
+      <div><dt>平台</dt><dd>linux/amd64、linux/arm64</dd></div>
+      <div><dt>大小</dt><dd>壓縮後約 35 MB</dd></div>
+      <div><dt>後端</dt><dd>Go 1.26、Fiber</dd></div>
+      <div><dt>前端</dt><dd>Fyne v2.8 編譯成 WebAssembly</dd></div>
+      <div><dt>連接埠</dt><dd><code>54845/tcp</code> 面板、<code>54844/udp</code> 預設 VPN 伺服器</dd></div>
+      <div><dt>狀態</dt><dd><code>/etc/amnezia</code> volume</dd></div>
+      <div><dt>主機需求</dt><dd>Docker + Compose、<code>/dev/net/tun</code>、<code>NET_ADMIN</code></dd></div>
+      <div><dt>語言</dt><dd>英文、俄文、法文、西班牙文、中文（簡體與繁體）</dd></div>
+      <div><dt>授權</dt><dd>AGPL-3.0</dd></div>
+    </dl>
+  </div>
+</section>
+
+
+<section id="faq">
+  <div class="container">
+    <div class="section-head">
+      <h2>常見問題</h2>
+      <p>第一個用戶端連上之前，最常被問的幾件事。</p>
+    </div>
+    <div class="faq">
+      <details>
+        <summary>AmneziaWG 跟 WireGuard 差在哪？</summary>
+        <p>加密與速度相同，多了混淆：junk 封包、padding 與改寫的標頭讓 DPI 認不出協定。AmneziaWG 3.0 加入標頭保護，3.1 再加隨機 trailer 並停用 cookie 交換；這個面板預設全部開啟。</p>
+      </details>
+      <details>
+        <summary>哪些用戶端可以用？</summary>
+        <p>官方 <strong>AmneziaVPN 5.0.1.5 或更新版</strong>，Windows、macOS、Linux、Android、iOS 都有：貼上 <code>vpn://</code> 或掃 QR。較舊的 AmneziaWG 用戶端請在伺服器表單清掉 <code>RandomTrailers</code> 與 <code>DisableCookies</code>。</p>
+      </details>
+      <details>
+        <summary>怎麼改面板密碼？</summary>
+        <p>用 <code>printf 'your-password' | openssl dgst -binary -sha256 | base64</code> 算出新值，填進 <code>WEB_UI_PASSWORD</code>，重啟容器。改密碼會讓所有 session 立即失效。</p>
+      </details>
+      <details>
+        <summary>一定要 HTTPS 嗎？</summary>
+        <p>容器只提供 HTTP。前面放 Caddy、nginx 或 Traefik 做 TLS；代理在同一台主機時，port 發佈到 host 的 loopback，並設 <code>WEB_UI_SECURE_COOKIE=true</code> 或轉送 <code>X-Forwarded-Proto: https</code>。</p>
+      </details>
+      <details>
+        <summary>為什麼用戶端有 IPv6 卻不能上 IPv6 網站？</summary>
+        <p>一般 Docker bridge 沒給容器可路由的 IPv6 上行，NAT6 只能轉到 ULA。用 <code>docker-compose.host.yml</code>（<code>network_mode: host</code>）或給 Docker 網路一個 routed global prefix；API 的 <code>nat6.state</code> 會告訴你是哪一種。</p>
+      </details>
+      <details>
+        <summary>怎麼更新或搬家？</summary>
+        <p>更新用 <code>docker compose pull</code> 再 <code>docker compose up -d</code>；想讓升級變成一個決定，就把 compose 裡的 tag 釘在日期版。搬家只要把 <code>/etc/amnezia</code> volume 複製到新主機再啟動。</p>
+      </details>
+      <details>
+        <summary>小 VPS 或 ARM 跑得動嗎？</summary>
+        <p>image 有 <code>amd64</code> 與 <code>arm64</code>，容器本身約 35 MB。通道在使用者空間，所以不用管主機的 kernel module 版本。</p>
+      </details>
+      <details>
+        <summary>AGPL 在這裡代表什麼？</summary>
+        <p>自架、fork、賣支援都可以。但如果你把修改過的面板當成網路服務給別人用，使用者必須能取得你實際執行版本的原始碼——這就是第 13 條。</p>
+      </details>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<footer class="site-footer">
+  <div class="container">
+    <div class="fine">
+      <strong>AmneziaWG Web UI</strong> 是 AmneziaWG 協定的獨立自架面板，與 Amnezia 專案無隸屬關係。
+      原始碼、完整文件與安全說明都在 repository。
+    </div>
+    <nav aria-label="頁尾">
+      <a href="https://github.com/noelbennettz/amneziawg-ui">原始碼</a>
+      <a href="https://github.com/noelbennettz/amneziawg-ui/blob/main/DOCS.md">文件</a>
+      <a href="https://github.com/noelbennettz/amneziawg-ui/blob/main/SECURITY.md">安全性</a>
+      <a href="https://github.com/noelbennettz/amneziawg-ui/pkgs/container/amneziawg-ui">容器</a>
+      <a href="https://github.com/noelbennettz/amneziawg-ui/blob/main/LICENSE">授權</a>
+      <a href="index.html" hreflang="en" lang="en">English</a>
+    </nav>
+  </div>
+</footer>
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  "name": "AmneziaWG Web UI",
+  "operatingSystem": "Linux (Docker)",
+  "applicationCategory": "UtilitiesApplication",
+  "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+  "license": "https://www.gnu.org/licenses/agpl-3.0.html",
+  "codeRepository": "https://github.com/noelbennettz/amneziawg-ui",
+  "downloadUrl": "https://github.com/noelbennettz/amneziawg-ui/pkgs/container/amneziawg-ui"
+}
+</script>
+</body>
+</html>
+
