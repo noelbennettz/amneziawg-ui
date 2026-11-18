@@ -860,10 +860,9 @@ produces no `3.1` / `3` images. The image is `ghcr.io/<owner>/<repository>`,
 built with the workflow's built-in `GITHUB_TOKEN` — no secret has to be
 configured.
 
-A freshly created package is **private**: either make it public once under
-*Package settings → Change visibility*, or run `docker login ghcr.io` (with a
-token that has `read:packages`) on the machine that pulls it. Or just build the
-image locally with `make run` / `docker compose build`.
+The package is public, so `docker pull ghcr.io/noelbennettz/amneziawg-ui:latest`
+needs no login. To run your own build instead, `make run` or
+`docker compose build` produce the image locally.
 
 The image weighs about **35 MB**: no nginx, no supervisor, no language runtime
 beyond the shell `awg-quick` itself needs (bash, `ip`, `iptables`,
