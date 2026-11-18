@@ -11,6 +11,35 @@
 <link rel="icon" href="assets/icon.png" type="image/png">
 <link rel="apple-touch-icon" href="assets/icon.png">
 <link rel="preload" href="assets/fonts/plex-700.woff2" as="font" type="font/woff2" crossorigin>
+<script>
+(function () {
+  var root = document.documentElement;
+  var zh = root.lang.indexOf("zh") === 0;
+  try {
+    var saved = localStorage.getItem("theme");
+    root.dataset.theme = saved ||
+      (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+  } catch (e) { root.dataset.theme = "dark"; }
+  document.addEventListener("DOMContentLoaded", function () {
+    var btn = document.querySelector(".theme-toggle");
+    if (!btn) return;
+    function render() {
+      var dark = root.dataset.theme === "dark";
+      btn.textContent = dark ? (zh ? "日間" : "Light") : (zh ? "夜間" : "Dark");
+      btn.setAttribute("aria-label",
+        dark ? (zh ? "切換日間模式" : "Switch to light mode")
+             : (zh ? "切換夜間模式" : "Switch to dark mode"));
+      btn.setAttribute("aria-pressed", dark ? "true" : "false");
+    }
+    btn.addEventListener("click", function () {
+      root.dataset.theme = root.dataset.theme === "dark" ? "light" : "dark";
+      try { localStorage.setItem("theme", root.dataset.theme); } catch (e) {}
+      render();
+    });
+    render();
+  });
+})();
+</script>
 <link rel="stylesheet" href="style.css">
 <meta property="og:type" content="website">
 <meta property="og:title" content="AmneziaWG Web UI — 一個容器跑起自架 VPN">
@@ -40,13 +69,14 @@
   <div class="container">
     <a class="brand" href="zh.html">
       <img src="assets/icon.png" alt="" width="34" height="34">
-      AmneziaWG Web UI
+      <span class="brand-text">AmneziaWG <span class="brand-sub">Web UI</span></span>
     </a>
     <nav class="nav" aria-label="主要導覽">
       <a class="hide-sm" href="#features">功能</a>
       <a class="hide-sm" href="#how">運作方式</a>
       <a class="nav-cta" href="#deploy">部署</a>
       <a class="hide-sm" href="https://github.com/noelbennettz/amneziawg-ui">GitHub</a>
+      <button class="theme-toggle" type="button" aria-pressed="false">夜間</button>
       <a class="lang" href="index.html" hreflang="en" lang="en">English</a>
     </nav>
   </div>
