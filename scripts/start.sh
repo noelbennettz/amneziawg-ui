@@ -29,4 +29,18 @@ else
     fi
 fi
 
+# Forwarding is what the masquerade hands packets to. The compose file sets
+# both switches in the container's own namespace; Docker refuses sysctls in
+# the host network namespace ("not allowed in host network namespace"), so a
+# network_mode: host deployment has to set them on the host. Say so at startup
+# instead of leaving the operator with clients that connect and reach nothing.
+for pair in "net/ipv4/ip_forward:IPv4" "net/ipv6/conf/all/forwarding:IPv6"; do
+    key=${pair%%:*}
+    family=${pair#*:}
+    value=$(cat "/proc/sys/$key" 2>/dev/null)
+    if [ -n "$value" ] && [ "$value" != "1" ]; then
+        echo "warning: $family forwarding is 0 in this namespace - clients get the tunnel and no $family internet; with network_mode: host set $(echo "$key" | tr / .)=1 on the host" >&2
+    fi
+done
+
 exec /usr/bin/api

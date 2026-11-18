@@ -1,0 +1,31 @@
+#   docker compose -f docker-compose.yml -f docker-compose.host.yml up -d
+#
+# Host networking, for a host whose clients should have IPv4 *and* IPv6
+# egress. The container shares the host's network namespace, so the panel's
+# masquerade rules rewrite onto the host's own uplink address instead of a
+# Docker bridge address that nothing routes back - which is the difference
+# between clients having IPv6 internet and having only the tunnel.
+#
+# Three things come with it:
+#
+# * `ports` and `sysctls` from the base file do not apply: with host
+#   networking there is no port mapping, and Docker refuses sysctls in the
+#   host network namespace ("not allowed in host network namespace"). `!reset`
+#   drops both, which needs Compose 2.24 or newer. The forwarding switches
+#   have to be on the host instead:
+#
+#       sysctl -w net.ipv4.ip_forward=1 \
+#                 net.ipv6.conf.all.forwarding=1 \
+#                 net.ipv6.conf.default.forwarding=1
+#
+#   The container warns at startup when they are off.
+# * `WEB_UI_PORT` and `DEFAULT_PORT` are the host's ports now, so nothing else
+#   on the host may hold 54845/tcp or 54844/udp.
+# * The panel sees the host's whole network view; SECURITY.md says what that
+#   does and does not change.
+
+services:
+  app:
+    network_mode: host
+    ports: !reset []
+    sysctls: !reset []

@@ -462,10 +462,12 @@ func (m *Manager) StartServer(serverID string) error {
 	// forwards nothing. The server is up either way, so this is a warning and
 	// not a failed start - but it is loud, because the client's symptom is
 	// "connected, no internet" and nothing else in the panel would say why.
-	if err := m.tools.SetupIPTables(srv.Interface, srv.Subnet, srv.SubnetV6); err != nil {
+	status, err := m.tools.SetupIPTables(srv.Interface, srv.Subnet, srv.SubnetV6)
+	if err != nil {
 		fmt.Printf("Server %s is up, but its NAT rules were not applied: %v\n", srv.Name, err)
 		fmt.Printf("Clients on %s can connect and will have no internet until that is fixed.\n", srv.Interface)
 	}
+	reportNAT(srv, status)
 	m.setServerStatus(serverID, "running")
 	// The traffic poll may have marked this interface quiet while it was
 	// down; a server that just came up should not wait out that mark before
@@ -476,6 +478,40 @@ func (m *Manager) StartServer(serverID string) error {
 
 	fmt.Printf("Server %s started\n", srv.Name)
 	return nil
+}
+
+// reportNAT repeats what the firewall script decided about each family, in
+// the terms an operator with a client on the phone needs: whether that
+// family's traffic leaves the host, and if not, what is missing. A bridge
+// container has no routable IPv6 address and a host with no IPv4 uplink has
+// no IPv4 route; from the client both look the same - the tunnel is up and
+// nothing beyond it.
+func reportNAT(srv api.Server, status awg.FirewallStatus) {
+	reportFamilyNAT(srv, 4, status.V4)
+	reportFamilyNAT(srv, 6, status.V6)
+}
+
+func reportFamilyNAT(srv api.Server, family int, st awg.NATStatus) {
+	switch st.State {
+	case "ok":
+		fmt.Printf("Server %s: IPv%d NAT is in place (uplink %s, source %s)\n",
+			srv.Name, family, st.Uplink, st.Source)
+	case "ula-only":
+		fmt.Printf("Server %s: IPv%d has no routable source: %s carries %s, a unique local address, so clients get the tunnel and no IPv%d internet\n",
+			srv.Name, family, st.Uplink, st.Source, family)
+	case "no-route":
+		fmt.Printf("Server %s: IPv%d has no default route, so no NAT rules were written and clients get no IPv%d internet\n",
+			srv.Name, family, family)
+	case "no-address":
+		fmt.Printf("Server %s: IPv%d uplink %s has no address to masquerade onto, so clients get no IPv%d internet\n",
+			srv.Name, family, st.Uplink, family)
+	case "unavailable":
+		fmt.Printf("Server %s: IPv%d has no ip6tables, so clients get the tunnel and no IPv%d internet\n",
+			srv.Name, family, family)
+	case "failed":
+		fmt.Printf("Server %s: IPv%d NAT rules were rejected, so clients get the tunnel and no IPv%d internet\n",
+			srv.Name, family, family)
+	}
 }
 
 // StopServer tears down a WireGuard interface.

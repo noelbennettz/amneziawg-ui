@@ -110,36 +110,113 @@ func (t *Tools) InterfaceUp(iface string) bool {
 	return strings.Contains(result, "state UNKNOWN") || strings.Contains(result, iface)
 }
 
+// NATStatus is what the firewall script decided about one address family:
+// the state of the way out, the interface the routing table named, and the
+// address a masquerade would rewrite the source to.
+type NATStatus struct {
+	// State is one of "ok", "ula-only", "no-route", "no-address",
+	// "unavailable" or "failed". Empty means the script could not be asked.
+	State  string
+	Uplink string
+	Source string
+}
+
+// FirewallStatus is the per-family outcome of SetupIPTables and NATState.
+type FirewallStatus struct {
+	V4, V6 NATStatus
+}
+
+// ParseNATStatus reads the "NAT4 state=ok uplink=eth0 source=203.0.113.9"
+// lines the firewall script prints. Every other line is ignored, so the
+// script's human-readable output can change without breaking this.
+func ParseNATStatus(output string) FirewallStatus {
+	var status FirewallStatus
+	for _, line := range strings.Split(output, "\n") {
+		fields := strings.Fields(line)
+		if len(fields) < 2 {
+			continue
+		}
+		var family *NATStatus
+		switch fields[0] {
+		case "NAT4":
+			family = &status.V4
+		case "NAT6":
+			family = &status.V6
+		default:
+			continue
+		}
+		for _, field := range fields[1:] {
+			key, value, ok := strings.Cut(field, "=")
+			if !ok {
+				continue
+			}
+			switch key {
+			case "state":
+				family.State = value
+			case "uplink":
+				family.Uplink = value
+			case "source":
+				family.Source = value
+			}
+		}
+	}
+	return status
+}
+
 // SetupIPTables adds the forwarding and NAT rules for an interface, if the
 // script for it is deployed. subnetV6 is the server's ULA /64; the script adds
 // the matching ip6tables rules - the NAT66 masquerade included - only when it
 // is not empty.
 //
+// The returned status says what the script decided about each family. A
+// family with no default route, or with an uplink that carries only a unique
+// local address, gets no NAT rule (or one that cannot reach the internet);
+// that is the difference between "connected, no internet" and a broken
+// server, and it is reported rather than left in a log line nobody reads.
+//
 // The error is the caller's to report: a server whose port and addresses are
 // wrong announces it by not working, but one that is up with no NAT accepts
 // every handshake and forwards nothing, which looks like a dead uplink from
 // the client's side.
-func (t *Tools) SetupIPTables(iface, subnet, subnetV6 string) error {
-	return t.runScript("setup_iptables.sh", iface, subnet, subnetV6)
+func (t *Tools) SetupIPTables(iface, subnet, subnetV6 string) (FirewallStatus, error) {
+	out, err := t.runScript("setup_iptables.sh", iface, subnet, subnetV6)
+	return ParseNATStatus(out), err
 }
 
 // CleanupIPTables removes what SetupIPTables added.
 func (t *Tools) CleanupIPTables(iface, subnet, subnetV6 string) error {
-	return t.runScript("cleanup_iptables.sh", iface, subnet, subnetV6)
+	_, err := t.runScript("cleanup_iptables.sh", iface, subnet, subnetV6)
+	return err
 }
 
-// runScript runs one of the two iptables scripts. A script that is not
-// deployed and a script that fails are both errors: either way the rules the
-// caller believes it applied are not there.
-func (t *Tools) runScript(name, iface, subnet, subnetV6 string) error {
+// NATState asks the firewall script what it would decide now, without
+// touching a rule. An empty FirewallStatus means the script could not be
+// asked - it is not deployed, or it failed.
+func (t *Tools) NATState() FirewallStatus {
+	script := filepath.Join(t.ScriptsDir, "setup_iptables.sh")
+	if _, err := os.Stat(script); err != nil {
+		return FirewallStatus{}
+	}
+	out, err := t.run.Run(script + " --status")
+	if err != nil {
+		return FirewallStatus{}
+	}
+	return ParseNATStatus(out)
+}
+
+// runScript runs one of the two iptables scripts and returns its output. A
+// script that is not deployed and a script that fails are both errors: either
+// way the rules the caller believes it applied are not there.
+func (t *Tools) runScript(name, iface, subnet, subnetV6 string) (string, error) {
 	script := filepath.Join(t.ScriptsDir, name)
 	if _, err := os.Stat(script); err != nil {
-		return fmt.Errorf("%s is not deployed at %s: %w", name, script, err)
+		return "", fmt.Errorf("%s is not deployed at %s: %w", name, script, err)
 	}
-	if _, err := t.run.Run(fmt.Sprintf("%s %s %s %s", script, iface, subnet, subnetV6)); err != nil {
-		return fmt.Errorf("%s %s: %w", name, iface, err)
+	out, err := t.run.Run(fmt.Sprintf("%s %s %s %s", script, iface, subnet, subnetV6))
+	if err != nil {
+		return out, fmt.Errorf("%s %s: %w", name, iface, err)
 	}
-	return nil
+	return out, nil
 }
 
 // CheckIPTables looks for the rules SetupIPTables should have left, keyed by
@@ -147,27 +224,33 @@ func (t *Tools) runScript(name, iface, subnet, subnetV6 string) error {
 // checks only appear for a server with an IPv6 subnet, since those are the only
 // servers the script writes them for.
 //
-// Those servers get two routing checks as well. A NAT66 rule is happy to exist
-// while there is nothing to masquerade onto - a container on a bridge network
-// has no IPv6 uplink at all - and the tunnel then works while the IPv6
-// internet behind it does not. "Found" on both lines means the rest of the v6
-// path is really there.
-func (t *Tools) CheckIPTables(iface, subnet, subnetV6 string) map[string]string {
+// The rules are read with -S, not -L: the plain listing does not print the
+// interface a rule is scoped to, so grepping it for the tunnel's name never
+// matched a rule that was there. The name is matched with the space that
+// follows it, so wg-1 does not answer for wg-10. The IPv6 address check wants
+// 2000::/3 as well - "scope global" is true of the unique local address a
+// Docker bridge hands out, which is exactly the address that cannot reach the
+// internet.
+//
+// The script's own per-family verdict comes back alongside the map: a rule
+// can be present and still have nothing to masquerade onto, and the state is
+// what tells those apart.
+func (t *Tools) CheckIPTables(iface, subnet, subnetV6 string) (map[string]string, FirewallStatus) {
 	checks := []string{
-		fmt.Sprintf("iptables -L INPUT -n | grep %s", iface),
-		fmt.Sprintf("iptables -L FORWARD -n | grep %s", iface),
-		fmt.Sprintf("iptables -t nat -L POSTROUTING -n | grep %s", subnet),
+		fmt.Sprintf("iptables -S INPUT | grep -F -- '-i %s '", iface),
+		fmt.Sprintf("iptables -S FORWARD | grep -F -- '-i %s '", iface),
+		fmt.Sprintf("iptables -t nat -S POSTROUTING | grep -F -- '%s'", subnet),
 		// Without a default route the masquerade above matches nothing, which
 		// is a rule that reads "Found" and does not work.
 		"ip route show default | head -1",
 	}
 	if subnetV6 != "" {
 		checks = append(checks,
-			fmt.Sprintf("ip6tables -L INPUT -n | grep %s", iface),
-			fmt.Sprintf("ip6tables -L FORWARD -n | grep %s", iface),
-			fmt.Sprintf("ip6tables -t nat -L POSTROUTING -n | grep %s", subnetV6),
+			fmt.Sprintf("ip6tables -S INPUT | grep -F -- '-i %s '", iface),
+			fmt.Sprintf("ip6tables -S FORWARD | grep -F -- '-i %s '", iface),
+			fmt.Sprintf("ip6tables -t nat -S POSTROUTING | grep -F -- '%s'", subnetV6),
 			"ip -6 route show default | head -1",
-			"ip -6 addr show scope global | head -1",
+			"ip -6 -o addr show scope global | grep -E 'inet6 [23][0-9a-fA-F]{3}:' | head -1",
 		)
 	}
 	results := map[string]string{}
@@ -179,7 +262,7 @@ func (t *Tools) CheckIPTables(iface, subnet, subnetV6 string) map[string]string 
 			results[cmd] = "Not found"
 		}
 	}
-	return results
+	return results, t.NATState()
 }
 
 // RouteSourceIP is the address the host would use to reach the internet,

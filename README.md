@@ -176,13 +176,14 @@ docker compose up -d
 > on the host before pulling.
 
 > [!IMPORTANT]
-> The port mapping reaches the container over IPv6, but the container itself has
-> no IPv6 address on the default bridge network — so clients get an IPv6 tunnel
-> and no IPv6 internet through it. For real IPv6 egress run the service with
-> `network_mode: host` (the two `net.ipv6.conf.*` sysctls then belong on the
-> host) or give the Docker network a routed global IPv6 prefix. `GET
-> /api/system/iptables-test?server_id=…` reports whether an IPv6 default route
-> and a global IPv6 address are seen from inside.
+> The port mapping reaches the container over IPv6, but a container on a bridge
+> network has no routable IPv6 address of its own — so clients get an IPv6
+> tunnel and no IPv6 internet through it. For real IPv6 egress use
+> `docker-compose.host.yml` (`network_mode: host`, with forwarding enabled on
+> the host) or give the Docker network a routed global IPv6 prefix. `GET
+> /api/system/iptables-test?server_id=…` reports both: `nat6.state` is
+> `ula-only` on a bridge, `ok` when the family has a routable source, and
+> `no-route` on a host without that family at all.
 
 The admin panel is at `http://<your-server>:54845`: a login page asks for the
 user `admin` and the password `changeme`, and the session it hands out lasts 12

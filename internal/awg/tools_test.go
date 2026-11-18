@@ -131,7 +131,7 @@ func TestIPTablesScriptsReportWhenNotDeployed(t *testing.T) {
 	tools := awg.New(run)
 	tools.ScriptsDir = t.TempDir()
 
-	err := tools.SetupIPTables("wg-x", "10.0.1.0/24", "fd42:ab12::/64")
+	_, err := tools.SetupIPTables("wg-x", "10.0.1.0/24", "fd42:ab12::/64")
 	if err == nil || !strings.Contains(err.Error(), "not deployed") {
 		t.Errorf("SetupIPTables = %v, want an error saying the script is missing", err)
 	}
@@ -217,7 +217,7 @@ func TestSetupIPTablesReportsAScriptThatFails(t *testing.T) {
 	tools := awg.New(run)
 	tools.ScriptsDir = dir
 
-	err := tools.SetupIPTables("wg-abc123", "10.0.1.0/24", "")
+	_, err := tools.SetupIPTables("wg-abc123", "10.0.1.0/24", "")
 	if err == nil {
 		t.Fatal("a failing setup_iptables.sh was reported as success")
 	}

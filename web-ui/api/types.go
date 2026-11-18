@@ -270,6 +270,30 @@ type IptablesTest struct {
 	Subnet        string            `json:"subnet"`
 	SubnetV6      string            `json:"subnet_v6"`
 	IptablesCheck map[string]string `json:"iptables_check"`
+	NAT4          NATStatus         `json:"nat4"`
+	NAT6          NATStatus         `json:"nat6"`
+}
+
+// NATStatus is one family's way out of the host, as the firewall script
+// decided it. State is one of:
+//
+//	ok           a default route and a routable source: NAT works
+//	ula-only     IPv6 has only a unique local address (a Docker bridge
+//	             network hands out exactly that), so clients get the tunnel
+//	             and no IPv6 internet
+//	no-route     no default route in this family: no forwarding rules were
+//	             written
+//	no-address   the uplink has no address of this family to masquerade onto
+//	unavailable  ip6tables, or its nat table, is missing
+//	failed       iptables rejected the rules
+//	unknown      the firewall script could not be asked
+//
+// Uplink and Source are what the script read off the routing table; both are
+// empty when there is no route.
+type NATStatus struct {
+	State  string `json:"state"`
+	Uplink string `json:"uplink,omitempty"`
+	Source string `json:"source,omitempty"`
 }
 
 // AmneziaLink is the payload of GET /api/servers/:id/clients/:clientId/link.

@@ -313,7 +313,7 @@ func TestStoredClientServerIDSurvivesLaterRequests(t *testing.T) {
 // is answered from the runner, the other from /proc.
 func TestSystemEndpointsAnswerWithoutTheHost(t *testing.T) {
 	app, _, run := newTestAPI(t)
-	run.Stub("iptables -L INPUT", "ACCEPT udp -- anywhere anywhere wg-test-absent")
+	run.Stub("iptables -S INPUT", "-A INPUT -i wg-test-absent -j ACCEPT")
 
 	status, body := call(t, app, http.MethodGet, "/api/system/iptables-test?server_id=s1", "")
 	if status != http.StatusOK {
@@ -331,6 +331,11 @@ func TestSystemEndpointsAnswerWithoutTheHost(t *testing.T) {
 	}
 	if found != 1 {
 		t.Errorf("IptablesCheck = %v, want exactly one rule found", check.IptablesCheck)
+	}
+	// No script is deployed in the test tree, so the per-family verdict is
+	// unknown rather than a guess.
+	if check.NAT4.State != "unknown" || check.NAT6.State != "unknown" {
+		t.Errorf("NAT states = %q/%q, want unknown/unknown", check.NAT4.State, check.NAT6.State)
 	}
 
 	status, body = call(t, app, http.MethodGet, "/api/system/iptables-test", "")

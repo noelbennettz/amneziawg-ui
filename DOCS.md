@@ -123,15 +123,38 @@ automatically.
     where the uplink is the interface the IPv6 default route names — not a
     fixed `eth+`, which matched nothing on a host whose interface is called
     something else. The same lookup, in reverse, is used to remove the rule
-    set. Check it with `GET /api/system/iptables-test?server_id=…`: for a
-    server with an IPv6 subnet the three `ip6tables` rules appear there, plus
-    two routing checks — an IPv6 default route and a global IPv6 address —
-    without which the NAT66 rule has nothing to masquerade.
-*   **What the host needs**: IPv6 enabled with forwarding on —
-    `net.ipv6.conf.all.disable_ipv6=0`, `net.ipv6.conf.all.forwarding=1`,
-    `net.ipv6.conf.default.forwarding=1` (already in `docker-compose.yml`) —
-    plus the `ip6table_nat` module for NAT66. Without `ip6tables` the server
-    still comes up, but NAT6 does not work — visible in `iptables-test`.
+    set.
+*   **The rules follow the uplink, family by family**: the tunnel rules
+    (`INPUT`, `FORWARD`, `OUTPUT` for the `awg` interface) are written for
+    every family the kernel has, because that is what the tunnel itself needs.
+    The forwarding and masquerade rules are written only for a family with a
+    default route **and** an address on that route — a masquerade onto an
+    interface with no address drops the packet where no counter is read. An
+    IPv4-only host therefore gets no IPv6 NAT rules and keeps working IPv4; an
+    IPv6-only host the other way round. The family that exists is never taken
+    down by the one that does not.
+*   **`GET /api/system/iptables-test?server_id=…`** answers both questions: the
+    rules that are there (`iptables_check`, keyed by the command that looked,
+    read with `iptables -S` — the plain `-L` listing does not print the
+    interface a rule is scoped to) and what the script decided about each
+    family (`nat4`/`nat6`, with `state`, `uplink` and `source`). `state` is
+    `ok` when the family has a route and a routable source; `ula-only` when
+    IPv6 has only a unique local address — a Docker bridge hands out exactly
+    that, so the rule is written and cannot reach the internet; `no-route` and
+    `no-address` when there is nothing to masquerade onto and no rule was
+    written; `unavailable` without `ip6tables`, or without its nat table; and
+    `unknown` when the script could not be asked. The same verdict is logged
+    when the server starts.
+*   **What the host needs**: forwarding on — `net.ipv6.conf.all.disable_ipv6=0`,
+    `net.ipv6.conf.all.forwarding=1`, `net.ipv6.conf.default.forwarding=1`
+    (already in `docker-compose.yml`) — plus the `ip6table_nat` module for
+    NAT66. Docker refuses `sysctls` in the host network namespace, so with
+    `network_mode: host` those switches belong on the host;
+    `docker-compose.host.yml` drops them from the service and the container
+    warns at startup when forwarding is off in its namespace. A namespace with
+    IPv6 switched off altogether cannot host an `awg` interface at all —
+    `awg-quick` fails to add the server's IPv6 address — which is why the
+    compose file turns it back on for the container.
 *   **The uplink is read, not assumed**: both scripts used to match `-o eth+`,
     which is the container's bridge interface. On a host-network deployment,
     or any host whose uplink is called something else, the masquerade and
@@ -139,17 +162,18 @@ automatically.
     either stack. They now resolve the interface per family from
     `ip route show default` and `ip -6 route show default`, and print what is
     missing when there is no default route at all.
-*   **What the container needs for IPv6 egress**: an IPv6 address and a
-    default route of its own. A container on the default bridge has neither —
-    publishing the port makes the tunnel *reachable* over IPv6 (Docker proxies
-    the host's IPv6 port to the container's IPv4 one) but leaves the container
-    itself without a v6 uplink, so clients' `::/0` traffic dies at the
-    masquerade. Either run the service with `network_mode: host` (then
-    `WEB_UI_PORT`/`DEFAULT_PORT` are the host's ports and the two
-    `net.ipv6.conf.*` sysctls belong on the host) or give the Docker network an
-    IPv6 subnet and a routed global prefix of your own. `iptables-test` reports
-    whether an IPv6 default route and a global IPv6 address exist, which is the
-    quickest way to tell the two situations apart.
+*   **What the container needs for IPv6 egress**: a global IPv6 address and a
+    default route of its own. A container on a bridge network gets a unique
+    local address at best (`fd00:…`/`fddd:…`), and Docker does not masquerade
+    that onto the host's uplink, so clients' `::/0` traffic dies at the
+    masquerade — `nat6.state` says `ula-only`. Publishing the port still makes
+    the tunnel *reachable* over IPv6 (Docker proxies the host's IPv6 port to
+    the container's IPv4 one). For real IPv6 egress either run the service
+    with host networking —
+    `docker compose -f docker-compose.yml -f docker-compose.host.yml up -d`,
+    where `WEB_UI_PORT`/`DEFAULT_PORT` are the host's ports and the forwarding
+    switches are the host's — or give the Docker network a routed global IPv6
+    prefix of your own.
 *   **Reaching the panel over IPv6**: the listener is dual-stack (`tcp`), so
     `http://[2001:db8::1]:54845` answers exactly like the IPv4 address does.
 *   **Reaching the tunnel over IPv6**: the engine is dual-stack by itself —
@@ -311,6 +335,7 @@ automatically.
 ├── Dockerfile                 # Multi-stage build: the Go binary + pinned amneziawg-go and amneziawg-tools
 ├── docker-compose.yml         # Base compose file (runs the ready image, no build)
 ├── docker-compose.build.yml   # Overlay that adds `build: .` (used by `make run`)
+├── docker-compose.host.yml    # Overlay for network_mode: host (IPv4 and IPv6 egress)
 └── Makefile
 ```
 
@@ -715,11 +740,13 @@ imported AWG config as the outdated `amnezia-awg` container (shown as
 `GET /api/system/iptables-test?server_id=wg_abc123`
 
 Every rule `scripts/setup_iptables.sh` should have left, keyed by the command
-that looked for it, with `Found` or `Not found` as the value. Every server also
-gets one routing check (`ip route show default`) and a server with an IPv6
-subnet three more (`ip -6 route show default`, `ip -6 addr show scope global`):
-a NAT rule exists whether or not there is anything behind it to masquerade, and
-these checks report which situation the host is in.
+that looked for it, with `Found` or `Not found` as the value — read with
+`iptables -S`, since the plain `-L` listing does not print the interface a rule
+is scoped to. Alongside it `nat4` and `nat6` carry the script's own verdict for
+each family (`state`, `uplink`, `source`), which is what tells a rule that is
+present apart from a rule with something routable to masquerade onto. A server
+without an IPv6 subnet has no `ip6tables` rules to look for, but `nat6` still
+reports the host's IPv6 view.
 
 #### Health check (no credentials)
 
@@ -842,11 +869,14 @@ docker build --build-arg AWG_GO_VERSION=vX.Y.Z --build-arg AWG_TOOLS_VERSION=vX.
 
 ### docker compose example
 
-The repository already ships two compose files: `docker-compose.yml` (the base
-one, running a ready `image:`, no build) and `docker-compose.build.yml` (an
-overlay adding `build: .`). `make run` merges both to build from source and
-run; to bring up an image that is already built or pulled, use the base file
-alone: `docker compose -f docker-compose.yml up -d`. The base file reads ports
+The repository already ships three compose files: `docker-compose.yml` (the
+base one, running a ready `image:`, no build), `docker-compose.build.yml` (an
+overlay adding `build: .`) and `docker-compose.host.yml` (an overlay switching
+the service to host networking, which is what gives the clients IPv4 and IPv6
+egress on a host with a public address of each). `make run` merges the first
+two to build from source and run; to bring up an image that is already built
+or pulled, use the base file alone:
+`docker compose -f docker-compose.yml up -d`. The base file reads ports
 and settings from `.env`; if the variables are not there, the same defaults as
 in the image apply — `54845/tcp` for the web UI and `54844/udp` for the VPN.
 
