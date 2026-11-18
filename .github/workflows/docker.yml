@@ -164,23 +164,11 @@ jobs:
           echo "Platforms: ${{ env.PLATFORMS }}"
           echo "Tags: ${{ steps.meta.outputs.tags }}"
           echo
-          echo "The package is private until you change its visibility at"
-          echo "https://github.com/users/${{ github.repository_owner }}/packages/container/${GITHUB_REPOSITORY#*/}/settings"
-          echo "A private package needs 'docker login ghcr.io' on the host that pulls it."
+          echo "The package is public; no docker login is needed to pull it."
 
-  # Housekeeping: this workflow deletes its own older runs, keeping the three
-  # newest. The history of a workflow that runs on every push is mostly noise
-  # after a while, and every run carries its logs and artifacts with it.
-  #
-  # It runs whether the jobs above passed or failed - a red run is worth
-  # keeping until it ages out, and a failed build is exactly when the logs are
-  # worth reading.
-  #
-  # "The three newest" is spelled out as "this run plus the two newest of the
-  # others" rather than as a slice of some filtered list: the first version
-  # filtered by status and then sliced, which kept three *completed* runs and
-  # deleted more than it meant to. A run that is still in progress is skipped
-  # and ages out on a later run, so an active build is never touched.
+  # Housekeeping: delete this workflow's older runs, keeping the newest three.
+  # It runs whether the jobs above passed or failed: a red run is worth keeping
+  # until it ages out, and a failed build is exactly when its logs matter.
   prune:
     needs: [test, build-and-push]
     if: always()
@@ -189,59 +177,10 @@ jobs:
       contents: read
       # Deleting runs is an actions write, not a contents one.
       actions: write
-
     steps:
+      - uses: actions/checkout@v4
       - name: Delete every run but the three newest
-        # Housekeeping must not turn a good release red: a warning in the run
-        # summary is the right weight for "the history is piling up".
         continue-on-error: true
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GITHUB_RUN_ID: ${{ github.run_id }}
-          REPO: ${{ github.repository }}
-        run: |
-          set -euo pipefail
-
-          gh api "repos/${REPO}/actions/workflows/docker.yml/runs?per_page=100" \
-            > runs.json
-
-          python3 - <<'PY'
-          import json, os, subprocess, sys
-
-          repo = os.environ["REPO"]
-          current = int(os.environ["GITHUB_RUN_ID"])
-          runs = json.load(open("runs.json"))["workflow_runs"]
-
-          others = [r for r in runs if r["id"] != current]
-          # This run is the first of the three; the two newest of the rest
-          # follow it.
-          keep = {r["id"] for r in others[:2]} | {current}
-          victims = [r for r in others[2:] if r["status"] == "completed"]
-
-          print(f"{len(runs)} run(s); keeping {sorted(keep)}")
-          for r in victims:
-              print(f"  delete {r['id']} {r['created_at']} {r['conclusion']}")
-
-          # Deleting the current run would kill the job doing the deleting, and
-          # deleting more than the list allows means the arithmetic went wrong.
-          budget = len(runs) - 3
-          if budget < 0:
-              budget = 0
-          if len(victims) > budget:
-              sys.exit(f"refusing: {len(victims)} deletions for a budget of {budget}")
-
-          for r in victims:
-              subprocess.run(
-                  ["gh", "run", "delete", str(r["id"]), "--repo", repo],
-                  check=True,
-              )
-
-          print(f"deleted {len(victims)}; {len(runs) - len(victims)} left")
-          PY
-
-          left=$(gh api "repos/${REPO}/actions/workflows/docker.yml/runs?per_page=100" \
-            --jq '.workflow_runs | length')
-          echo "now ${left} run(s)"
-          if [ "$left" -lt 3 ]; then
-            echo "::warning::only ${left} run(s) left; the pruning kept fewer than it meant to"
-          fi
+        run: bash scripts/prune-runs.sh 3
