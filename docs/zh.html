@@ -232,9 +232,8 @@ volumes:
       </div>
     </div>
     <p class="note">
-      <strong>Image 已經公開在 GHCR。</strong>若 pull 仍要求登入，用有 <code>read:packages</code>
-      的 token 執行 <code>docker login ghcr.io</code>。面板本身是 HTTP：前面請放一層 TLS 反向代理，
-      並設 <code>WEB_UI_SECURE_COOKIE=true</code>（或讓代理送出 <code>X-Forwarded-Proto: https</code>）。
+      <strong>面板本身是 HTTP。</strong>前面請放一層 TLS 反向代理，並設
+      <code>WEB_UI_SECURE_COOKIE=true</code>（或讓代理送出 <code>X-Forwarded-Proto: https</code>）。
     </p>
   </div>
 </section>

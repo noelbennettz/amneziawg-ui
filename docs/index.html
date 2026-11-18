@@ -233,9 +233,7 @@ volumes:
       </div>
     </div>
     <p class="note">
-      <strong>The image is public on GHCR.</strong> If a pull still asks for credentials,
-      run <code>docker login ghcr.io</code> with a token that has <code>read:packages</code>.
-      The panel serves HTTP: put a TLS reverse proxy in front of it and set
+      <strong>The panel serves HTTP.</strong> Put a TLS reverse proxy in front of it and set
       <code>WEB_UI_SECURE_COOKIE=true</code> (or send <code>X-Forwarded-Proto: https</code>).
     </p>
   </div>
