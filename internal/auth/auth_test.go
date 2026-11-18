@@ -680,7 +680,7 @@ func TestAuditRecordsLoginsAndChanges(t *testing.T) {
 	}
 
 	counts := map[string]int{}
-	for _, line := range strings.Split(strings.TrimSpace(string(raw)), "\n") {
+	for line := range strings.SplitSeq(strings.TrimSpace(string(raw)), "\n") {
 		var event audit.Event
 		if err := json.Unmarshal([]byte(line), &event); err != nil {
 			t.Fatalf("audit line %q is not JSON: %v", line, err)

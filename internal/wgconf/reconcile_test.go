@@ -15,11 +15,12 @@ func writePeerConf(t *testing.T, blocks ...string) string {
 	t.Helper()
 
 	path := filepath.Join(t.TempDir(), "wg-test.conf")
-	conf := "[Interface]\nPrivateKey = key\nAddress = 10.0.0.1/24\nListenPort = 54844\n"
+	var conf strings.Builder
+	conf.WriteString("[Interface]\nPrivateKey = key\nAddress = 10.0.0.1/24\nListenPort = 54844\n")
 	for _, block := range blocks {
-		conf += block
+		conf.WriteString(block)
 	}
-	if err := os.WriteFile(path, []byte(conf), 0o600); err != nil {
+	if err := os.WriteFile(path, []byte(conf.String()), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	return path

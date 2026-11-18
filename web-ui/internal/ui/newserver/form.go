@@ -860,7 +860,7 @@ func (f *Form) submit() {
 
 func splitList(value string) []string {
 	var out []string
-	for _, part := range strings.Split(value, ",") {
+	for part := range strings.SplitSeq(value, ",") {
 		if trimmed := strings.TrimSpace(part); trimmed != "" {
 			out = append(out, trimmed)
 		}

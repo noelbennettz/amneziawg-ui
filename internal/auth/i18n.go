@@ -69,7 +69,7 @@ var defaultLoginText = loginTexts["en"]
 func loginTextFor(header string) loginText {
 	best, bestQ := defaultLoginText, 0.0
 
-	for _, entry := range strings.Split(header, ",") {
+	for entry := range strings.SplitSeq(header, ",") {
 		tag, params, _ := strings.Cut(entry, ";")
 		tag, params = strings.TrimSpace(tag), strings.TrimSpace(params)
 

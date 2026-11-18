@@ -288,16 +288,16 @@ func (m *Manager) CreateServer(req api.CreateServerRequest) (*api.Server, error)
 
 // parseDNS reads the DNS field of a create request, which the form sends as
 // a comma separated string and an API caller may send as a list.
-func parseDNS(raw interface{}) []string {
+func parseDNS(raw any) []string {
 	var out []string
 	switch v := raw.(type) {
 	case string:
-		for _, d := range strings.Split(v, ",") {
+		for d := range strings.SplitSeq(v, ",") {
 			if s := strings.TrimSpace(d); s != "" {
 				out = append(out, s)
 			}
 		}
-	case []interface{}:
+	case []any:
 		for _, d := range v {
 			if s, ok := d.(string); ok {
 				if t := strings.TrimSpace(s); t != "" {

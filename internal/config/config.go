@@ -199,7 +199,7 @@ func auditRetention(s string) time.Duration {
 // splitList parses a comma separated list, dropping blanks.
 func splitList(s string) []string {
 	var out []string
-	for _, item := range strings.Split(s, ",") {
+	for item := range strings.SplitSeq(s, ",") {
 		if item = strings.TrimSpace(item); item != "" {
 			out = append(out, item)
 		}

@@ -17,7 +17,7 @@ func TestLimiterBlocksAfterFiveFailures(t *testing.T) {
 	now := time.Unix(testNow, 0)
 	l := newTestLimiter(&now)
 
-	for i := 0; i < limitFailures; i++ {
+	for i := range limitFailures {
 		if wait := l.retryAfter("10.0.0.1"); wait != 0 {
 			t.Fatalf("blocked after %d failures", i)
 		}

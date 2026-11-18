@@ -178,7 +178,7 @@ func TestStoredValuesCannotStartADirective(t *testing.T) {
 	}
 
 	conf := iface.Render()
-	for _, line := range strings.Split(conf, "\n") {
+	for line := range strings.SplitSeq(conf, "\n") {
 		if strings.HasPrefix(strings.TrimSpace(line), "PostUp") {
 			t.Fatalf("the key became a directive:\n%s", conf)
 		}
@@ -197,7 +197,7 @@ func TestStoredValuesCannotStartADirective(t *testing.T) {
 	}
 	srv := &api.Server{Name: "s\nPostUp = x", ServerPublicKey: "pub", Port: 54844, MTU: 1280}
 	out := ClientConf(srv, client, "198.51.100.1", true)
-	for _, line := range strings.Split(out, "\n") {
+	for line := range strings.SplitSeq(out, "\n") {
 		if strings.HasPrefix(strings.TrimSpace(line), "PostUp") {
 			t.Fatalf("a client value became a directive:\n%s", out)
 		}

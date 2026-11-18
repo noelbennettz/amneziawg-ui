@@ -121,7 +121,7 @@ func mergeAddressList(current, wanted string) string {
 	seen := map[string]bool{}
 	merged := make([]string, 0, 2)
 	for _, list := range []string{current, wanted} {
-		for _, entry := range strings.Split(list, ",") {
+		for entry := range strings.SplitSeq(list, ",") {
 			entry = strings.TrimSpace(entry)
 			if entry == "" || seen[entry] {
 				continue

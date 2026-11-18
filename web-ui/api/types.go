@@ -122,7 +122,7 @@ type CreateServerRequest struct {
 	SubnetV6          string             `json:"subnet_v6"`
 	MTU               int                `json:"mtu"`
 	Endpoint          string             `json:"endpoint"`
-	DNS               interface{}        `json:"dns"`
+	DNS               any                `json:"dns"`
 	Obfuscation       *bool              `json:"obfuscation"`
 	ObfuscationParams *ObfuscationParams `json:"obfuscation_params"`
 	AutoStart         *bool              `json:"auto_start"`

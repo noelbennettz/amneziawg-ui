@@ -82,7 +82,7 @@ func validateHostname(host string) error {
 	if trimmed == "" {
 		return fmt.Errorf("it has no labels")
 	}
-	for _, label := range strings.Split(trimmed, ".") {
+	for label := range strings.SplitSeq(trimmed, ".") {
 		switch {
 		case label == "":
 			return fmt.Errorf("it has an empty label")

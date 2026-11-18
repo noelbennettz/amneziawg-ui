@@ -175,7 +175,7 @@ func TestConcurrentClientChurnIsRaceFree(t *testing.T) {
 	added := make(chan string, n)
 	var wg sync.WaitGroup
 
-	for i := 0; i < n; i++ {
+	for i := range n {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
@@ -187,15 +187,13 @@ func TestConcurrentClientChurnIsRaceFree(t *testing.T) {
 			added <- client.ID
 		}(i)
 	}
-	for i := 0; i < n; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+	for range n {
+		wg.Go(func() {
 			m.Clients("")
 			m.Clients("s1")
 			m.Servers()
 			m.ClientCount()
-		}()
+		})
 	}
 	wg.Wait()
 	close(added)

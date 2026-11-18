@@ -124,7 +124,7 @@ func (s *sparkline) draw(w, h int) image.Image {
 		x0 := float64(w-1) - step*float64(n-1)
 		area := style.WithAlpha(line.color, 0x33)
 
-		for i := 0; i < n; i++ {
+		for i := range n {
 			xa := x0 + step*float64(i)
 			ya := yOf(line.values[i])
 			xb, yb := xa, ya

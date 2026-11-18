@@ -39,7 +39,7 @@ func Visible() bool {
 // in a header the server compares against that cookie.
 func CSRFToken() string {
 	const name = "awg_csrf"
-	for _, part := range strings.Split(js.Global().Get("document").Get("cookie").String(), ";") {
+	for part := range strings.SplitSeq(js.Global().Get("document").Get("cookie").String(), ";") {
 		key, value, ok := strings.Cut(strings.TrimSpace(part), "=")
 		if ok && key == name {
 			return value

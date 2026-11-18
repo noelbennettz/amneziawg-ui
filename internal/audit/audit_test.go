@@ -32,7 +32,7 @@ func read(t *testing.T, path string) []Event {
 		t.Fatal(err)
 	}
 	var events []Event
-	for _, line := range strings.Split(strings.TrimSpace(string(data)), "\n") {
+	for line := range strings.SplitSeq(strings.TrimSpace(string(data)), "\n") {
 		if line == "" {
 			continue
 		}

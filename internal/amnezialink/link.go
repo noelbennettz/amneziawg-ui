@@ -40,13 +40,13 @@ func Build(srv *api.Server, client *api.Client, endpoint string) (string, error)
 	_, subnetCidr := netutil.SplitCIDR(srv.Subnet)
 
 	var allowedIPList []string
-	for _, ip := range strings.Split(wgconf.AllowedIPsOrDefault(client.AllowedIPs), ",") {
+	for ip := range strings.SplitSeq(wgconf.AllowedIPsOrDefault(client.AllowedIPs), ",") {
 		if ip = strings.TrimSpace(ip); ip != "" {
 			allowedIPList = append(allowedIPList, ip)
 		}
 	}
 
-	awgObj := map[string]interface{}{
+	awgObj := map[string]any{
 		"port":            fmt.Sprintf("%d", srv.Port),
 		"transport_proto": "udp",
 		// The app compares this against its own protocols::awg::awgV3
@@ -59,7 +59,7 @@ func Build(srv *api.Server, client *api.Client, endpoint string) (string, error)
 		"subnet_cidr":      subnetCidr,
 	}
 
-	clientObj := map[string]interface{}{
+	clientObj := map[string]any{
 		"hostName":        endpoint,
 		"port":            srv.Port,
 		"client_ip":       client.ClientIP,
@@ -123,9 +123,9 @@ func Build(srv *api.Server, client *api.Client, endpoint string) (string, error)
 	}
 	awgObj["last_config"] = string(clientJSON)
 
-	root := map[string]interface{}{
-		"containers": []interface{}{
-			map[string]interface{}{
+	root := map[string]any{
+		"containers": []any{
+			map[string]any{
 				"container": container,
 				"awg":       awgObj,
 			},

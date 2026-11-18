@@ -141,7 +141,6 @@ func showMenuAt(from fyne.CanvasObject, items []MenuItem, canvasFor fyne.Canvas)
 	popup := &widget.PopUp{}
 
 	for _, item := range items {
-		item := item
 		rows.Add(newMenuRow(item, func() {
 			popup.Hide()
 			if item.Do != nil {

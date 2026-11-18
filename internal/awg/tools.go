@@ -68,7 +68,7 @@ func quickFailure(err error) error {
 	}
 	var last, current []string
 	inBanner := false
-	for _, line := range strings.Split(exitErr.Stderr, "\n") {
+	for line := range strings.SplitSeq(exitErr.Stderr, "\n") {
 		line = strings.TrimSpace(line)
 		switch {
 		case strings.HasPrefix(line, "┌"):
@@ -131,7 +131,7 @@ type FirewallStatus struct {
 // script's human-readable output can change without breaking this.
 func ParseNATStatus(output string) FirewallStatus {
 	var status FirewallStatus
-	for _, line := range strings.Split(output, "\n") {
+	for line := range strings.SplitSeq(output, "\n") {
 		fields := strings.Fields(line)
 		if len(fields) < 2 {
 			continue
@@ -335,7 +335,7 @@ func (t *Tools) ShowPeers(iface string) map[string]PeerStats {
 // listing, so its age is worded the way awg words it.
 func ParsePeerDump(output string, now time.Time) map[string]PeerStats {
 	peers := map[string]PeerStats{}
-	for _, line := range strings.Split(output, "\n") {
+	for line := range strings.SplitSeq(output, "\n") {
 		fields := strings.Split(line, "\t")
 		if len(fields) < 7 {
 			continue
@@ -361,10 +361,7 @@ func ParsePeerDump(output string, now time.Time) map[string]PeerStats {
 // FormatHandshakeAge words an age the way `awg show` does: every non-zero unit
 // from years down, comma separated, always ending in seconds and " ago".
 func FormatHandshakeAge(age time.Duration) string {
-	seconds := int64(age / time.Second)
-	if seconds < 0 {
-		seconds = 0
-	}
+	seconds := max(int64(age/time.Second), 0)
 
 	units := []struct {
 		name    string
@@ -403,7 +400,7 @@ func plural(n int64, unit string) string {
 func ParseShow(output string) map[string]PeerStats {
 	peers := map[string]PeerStats{}
 	current := ""
-	for _, line := range strings.Split(output, "\n") {
+	for line := range strings.SplitSeq(output, "\n") {
 		line = strings.TrimSpace(line)
 		switch {
 		case strings.HasPrefix(line, "peer:"):
@@ -434,7 +431,7 @@ type Transfer struct {
 // line per peer. Lines that do not fit are skipped.
 func ParseTransfer(output string) map[string]Transfer {
 	peers := map[string]Transfer{}
-	for _, line := range strings.Split(output, "\n") {
+	for line := range strings.SplitSeq(output, "\n") {
 		fields := strings.Fields(line)
 		if len(fields) != 3 {
 			continue
@@ -454,7 +451,7 @@ func ParseTransfer(output string) map[string]Transfer {
 // never shook hands and is left out, as are lines that do not fit.
 func ParseLatestHandshakes(output string) map[string]time.Time {
 	peers := map[string]time.Time{}
-	for _, line := range strings.Split(output, "\n") {
+	for line := range strings.SplitSeq(output, "\n") {
 		fields := strings.Fields(line)
 		if len(fields) != 2 {
 			continue

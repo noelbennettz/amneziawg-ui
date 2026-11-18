@@ -133,7 +133,7 @@ func equalLines(a, b []string) bool {
 // dot a "·"-separated list puts between its items.
 func wrapLines(text string, size float32, style fyne.TextStyle, width float32) []string {
 	var lines []string
-	for _, paragraph := range strings.Split(text, "\n") {
+	for paragraph := range strings.SplitSeq(text, "\n") {
 		words := glueSeparators(strings.Fields(paragraph))
 		if len(words) == 0 {
 			lines = append(lines, "")

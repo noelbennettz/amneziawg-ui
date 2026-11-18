@@ -1,6 +1,7 @@
 package manager
 
 import (
+	"maps"
 	"slices"
 
 	"amneziawg-web-ui/web-ui/api"
@@ -113,9 +114,7 @@ func cloneClient(c *api.Client) api.Client {
 	clone.ObfuscationParams = cloneObfuscationParams(c.ObfuscationParams)
 	if c.ISettings != nil {
 		clone.ISettings = make(map[string]string, len(c.ISettings))
-		for k, v := range c.ISettings {
-			clone.ISettings[k] = v
-		}
+		maps.Copy(clone.ISettings, c.ISettings)
 	}
 	return clone
 }

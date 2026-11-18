@@ -52,14 +52,12 @@ func TestConcurrentSavesLeaveAValidConfig(t *testing.T) {
 	cfg := &AppConfig{Servers: []api.Server{{ID: "s1", Clients: []api.Client{{ID: "c1"}}}}}
 
 	var wg sync.WaitGroup
-	for i := 0; i < 16; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+	for range 16 {
+		wg.Go(func() {
 			if err := s.Save(cfg); err != nil {
 				t.Errorf("Save: %v", err)
 			}
-		}()
+		})
 	}
 	wg.Wait()
 
