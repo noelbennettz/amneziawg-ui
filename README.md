@@ -3,7 +3,7 @@
 [![Container image](https://img.shields.io/badge/ghcr.io-amneziawg--ui-blue?logo=github)](https://github.com/noelbennettz/amneziawg-ui/pkgs/container/amneziawg-ui)
 [![Website](https://img.shields.io/badge/website-noelbennettz.github.io%2Famneziawg--ui-5b7cff)](https://noelbennettz.github.io/amneziawg-ui/)
 [![Go](https://img.shields.io/badge/Go-1.26-00ADD8?logo=go&logoColor=white)](go.mod)
-[![AmneziaWG](https://img.shields.io/badge/AmneziaWG-3.1-blue)](DOCS.md#-amneziawg-31--the-essentials)
+[![AmneziaWG](https://img.shields.io/badge/AmneziaWG-3.1-blue)](DOCS.md#amneziawg-31--the-essentials)
 [![License](https://img.shields.io/badge/license-AGPL--3.0-blue)](LICENSE)
 
 **AmneziaWG Web UI** is a web panel for **AmneziaWG**, the obfuscated fork of
@@ -22,7 +22,7 @@ is on for every server, with nothing to configure by hand.
 ## Requirements
 
 - A Linux host with Docker Engine and Docker Compose **2.24 or newer** (the compose files use `env_file.required` and `!reset`).
-- A public IPv4 and/or IPv6 address. IPv6 per server is optional, but a bridge network gives clients an IPv6 tunnel without IPv6 egress — see [DOCS.md](DOCS.md#-ipv6-and-nat6).
+- A public IPv4 and/or IPv6 address. IPv6 per server is optional, but a bridge network gives clients an IPv6 tunnel without IPv6 egress — see [DOCS.md](DOCS.md#ipv6-and-nat6).
 - Host ports `54845/tcp` (panel) and `54844/udp` (the first VPN server), or your own values.
 - `/dev/net/tun` on the host. The tunnel runs in user space (`amneziawg-go`), so no kernel module and no `SYS_MODULE`.
 

@@ -15,7 +15,7 @@ or the API, with the exception of `WEB_UI_PORT`.
   <img src="screenshot.png" alt="Monitoring panel with VPN traffic, CPU, RAM and storage charts, and the create-server form with the IPv4 and IPv6 subnet fields"/>
 </p>
 
-## 🔒 AmneziaWG 3.1 — the essentials
+## AmneziaWG 3.1 — the essentials
 
 This is the project's key property: **every server created here uses the full
 AmneziaWG 3.x parameter set** — the old "basic obfuscation" 1.0/1.5/2.0 mode is
@@ -51,7 +51,7 @@ What the application does for you automatically:
     keepalive timings and to the content padding — otherwise those are
     WireGuard's constant, predictable timers. The full reference, the engine
     defaults and the recommended ranges are in the
-    [Obfuscation parameters](#-obfuscation-parameters) section.
+    [Obfuscation parameters](#obfuscation-parameters) section.
 
 ### What AmneziaWG 3.1 adds
 
@@ -82,7 +82,7 @@ does not know these keys at all. Clear both checkboxes in the create-server
 form if such clients have to be supported. Existing servers are unaffected:
 their stored parameters have no flags, and the absence of a flag means "off".
 
-## 🚀 Features
+## Features
 
 *   **Web management**: a clear interface for managing VPN servers and clients
 *   **AmneziaWG 3.1 by default**: header protection, random trailers, disabled cookies, junk packets, message padding and header obfuscation are always fully configured — see above
@@ -95,9 +95,9 @@ their stored parameters have no flags, and the absence of a flag means "off".
 *   **Native AmneziaVPN link**: export a client config as a `vpn://…` link that the official app recognises as AmneziaWG 3.x
 *   **Config viewer**: both server and client configs open straight from the UI
 *   **Client data**: traffic, the last handshake and the IP endpoint are shown and refresh automatically
-*   **IPv4 and IPv6 (NAT6)**: every server gets its own ULA `/64` (`fd42:…::/64`), the server takes the first address in it and clients the next ones; client configs carry addresses on both stacks, and `ip6tables` publishes IPv6 traffic outwards through NAT66. More in [IPv6 and NAT6](#-ipv6-and-nat6)
+*   **IPv4 and IPv6 (NAT6)**: every server gets its own ULA `/64` (`fd42:…::/64`), the server takes the first address in it and clients the next ones; client configs carry addresses on both stacks, and `ip6tables` publishes IPv6 traffic outwards through NAT66. More in [IPv6 and NAT6](#ipv6-and-nat6)
 
-## 🌐 IPv6 and NAT6
+## IPv6 and NAT6
 
 AmneziaWG (like WireGuard) is a dual-stack protocol, and a client's default
 `AllowedIPs` is `0.0.0.0/0, ::/0`. As long as the tunnel had an IPv4 address
@@ -234,7 +234,7 @@ automatically.
     appends the addresses to the `.conf` files on startup (the `Address` line
     and the peers' `AllowedIPs`), so servers do not have to be recreated.
 
-## 🏗️ Architecture
+## Architecture
 
 ### Components
 
@@ -371,7 +371,7 @@ automatically.
 └── Makefile
 ```
 
-## 🔨 Building and running locally
+## Building and running locally
 
 Go 1.26+ is required. The frontend bundle is built by `make web-ui` (or
 `make build`, which calls it first) — the `fyne` packaging tool is declared as a
@@ -453,7 +453,7 @@ cd e2e && AWG_URL=http://localhost:54845 go test -count=1 -v .
 The defaults test is the exception: it reads `AWG_URL_NOAUTOSTART` and skips
 itself when that is not set.
 
-## 🔧 API endpoints
+## API endpoints
 
 Every route except `/status`, `/login` and `/logout` needs a session cookie or
 an `Authorization: Basic` header (see [Security](#security)). A request that
@@ -528,7 +528,7 @@ the full AmneziaWG 3.x parameter set, header protection included. The old
     its 12-byte nonce from the start of that padding); otherwise the server
     rejects the request. The documentation recommends setting all four to the
     same value and leaving `H1`-`H4` at 1/2/3/4 — more in the
-    [Obfuscation parameters](#-obfuscation-parameters) section.
+    [Obfuscation parameters](#obfuscation-parameters) section.
 *   A 32-byte `HeaderProtectionKey` in base64 is required; it is generated
     automatically if you do not pass one in `obfuscation_params`. It must match
     byte for byte between the server and each of its clients — for the configs
@@ -786,7 +786,7 @@ reports the host's IPv6 view.
 
 `GET /status` — the container uptime; used by the image's `HEALTHCHECK`.
 
-## 📈 Profiling
+## Profiling
 
 The server can serve `net/http/pprof` profiles, but only when started with
 `WEB_UI_PPROF=1`: collecting a CPU profile costs the running server real time,
@@ -847,7 +847,7 @@ available by hand at the same addresses; the index is `GET /debug/pprof/`. Note
 that `block` and `mutex` are always empty without
 `runtime.SetBlockProfileRate` / `SetMutexProfileFraction`.
 
-## 🐳 Deploying in Docker
+## Deploying in Docker
 
 CI builds and publishes the image to GitHub Container Registry on every push to
 `main` (see `.github/workflows/docker.yml`). Each build publishes two tags: a
@@ -917,7 +917,7 @@ every variable listed. What each key does:
 | `devices: /dev/net/tun` | The TUN device the userspace engine attaches to. No kernel module, so no `SYS_MODULE` |
 | `sysctls` | Forwarding for the tunnel. With `network_mode: host` Docker refuses them; `docker-compose.host.yml` drops them and they belong on the host |
 | `logging` | Rotates the request log; client configurations are responses and are never logged |
-| `networks` | Only needed for IPv6 egress on a bridge — see [IPv6 and NAT6](#-ipv6-and-nat6) |
+| `networks` | Only needed for IPv6 egress on a bridge — see [IPv6 and NAT6](#ipv6-and-nat6) |
 
 ### docker compose example
 
@@ -988,12 +988,12 @@ to adjust `ports` as well.
 If you need HTTPS, put your own reverse proxy with TLS termination in front of
 the container (nginx, Caddy, Traefik and the like) and proxy to `WEB_UI_PORT`.
 
-## 📊 Obfuscation parameters
+## Obfuscation parameters
 
 Every server created here uses the full AmneziaWG 3.x obfuscation parameter set
 (the header-protection parameters, the two 3.1 switches, the engine defaults
 and the recommended ranges of the optional timing parameters are described
-above in [AmneziaWG 3.1 — the essentials](#-amneziawg-31--the-essentials)).
+above in [AmneziaWG 3.1 — the essentials](#amneziawg-31--the-essentials)).
 This section describes the base junk-packet, padding and header parameters
 shared with the earlier AmneziaWG generations.
 
@@ -1161,7 +1161,7 @@ reject.
     and fragmentation is unavoidable. The generator takes this into account and
     narrows the padding window to the chosen MTU.
 
-## 📝 Logs and monitoring
+## Logs and monitoring
 
 ### Application logs
 
@@ -1185,7 +1185,7 @@ Everything printed here is the panel's own work, not a request: the request log
 lines (method, route, status, address) come from Fiber's logger and carry no
 bodies or query strings.
 
-## 🔄 Backup and restore
+## Backup and restore
 
 There is no separate export/import endpoint — back up the whole AmneziaWG state
 directory: it holds `web_config.json` (the server and client metadata, the keys,
@@ -1385,7 +1385,7 @@ that is the point. Junk packets, padding and altered headers keep DPI from
 recognising the protocol, AmneziaWG 3.0 encrypts the 16-byte WireGuard packet
 header itself, and 3.1 adds random trailers and disables the cookie exchange.
 The parameters are described in
-[AmneziaWG 3.1 — the essentials](#-amneziawg-31--the-essentials).
+[AmneziaWG 3.1 — the essentials](#amneziawg-31--the-essentials).
 
 ### Which clients can connect?
 
@@ -1413,7 +1413,7 @@ Everything is in the `/etc/amnezia` volume: `web_config.json`, the `.conf` of
 every server, and `audit.log` when the audit log is on. Copy it out
 (`docker cp <container>:/etc/amnezia ./backup/`), restore the volume on the new
 machine, start the container, and the servers and clients come up as they were.
-[Backup and restore](#-backup-and-restore) has the volume-level version.
+[Backup and restore](#backup-and-restore) has the volume-level version.
 
 ### How do I update?
 
