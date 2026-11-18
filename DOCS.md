@@ -84,6 +84,7 @@ their stored parameters have no flags, and the absence of a flag means "off".
 
 ## Features
 
+*   **Six UI languages**: English, Spanish, French, Russian, Simplified Chinese and Traditional Chinese, picked from the browser's language list
 *   **Web management**: a clear interface for managing VPN servers and clients
 *   **AmneziaWG 3.1 by default**: header protection, random trailers, disabled cookies, junk packets, message padding and header obfuscation are always fully configured — see above
 *   **Client management**: generate and download client configs, suspend and reactivate a client on a running server, suspend on a schedule
