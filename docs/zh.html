@@ -388,7 +388,7 @@ sysctl -w net.ipv4.ip_forward=1 \
     <div class="faq">
       <details>
         <summary>AmneziaWG 跟 WireGuard 差在哪？</summary>
-        <p>加密與速度相同，多了混淆：junk 封包、padding 與改寫的標頭讓 DPI 認不出協定。AmneziaWG 3.0 加入標頭保護，3.1 再加隨機 trailer 並停用 cookie 交換；這個面板預設全部開啟。</p>
+        <p>加密與速度相同，多了混淆：junk 封包、padding 與改寫的標頭讓網路過濾認不出這是 VPN 協定。AmneziaWG 3.0 加入標頭保護，3.1 再加隨機 trailer 並停用 cookie 交換；這個面板預設全部開啟。</p>
       </details>
       <details>
         <summary>哪些用戶端可以用？</summary>
