@@ -92,10 +92,10 @@
       <p class="lede">
         AmneziaWG Web UI is a web interface you run in Docker to set up and
         manage an AmneziaWG VPN server. AmneziaWG is WireGuard with the traffic
-        disguised, so DPI systems do not recognise it as a VPN. The panel
-        creates servers and clients, hands out a <code>.conf</code> file, a QR
-        code or a <code>vpn://</code> link, and shows traffic live. One image of
-        about 35 MB; no Node, nginx or database.
+        disguised, so network filters do not recognise it as VPN traffic. The
+        panel creates servers and clients, hands out a <code>.conf</code> file, a
+        QR code or a <code>vpn://</code> link, and shows traffic live. One image
+        of about 35 MB; no Node, nginx or database.
       </p>
       <div class="actions">
         <a class="btn btn-primary" href="#deploy">
@@ -136,22 +136,22 @@
       <article class="card">
         <div class="icon"><svg aria-hidden="true"><use href="#i-box"/></svg></div>
         <h3>One container</h3>
-        <p>Go + Fiber serves the API and the UI, and the Fyne front end is compiled to WebAssembly. No Node, nginx, supervisor or separate database. About 35 MB.</p>
+        <p>One image of about 35 MB. There is no Node, nginx, supervisor or separate database to run next to it.</p>
       </article>
       <article class="card">
         <div class="icon"><svg aria-hidden="true"><use href="#i-shield"/></svg></div>
         <h3>AmneziaWG 3.1, always on</h3>
-        <p>Header protection, random trailers, disabled cookies, junk packets and padding. The header key and every obfuscation parameter are generated and kept in sync with each client config.</p>
+        <p>The obfuscation is on for every server and has no switch: header protection, random trailers, disabled cookies, junk packets and padding are generated for you and copied into each client config.</p>
       </article>
       <article class="card">
         <div class="icon"><svg aria-hidden="true"><use href="#i-server"/></svg></div>
         <h3>Several servers per host</h3>
-        <p>Each server gets its own port, subnet, MTU, DNS, endpoint and obfuscation values. Add and edit them in the panel; they come back after a restart.</p>
+        <p>Each server has its own port, address range, MTU, DNS and obfuscation settings. Edit them in the panel; they come back after a restart.</p>
       </article>
       <article class="card">
         <div class="icon"><svg aria-hidden="true"><use href="#i-users"/></svg></div>
-        <h3>Clients in three formats</h3>
-        <p>Add, edit, suspend or schedule clients. Export a <code>.conf</code> file, a QR code for mobile apps, or a native <code>vpn://</code> link for AmneziaVPN.</p>
+        <h3>One config, three formats</h3>
+        <p>Add, edit, suspend or schedule clients. Each client can be exported as a <code>.conf</code> file, a QR code for mobile apps, or a <code>vpn://</code> link for the AmneziaVPN app.</p>
       </article>
       <article class="card">
         <div class="icon"><svg aria-hidden="true"><use href="#i-chart"/></svg></div>
@@ -161,7 +161,7 @@
       <article class="card">
         <div class="icon"><svg aria-hidden="true"><use href="#i-lock"/></svg></div>
         <h3>Login in front</h3>
-        <p>A 12-hour signed session cookie, a CSRF token for every write, and <code>Authorization: Basic</code> on every route so <code>curl -u</code> keeps working. Audit logging is one switch.</p>
+        <p>A login page sits in front of the panel and the API, with optional audit logging. Scripts can keep using <code>curl -u</code>.</p>
       </article>
       <article class="card">
         <div class="icon"><svg aria-hidden="true"><use href="#i-code"/></svg></div>
@@ -171,7 +171,7 @@
       <article class="card">
         <div class="icon"><svg aria-hidden="true"><use href="#i-globe"/></svg></div>
         <h3>IPv4 and IPv6</h3>
-        <p>The panel listens on both stacks and every server gets a ULA /64 with NAT6. A client endpoint and its DNS list accept either family.</p>
+        <p>The panel listens on both stacks, and every server also gets an IPv6 range. A client endpoint and its DNS list accept either family.</p>
       </article>
     </div>
   </div>
@@ -185,7 +185,7 @@
     </div>
     <div class="split">
       <ul class="checks">
-        <li><strong>Docker Engine and Compose 2.24+.</strong> The compose files use <code>env_file.required</code> and <code>!reset</code>.</li>
+        <li><strong>Docker Engine and Compose 2.24+.</strong> The shipped compose files use features added in that release.</li>
         <li><strong><code>/dev/net/tun</code> and <code>NET_ADMIN</code>.</strong> <code>amneziawg-go</code> runs in userspace, so there is no kernel module to load and no <code>SYS_MODULE</code> to grant.</li>
         <li><strong>A public IPv4 address.</strong> IPv6 is optional per server; the next section says what a bridge network cannot do.</li>
         <li><strong>Two host ports.</strong> <code>54845/tcp</code> for the panel and one UDP port per server, <code>54844/udp</code> by default.</li>

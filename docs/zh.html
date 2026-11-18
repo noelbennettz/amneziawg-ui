@@ -91,7 +91,7 @@
       <h1>AmneziaWG VPN，<br><span class="grad">用網頁管理。</span></h1>
       <p class="lede">
         AmneziaWG Web UI 是一套跑在 Docker 裡的網頁介面，用來架設與管理 AmneziaWG VPN
-        伺服器。AmneziaWG 是 WireGuard 加上流量偽裝的版本，DPI 不會把它認成 VPN。
+        伺服器。AmneziaWG 是 WireGuard 加上流量偽裝的版本，網路過濾不會把它當成 VPN 流量。
         面板負責開伺服器與用戶端、發 <code>.conf</code>、QR 或 <code>vpn://</code> 連結，
         並顯示即時流量。整包是一個約 35 MB 的 image，不需要 Node、nginx 或資料庫。
       </p>
@@ -134,22 +134,22 @@
       <article class="card">
         <div class="icon"><svg aria-hidden="true"><use href="#i-box"/></svg></div>
         <h3>一個容器</h3>
-        <p>Go + Fiber 同時提供 API 與前端，Fyne 介面編成 WebAssembly。沒有 Node、nginx、supervisor 或額外資料庫，大約 35 MB。</p>
+        <p>一個約 35 MB 的 image，不必另外跑 Node、nginx、supervisor 或資料庫。</p>
       </article>
       <article class="card">
         <div class="icon"><svg aria-hidden="true"><use href="#i-shield"/></svg></div>
         <h3>AmneziaWG 3.1 永遠開啟</h3>
-        <p>標頭保護、隨機 trailer、停用 cookie、junk 封包與 padding 全部內建。標頭金鑰與每個混淆參數自動產生，並與用戶端設定保持同步。</p>
+        <p>每個伺服器都開著混淆，沒有開關：標頭保護、隨機 trailer、停用 cookie、junk 封包與 padding 都會自動產生，並抄進每一份用戶端設定。</p>
       </article>
       <article class="card">
         <div class="icon"><svg aria-hidden="true"><use href="#i-server"/></svg></div>
         <h3>一台主機多個伺服器</h3>
-        <p>每個伺服器有自己的 port、子網、MTU、DNS、endpoint 與混淆參數。在面板新增或修改，容器重啟後會自動把它們帶回來。</p>
+        <p>每個伺服器有自己的 port、位址範圍、MTU、DNS 與混淆設定。在面板改，容器重啟後會自動帶回來。</p>
       </article>
       <article class="card">
         <div class="icon"><svg aria-hidden="true"><use href="#i-users"/></svg></div>
-        <h3>用戶端三種匯出</h3>
-        <p>新增、編輯、暫停或排程用戶端。可匯出 <code>.conf</code>、給手機掃的 QR，或給 AmneziaVPN 用的原生 <code>vpn://</code> 連結。</p>
+        <h3>一份設定，三種拿法</h3>
+        <p>新增、編輯、暫停或排程用戶端。每個用戶端都能匯出成 <code>.conf</code>、給手機掃的 QR，或給 AmneziaVPN App 用的 <code>vpn://</code> 連結。</p>
       </article>
       <article class="card">
         <div class="icon"><svg aria-hidden="true"><use href="#i-chart"/></svg></div>
@@ -159,7 +159,7 @@
       <article class="card">
         <div class="icon"><svg aria-hidden="true"><use href="#i-lock"/></svg></div>
         <h3>面板前有登入</h3>
-        <p>12 小時簽章 cookie、每次寫入都要 CSRF token，同時保留 <code>Authorization: Basic</code>，所以 <code>curl -u</code> 腳本照樣能用。審計日誌一個開關。</p>
+        <p>面板與 API 前面都有登入頁，審計日誌是一個開關。腳本照樣可以用 <code>curl -u</code>。</p>
       </article>
       <article class="card">
         <div class="icon"><svg aria-hidden="true"><use href="#i-code"/></svg></div>
@@ -169,7 +169,7 @@
       <article class="card">
         <div class="icon"><svg aria-hidden="true"><use href="#i-globe"/></svg></div>
         <h3>IPv4 與 IPv6</h3>
-        <p>面板同時監聽兩種位址族別，每個伺服器配一個 ULA /64 與 NAT6；用戶端的 endpoint 與 DNS 清單都接受任一雙棧位址。</p>
+        <p>面板同時聽兩種位址族，每個伺服器另外配一段 IPv6 位址。用戶端的 endpoint 與 DNS 清單都接受任一雙棧位址。</p>
       </article>
     </div>
   </div>
@@ -183,7 +183,7 @@
     </div>
     <div class="split">
       <ul class="checks">
-        <li><strong>Docker Engine 與 Compose 2.24+。</strong>compose 檔用到 <code>env_file.required</code> 與 <code>!reset</code>。</li>
+        <li><strong>Docker Engine 與 Compose 2.24+。</strong>附的 compose 檔用到該版本才有的功能。</li>
         <li><strong><code>/dev/net/tun</code> 與 <code>NET_ADMIN</code>。</strong><code>amneziawg-go</code> 在使用者空間執行，不必載入 kernel module，也不用 <code>SYS_MODULE</code>。</li>
         <li><strong>一個對外 IPv4 位址。</strong>IPv6 是每個伺服器選配；下一段說明 bridge 網路做不到什麼。</li>
         <li><strong>兩個主機埠。</strong><code>54845/tcp</code> 給面板，每個伺服器一個 UDP 埠，預設 <code>54844/udp</code>。</li>
