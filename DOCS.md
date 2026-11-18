@@ -185,6 +185,22 @@ automatically.
         The daemon has to allow it (`"ipv6": true` and `"ip6tables": true` in
         `/etc/docker/daemon.json`), and the host has to route that prefix to the
         bridge. `docker-compose.example.yml` carries the same block, commented.
+    *   **A separate IPv6-enabled network** — same prefix requirement, but the
+        service joins its own network instead of the default one:
+
+        ```yaml
+        services:
+          app:
+            networks: [awg6]
+
+        networks:
+          awg6:
+            enable_ipv6: true
+            ipam:
+              config:
+                - subnet: 2001:db8:1::/64
+        ```
+
     *   **Host networking** —
         `docker compose -f docker-compose.yml -f docker-compose.host.yml up -d`,
         where `WEB_UI_PORT`/`DEFAULT_PORT` are the host's ports and the

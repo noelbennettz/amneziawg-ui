@@ -95,13 +95,27 @@ services:
         max-size: 10m
         max-file: "3"
 
-# For IPv6 egress on a bridge network, the network needs a global prefix that
-# your provider routes to this host, not just a ULA. Docker must allow IPv6 and
+# For IPv6 egress on a bridge, the network needs a global prefix that your
+# provider routes to this host, not just a ULA. Docker must allow IPv6 and
 # masquerade it ("ipv6": true and "ip6tables": true in /etc/docker/daemon.json),
 # and the host must route the prefix here.
 #
+# Either give the default network a prefix:
+#
 # networks:
 #   default:
+#     enable_ipv6: true
+#     ipam:
+#       config:
+#         - subnet: 2001:db8:1::/64
+#
+# or keep it separate and attach the service to that network:
+#
+# services:
+#   app:
+#     networks: [awg6]
+# networks:
+#   awg6:
 #     enable_ipv6: true
 #     ipam:
 #       config:

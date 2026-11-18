@@ -88,11 +88,12 @@
   <div class="container">
     <div>
       <span class="eyebrow"><span class="dot"></span>AmneziaWG 3.1 · Docker · AGPL-3.0</span>
-      <h1>AmneziaWG VPN，<br><span class="grad">附一個網頁面板。</span></h1>
+      <h1>AmneziaWG VPN，<br><span class="grad">用網頁管理。</span></h1>
       <p class="lede">
-        自架的 AmneziaWG 面板。AmneziaWG 是 WireGuard 的混淆分支，能穿過 DPI 封鎖。
-        在瀏覽器裡開伺服器、加用戶端，發 <code>.conf</code>、QR 或 <code>vpn://</code>，
-        即時看流量。單一 image 約 35 MB，不需要 Node、nginx 或 supervisor。
+        AmneziaWG Web UI 是一套跑在 Docker 裡的網頁介面，用來架設與管理 AmneziaWG VPN
+        伺服器。AmneziaWG 是 WireGuard 加上流量偽裝的版本，DPI 不會把它認成 VPN。
+        面板負責開伺服器與用戶端、發 <code>.conf</code>、QR 或 <code>vpn://</code> 連結，
+        並顯示即時流量。整包是一個約 35 MB 的 image，不需要 Node、nginx 或資料庫。
       </p>
       <div class="actions">
         <a class="btn btn-primary" href="#deploy">
@@ -283,13 +284,27 @@ volumes:
           <li><strong>預設雙棧。</strong>面板同時聽 <code>0.0.0.0</code> 與 <code>[::]</code>；用戶端設定接受 IPv4 或 IPv6 的 endpoint，DNS 也能填任一雙棧位址。</li>
           <li><strong>每個伺服器一個 ULA /64 與 NAT6。</strong>防火牆腳本按位址族別判斷，只有該族有 default route 且 uplink 有可路由來源時才寫 forwarding 與 masquerade。</li>
           <li><strong>一般 Docker bridge 預設沒有 IPv6 上行。</strong>Docker 最多只給容器一個 unique local 位址，所以用戶端有 IPv6 通道卻沒有 IPv6 egress，<code>nat6.state</code> 顯示 <code>ula-only</code>。</li>
-          <li><strong>要讓用戶端上 IPv6，有兩條路。</strong>一是替 compose 網路加上對外前綴（如下），二是改用 host network；之後 <code>nat6.state</code> 會變 <code>ok</code>。</li>
+          <li><strong>要讓用戶端上 IPv6，有三條路。</strong>替預設網路加對外前綴、另外建一個支援 IPv6 的網路並把這個服務接上去，或改用 host network；之後 <code>nat6.state</code> 會變 <code>ok</code>。</li>
         </ul>
       </div>
       <div>
         <div class="copy-wrap">
           <button class="copy" type="button" data-copy>複製</button>
-          <pre><code># 給 compose 網路一個供應商路由到本機的 global 前綴
+          <pre><code># 另外建一個支援 IPv6 的網路，給這個服務用
+services:
+  app:
+    networks: [awg6]
+
+networks:
+  awg6:
+    enable_ipv6: true
+    ipam:
+      config:
+        - subnet: 2001:db8:1::/64</code></pre>
+        </div>
+        <div class="copy-wrap">
+          <button class="copy" type="button" data-copy>複製</button>
+          <pre><code># 或替預設網路加上對外前綴
 networks:
   default:
     enable_ipv6: true
@@ -330,7 +345,7 @@ sysctl -w net.ipv4.ip_forward=1 \
       <article class="card">
         <div class="icon"><svg aria-hidden="true"><use href="#i-shield"/></svg></div>
         <h3>最小權限</h3>
-        <p>容器以 root 執行，因為 <code>awg-quick</code> 與 <code>iptables</code> 在自己的 network namespace 裡需要；它只拿到 <code>NET_ADMIN</code> 與 <code>/dev/net/tun</code>，沒有 <code>SYS_MODULE</code>，除非你要求也不會用 host network。</p>
+        <p>容器在自己的 network namespace 裡是 root，因為建立通道與寫 iptables 規則需要在該 namespace 具備這個權限。離開該 namespace，它只拿到兩項：<code>NET_ADMIN</code> 與 <code>/dev/net/tun</code>。它不能載入 kernel module（沒有 <code>SYS_MODULE</code>），也只有在你自行改用 host 網路時才看得到主機的網路。</p>
       </article>
       <article class="card">
         <div class="icon"><svg aria-hidden="true"><use href="#i-terminal"/></svg></div>
