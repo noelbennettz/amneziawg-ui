@@ -163,17 +163,32 @@ automatically.
     `ip route show default` and `ip -6 route show default`, and print what is
     missing when there is no default route at all.
 *   **What the container needs for IPv6 egress**: a global IPv6 address and a
-    default route of its own. A container on a bridge network gets a unique
-    local address at best (`fd00:…`/`fddd:…`), and Docker does not masquerade
-    that onto the host's uplink, so clients' `::/0` traffic dies at the
-    masquerade — `nat6.state` says `ula-only`. Publishing the port still makes
-    the tunnel *reachable* over IPv6 (Docker proxies the host's IPv6 port to
-    the container's IPv4 one). For real IPv6 egress either run the service
-    with host networking —
-    `docker compose -f docker-compose.yml -f docker-compose.host.yml up -d`,
-    where `WEB_UI_PORT`/`DEFAULT_PORT` are the host's ports and the forwarding
-    switches are the host's — or give the Docker network a routed global IPv6
-    prefix of your own.
+    default route of its own. By default a container on a bridge network gets a
+    unique local address at best (`fd00:…`/`fddd:…`), and Docker does not
+    masquerade that onto the host's uplink, so clients' `::/0` traffic dies at
+    the masquerade — `nat6.state` says `ula-only`. Publishing the port still
+    makes the tunnel *reachable* over IPv6 (Docker proxies the host's IPv6 port
+    to the container's IPv4 one). Two ways to get real egress:
+
+    *   **A global prefix on the compose network** — a prefix your provider
+        actually routes to this host, not a ULA:
+
+        ```yaml
+        networks:
+          default:
+            enable_ipv6: true
+            ipam:
+              config:
+                - subnet: 2001:db8:1::/64
+        ```
+
+        The daemon has to allow it (`"ipv6": true` and `"ip6tables": true` in
+        `/etc/docker/daemon.json`), and the host has to route that prefix to the
+        bridge. `docker-compose.example.yml` carries the same block, commented.
+    *   **Host networking** —
+        `docker compose -f docker-compose.yml -f docker-compose.host.yml up -d`,
+        where `WEB_UI_PORT`/`DEFAULT_PORT` are the host's ports and the
+        forwarding switches are the host's.
 *   **Reaching the panel over IPv6**: the listener is dual-stack (`tcp`), so
     `http://[2001:db8::1]:54845` answers exactly like the IPv4 address does.
 *   **Reaching the tunnel over IPv6**: the engine is dual-stack by itself —
@@ -870,6 +885,25 @@ docker build --build-arg AWG_GO_VERSION=vX.Y.Z --build-arg AWG_TOOLS_VERSION=vX.
 | `DEFAULT_PORT` | `54844` | Default port for new servers: what the panel's form defaults to, and what an API request that omits `port` gets. `docker-compose.yml` publishes exactly this one over UDP |
 | `DEFAULT_DNS` | `8.8.8.8,1.1.1.1` | Default DNS servers for clients: what the panel's form defaults to, and what an API request that omits `dns` gets. IPv4 and IPv6 resolvers are both accepted — a client on an IPv6-only network needs a v6 one |
 
+### Compose parameters
+
+`docker-compose.yml` is the file the panel is normally run with, `.env` (copied
+from `.env.example`) overrides the variables in it, and
+`docker-compose.example.yml` is the same service with every key commented and
+every variable listed. What each key does:
+
+| Key | Meaning |
+| --- | --- |
+| `image` | The image to run. `${IMAGE:-ghcr.io/noelbennettz/amneziawg-ui:latest}` lets `make run` and `make deploy` substitute their own build; pin a dated tag (`…:2026.11.18`) to keep an upgrade a decision |
+| `ports` | `"host address:host port:container port"`. Naming the host address (`127.0.0.1:54845:54845/tcp`) binds that address only — the usual setup behind a local TLS proxy. A UDP range (`54844-54864:54844-54864/udp`) publishes several servers at once |
+| `environment` / `env_file` | The variables from the table above. `.env` is optional (`required: false`), because every one of them repeats an image default |
+| `volumes` | `/etc/amnezia` holds `web_config.json`, every server's `.conf` and `audit.log`. A named volume or a host directory both work; this is the only state to back up |
+| `cap_add: NET_ADMIN` | Needed to write iptables rules, create the interface and manage routes inside the container's network namespace |
+| `devices: /dev/net/tun` | The TUN device the userspace engine attaches to. No kernel module, so no `SYS_MODULE` |
+| `sysctls` | Forwarding for the tunnel. With `network_mode: host` Docker refuses them; `docker-compose.host.yml` drops them and they belong on the host |
+| `logging` | Rotates the request log; client configurations are responses and are never logged |
+| `networks` | Only needed for IPv6 egress on a bridge — see [IPv6 and NAT6](#-ipv6-and-nat6) |
+
 ### docker compose example
 
 The repository already ships three compose files: `docker-compose.yml` (the
@@ -885,7 +919,9 @@ to change something: `cp .env.example .env` and edit it, or set `IMAGE`,
 `.env`, the defaults the image already carries apply — `54845/tcp` for the web
 UI and `54844/udp` for the VPN. `env_file` is declared with
 `required: false` (Compose 2.24+), which is why a missing `.env` is not an
-error.
+error. `docker-compose.example.yml` is the same service with every key and
+variable commented out in place, and [Compose
+parameters](#compose-parameters) explains what each key does.
 
 A standalone `docker-compose.yml` for a VPS with the ready image from GitHub
 Container Registry:

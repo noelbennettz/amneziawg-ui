@@ -55,6 +55,7 @@ matter behind a proxy.
 | [SECURITY.md](SECURITY.md) | What the panel assumes, what it does not protect against |
 | [`docs/`](docs/) | Project site, deployed to <https://noelbennettz.github.io/amneziawg-ui/> |
 | [`.env.example`](.env.example) | Every environment variable with its default |
+| [`docker-compose.example.yml`](docker-compose.example.yml) | The same service with every compose key and variable commented |
 
 Dated image tags, one per build, are listed under
 [Releases](https://github.com/noelbennettz/amneziawg-ui/releases); pinning one

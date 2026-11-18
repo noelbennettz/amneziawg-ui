@@ -222,7 +222,7 @@ ls -l /dev/net/tun</code></pre>
       </div>
       <div class="step">
         <h3>Save this as compose.yaml</h3>
-        <p>Put the hash from step 1 into <code>WEB_UI_PASSWORD</code>. Change the user too if you like. Cloning the repository and copying <code>.env.example</code> to <code>.env</code> gives the same service, with the hash set there instead.</p>
+        <p>Put the hash from step 1 into <code>WEB_UI_PASSWORD</code>. The addresses, ports and volume are the parameters you are most likely to change — binding the panel to <code>127.0.0.1</code> keeps it reachable only from the host, which is what a local TLS proxy needs. Every key is explained in DOCS.md, and the repository ships the same file fully commented as <code>docker-compose.example.yml</code>.</p>
         <div class="copy-wrap">
           <button class="copy" type="button" data-copy>Copy</button>
           <pre><code>services:
@@ -230,6 +230,9 @@ ls -l /dev/net/tun</code></pre>
     image: ghcr.io/noelbennettz/amneziawg-ui:latest
     restart: unless-stopped
     ports:
+      # Bind the panel to one address. Recommended: a TLS proxy on this host
+      # reaches 127.0.0.1, and the port stays closed to everything else.
+      # - "127.0.0.1:54845:54845/tcp"
       - "54845:54845/tcp"   # panel
       - "54844:54844/udp"   # first VPN server
     environment:
@@ -280,14 +283,25 @@ volumes:
         <ul class="checks">
           <li><strong>Both stacks by default.</strong> The panel listens on <code>0.0.0.0</code> and <code>[::]</code>, and a client config accepts an IPv4 or IPv6 endpoint and DNS resolvers of either family.</li>
           <li><strong>Each server gets a ULA /64 and NAT6.</strong> The firewall script decides per family and only writes forwarding and masquerade rules when that family has a default route and a routable source.</li>
-          <li><strong>A plain Docker bridge has no IPv6 uplink.</strong> Clients then get an IPv6 tunnel and no IPv6 egress; <code>nat6.state</code> reads <code>ula-only</code>.</li>
-          <li><strong>Fix it with host networking or a routed prefix.</strong> Layer <code>docker-compose.host.yml</code> on top, or give the Docker network a global IPv6 prefix. <code>nat6.state</code> then reads <code>ok</code>.</li>
+          <li><strong>By default a bridge network has no IPv6 uplink.</strong> Docker gives the container a unique local address at best, so clients get an IPv6 tunnel and no IPv6 egress; <code>nat6.state</code> reads <code>ula-only</code>.</li>
+          <li><strong>Two ways to give clients IPv6.</strong> Either put a global prefix on the compose network (shown here) or run the service with host networking. <code>nat6.state</code> then reads <code>ok</code>.</li>
         </ul>
       </div>
       <div>
         <div class="copy-wrap">
           <button class="copy" type="button" data-copy>Copy</button>
-          <pre><code>docker compose \
+          <pre><code># compose network with a global prefix your provider routes to the host
+networks:
+  default:
+    enable_ipv6: true
+    ipam:
+      config:
+        - subnet: 2001:db8:1::/64</code></pre>
+        </div>
+        <div class="copy-wrap">
+          <button class="copy" type="button" data-copy>Copy</button>
+          <pre><code># or host networking
+docker compose \
   -f docker-compose.yml \
   -f docker-compose.host.yml up -d
 
@@ -376,7 +390,7 @@ sysctl -w net.ipv4.ip_forward=1 \
       </details>
       <details>
         <summary>Why do clients have IPv6 but no IPv6 internet?</summary>
-        <p>A plain Docker bridge gives the container no routable IPv6 uplink, so NAT6 can only translate to a ULA. Use <code>docker-compose.host.yml</code> (<code>network_mode: host</code>) or give the Docker network a routed global prefix. <code>nat6.state</code> in the API tells you which case you are in.</p>
+        <p>By default a Docker bridge gives the container only a unique local address, so NAT6 can only translate to a ULA. Two fixes: put a global prefix on the compose network — <code>enable_ipv6: true</code> plus an <code>ipam</code> subnet from a prefix your provider routes to the host, with <code>"ipv6": true</code> and <code>"ip6tables": true</code> in the Docker daemon config — or run with <code>docker-compose.host.yml</code>. <code>nat6.state</code> in the API tells you which case you are in.</p>
       </details>
       <details>
         <summary>How do I update or move it?</summary>

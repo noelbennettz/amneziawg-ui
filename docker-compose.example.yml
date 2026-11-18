@@ -1,0 +1,111 @@
+# A fully commented Compose file for AmneziaWG Web UI.
+#
+#   docker compose -f docker-compose.example.yml up -d
+#
+# Nothing here is required by the panel: `docker compose up -d` with the
+# repository's docker-compose.yml already works, and every value below repeats a
+# default the image carries. The point of this file is to show the parameters in
+# one place. Copy the lines you want into your own compose.yaml.
+#
+# What each key means is in DOCS.md, section "docker compose parameters"; the
+# environment variables are in "Environment variables".
+
+services:
+  app:
+    # Pin a dated build instead and nothing moves until you edit this line:
+    # image: ghcr.io/noelbennettz/amneziawg-ui:2026.11.18
+    image: ghcr.io/noelbennettz/amneziawg-ui:latest
+    container_name: amneziawg-ui
+    restart: unless-stopped
+
+    ports:
+      # Format is "host address:host port:container port". Naming the host
+      # address binds that address only, which is what you want for the panel:
+      # a TLS proxy on the same host reaches it, nobody else does. Without a
+      # prefix it listens on every address of the host.
+      # - "127.0.0.1:54845:54845/tcp"
+      - "54845:54845/tcp"          # panel
+      - "54844:54844/udp"          # first VPN server
+      # A range publishes more servers at once; each server keeps its own port
+      # in the panel and must fall inside the published range.
+      # - "54844-54864:54844-54864/udp"
+
+    environment:
+      # Port the panel listens on inside the container. Keep it equal to the
+      # host side of the mapping above: the image's health check asks 127.0.0.1
+      # on this port.
+      WEB_UI_PORT: "54845"
+      # Bind address inside the container. Leave it empty with published ports;
+      # it exists for network_mode: host. Setting 127.0.0.1 here makes the
+      # published port unreachable.
+      # WEB_UI_BIND: "127.0.0.1"
+      WEB_UI_USER: "admin"
+      # base64(sha256(password)), never the password:
+      #   printf 'your-password' | openssl dgst -binary -sha256 | base64
+      WEB_UI_PASSWORD: "REPLACE_WITH_HASH"
+      # Behind a TLS proxy that does not send X-Forwarded-Proto, say so here or
+      # the session cookie goes out without Secure.
+      # WEB_UI_SECURE_COOKIE: "true"
+      # One JSON line per login, logout and API change, in /etc/amnezia/audit.log.
+      # WEB_UI_AUDIT_LOG: "true"
+      # WEB_UI_AUDIT_RETENTION_HOURS: "24"
+      # Five wrong passwords from one address block it for 15 minutes, doubling
+      # afterwards. Only with WEB_UI_TRUST_PROXY, and only behind a proxy that
+      # appends the client address, or everyone looks like one address.
+      # WEB_UI_LOGIN_RATE_LIMIT: "true"
+      # WEB_UI_TRUST_PROXY: "true"
+      # Profiler at /debug/pprof, behind the same login.
+      # WEB_UI_PPROF: "true"
+      # Defaults for servers created in the panel. Each server can override them.
+      # AUTO_START_SERVERS: "true"
+      # DEFAULT_MTU: "1280"
+      # DEFAULT_SUBNET: "10.0.0.0/24"
+      # DEFAULT_PORT: "54844"
+      # DEFAULT_DNS: "8.8.8.8,1.1.1.1"
+
+    volumes:
+      # Servers, client configs and web_config.json. Back this up and the panel
+      # moves to another host as it is.
+      - data:/etc/amnezia
+      # A host directory works the same way and is easier to copy:
+      # - /srv/amnezia:/etc/amnezia
+
+    # iptables, interfaces and routes. The tunnel runs in userspace
+    # (amneziawg-go), so no kernel module and no SYS_MODULE.
+    cap_add:
+      - NET_ADMIN
+
+    devices:
+      - /dev/net/tun
+
+    sysctls:
+      # Forwarding for the tunnel. The container still needs an IPv6 uplink of
+      # its own before clients reach IPv6 networks - see DOCS.md, "IPv6 and
+      # NAT6".
+      net.ipv4.ip_forward: "1"
+      net.ipv4.conf.all.src_valid_mark: "1"
+      net.ipv6.conf.all.disable_ipv6: "0"
+      net.ipv6.conf.all.forwarding: "1"
+      net.ipv6.conf.default.forwarding: "1"
+
+    logging:
+      # The panel's own log is one line per request and client configs are never
+      # logged, so this stays small.
+      options:
+        max-size: 10m
+        max-file: "3"
+
+# For IPv6 egress on a bridge network, the network needs a global prefix that
+# your provider routes to this host, not just a ULA. Docker must allow IPv6 and
+# masquerade it ("ipv6": true and "ip6tables": true in /etc/docker/daemon.json),
+# and the host must route the prefix here.
+#
+# networks:
+#   default:
+#     enable_ipv6: true
+#     ipam:
+#       config:
+#         - subnet: 2001:db8:1::/64
+
+volumes:
+  data:

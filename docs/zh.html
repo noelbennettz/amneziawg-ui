@@ -221,7 +221,7 @@ ls -l /dev/net/tun</code></pre>
       </div>
       <div class="step">
         <h3>存成 compose.yaml</h3>
-        <p>把上一步的結果填進 <code>WEB_UI_PASSWORD</code>，使用者名稱也順便改掉。改成 clone 這個 repo 並把 <code>.env.example</code> 複製成 <code>.env</code>，是同一個服務，只是 hash 填在 <code>.env</code> 裡。</p>
+        <p>把上一步的結果填進 <code>WEB_UI_PASSWORD</code>。最常要改的是位址、port 與 volume：把面板綁在 <code>127.0.0.1</code>，就只有本機的 TLS 代理連得到，其他介面一律關著。每個 key 的意義寫在 DOCS.md，repo 裡另有一份逐行註解的 <code>docker-compose.example.yml</code>。</p>
         <div class="copy-wrap">
           <button class="copy" type="button" data-copy>複製</button>
           <pre><code>services:
@@ -229,6 +229,9 @@ ls -l /dev/net/tun</code></pre>
     image: ghcr.io/noelbennettz/amneziawg-ui:latest
     restart: unless-stopped
     ports:
+      # 把面板綁在單一位址。建議這樣做：本機的 TLS 代理連得到 127.0.0.1，
+      # 其他介面則完全連不到這個 port。
+      # - "127.0.0.1:54845:54845/tcp"
       - "54845:54845/tcp"   # 面板
       - "54844:54844/udp"   # 第一個 VPN 伺服器
     environment:
@@ -279,14 +282,25 @@ volumes:
         <ul class="checks">
           <li><strong>預設雙棧。</strong>面板同時聽 <code>0.0.0.0</code> 與 <code>[::]</code>；用戶端設定接受 IPv4 或 IPv6 的 endpoint，DNS 也能填任一雙棧位址。</li>
           <li><strong>每個伺服器一個 ULA /64 與 NAT6。</strong>防火牆腳本按位址族別判斷，只有該族有 default route 且 uplink 有可路由來源時才寫 forwarding 與 masquerade。</li>
-          <li><strong>一般 Docker bridge 沒有 IPv6 上行。</strong>用戶端會拿到 IPv6 通道但沒有 IPv6 egress，<code>nat6.state</code> 顯示 <code>ula-only</code>。</li>
-          <li><strong>用 host network 或 routed prefix 修正。</strong>疊上 <code>docker-compose.host.yml</code>，或給 Docker 網路一個 global IPv6 prefix，<code>nat6.state</code> 就會變 <code>ok</code>。</li>
+          <li><strong>一般 Docker bridge 預設沒有 IPv6 上行。</strong>Docker 最多只給容器一個 unique local 位址，所以用戶端有 IPv6 通道卻沒有 IPv6 egress，<code>nat6.state</code> 顯示 <code>ula-only</code>。</li>
+          <li><strong>要讓用戶端上 IPv6，有兩條路。</strong>一是替 compose 網路加上對外前綴（如下），二是改用 host network；之後 <code>nat6.state</code> 會變 <code>ok</code>。</li>
         </ul>
       </div>
       <div>
         <div class="copy-wrap">
           <button class="copy" type="button" data-copy>複製</button>
-          <pre><code>docker compose \
+          <pre><code># 給 compose 網路一個供應商路由到本機的 global 前綴
+networks:
+  default:
+    enable_ipv6: true
+    ipam:
+      config:
+        - subnet: 2001:db8:1::/64</code></pre>
+        </div>
+        <div class="copy-wrap">
+          <button class="copy" type="button" data-copy>複製</button>
+          <pre><code># 或改用 host network
+docker compose \
   -f docker-compose.yml \
   -f docker-compose.host.yml up -d
 
@@ -375,7 +389,7 @@ sysctl -w net.ipv4.ip_forward=1 \
       </details>
       <details>
         <summary>為什麼用戶端有 IPv6 卻不能上 IPv6 網站？</summary>
-        <p>一般 Docker bridge 沒給容器可路由的 IPv6 上行，NAT6 只能轉到 ULA。用 <code>docker-compose.host.yml</code>（<code>network_mode: host</code>）或給 Docker 網路一個 routed global prefix；API 的 <code>nat6.state</code> 會告訴你是哪一種。</p>
+        <p>一般 Docker bridge 預設只給容器一個 unique local 位址，NAT6 只能轉到 ULA。兩條路：替 compose 網路加上對外前綴（<code>enable_ipv6: true</code> 加 <code>ipam</code> 子網，前綴要由供應商路由到本機，daemon 需開 <code>"ipv6": true</code> 與 <code>"ip6tables": true</code>），或改用 <code>docker-compose.host.yml</code>。API 的 <code>nat6.state</code> 會告訴你是哪一種。</p>
       </details>
       <details>
         <summary>怎麼更新或搬家？</summary>
