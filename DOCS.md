@@ -17,9 +17,9 @@ or the API, with the exception of `WEB_UI_PORT`.
 
 ## AmneziaWG 3.1 — the essentials
 
-This is the project's key property: **every server created here uses the full
-AmneziaWG 3.x parameter set** — the old "basic obfuscation" 1.0/1.5/2.0 mode is
-gone; there is nothing to switch on or off, and it is always active.
+**Every server created here uses the full AmneziaWG 3.x parameter set.** There
+is no "basic obfuscation" 1.0/1.5/2.0 mode to select instead, no switch that
+turns the 3.x parameters on, and no way to create a server without them.
 
 AmneziaWG 3.0 adds **header protection** on top of the junk-packet and padding
 obfuscation of the earlier AmneziaWG generations: the 16-byte WireGuard packet
@@ -60,9 +60,8 @@ What the application does for you automatically:
 
 *   **`RandomTrailers`** — appends a random number of bytes to the end of every
     packet, guided by the peer's "UDP window", which the engine derives from
-    traffic that already passed. Handshake messages, whose length used to be
-    fixed and therefore fingerprintable even in 3.0, no longer have a constant
-    size on the wire.
+    traffic that already passed. Handshake messages carry no constant size on
+    the wire; in 3.0 their length was fixed, and therefore fingerprintable.
 *   **`DisableCookies`** — the interface never answers with a cookie reply and
     skips the MAC2 check under load entirely, so the cookie exchange disappears
     as a signature (and as a surface for reflection attacks).
@@ -101,10 +100,9 @@ their stored parameters have no flags, and the absence of a flag means "off".
 ## IPv6 and NAT6
 
 AmneziaWG (like WireGuard) is a dual-stack protocol, and a client's default
-`AllowedIPs` is `0.0.0.0/0, ::/0`. As long as the tunnel had an IPv4 address
-only, `::/0` went into the tunnel and vanished there: IPv6 on the internet did
-not work at all. Now every server and every client gets an IPv6 address
-automatically.
+`AllowedIPs` is `0.0.0.0/0, ::/0`. A tunnel with an IPv4 address only takes
+`::/0` in and drops it there: IPv6 on the internet does not work over it. Every
+server and every client therefore gets an IPv6 address automatically.
 
 *   **Subnet**: an RFC 4193 ULA block, a `/64` per server, by default
     `fd42:<server ID>::/64` — the address says which server it belongs to. A
@@ -121,10 +119,8 @@ automatically.
 *   **NAT6**: when a server starts, `scripts/setup_iptables.sh` writes the same
     rule set into `ip6tables`, including
     `ip6tables -t nat -A POSTROUTING -s <subnet> -o <uplink> -j MASQUERADE`,
-    where the uplink is the interface the IPv6 default route names — not a
-    fixed `eth+`, which matched nothing on a host whose interface is called
-    something else. The same lookup, in reverse, is used to remove the rule
-    set.
+    where `<uplink>` is the interface the IPv6 default route names. The same
+    lookup, in reverse, removes the rule set.
 *   **The rules follow the uplink, family by family**: the tunnel rules
     (`INPUT`, `FORWARD`, `OUTPUT` for the `awg` interface) are written for
     every family the kernel has, because that is what the tunnel itself needs.
@@ -142,10 +138,11 @@ automatically.
     `ok` when the family has a route and a routable source; `ula-only` when
     IPv6 has only a unique local address — a Docker bridge hands out exactly
     that, so the rule is written and cannot reach the internet; `no-route` and
-    `no-address` when there is nothing to masquerade onto and no rule was
-    written; `unavailable` without `ip6tables`, or without its nat table; and
-    `unknown` when the script could not be asked. The same verdict is logged
-    when the server starts.
+    `no-address` when there is nothing to masquerade onto, so no forwarding or
+    NAT rule was written; `unavailable` when `ip6tables` is missing; `failed`
+    when the NAT66 masquerade rule was rejected (a missing `ip6table_nat`
+    module, for instance); and `unknown` when the script could not be asked.
+    The same verdict is logged when the server starts.
 *   **What the host needs**: forwarding on — `net.ipv6.conf.all.disable_ipv6=0`,
     `net.ipv6.conf.all.forwarding=1`, `net.ipv6.conf.default.forwarding=1`
     (already in `docker-compose.yml`) — plus the `ip6table_nat` module for
@@ -156,13 +153,12 @@ automatically.
     IPv6 switched off altogether cannot host an `awg` interface at all —
     `awg-quick` fails to add the server's IPv6 address — which is why the
     compose file turns it back on for the container.
-*   **The uplink is read, not assumed**: both scripts used to match `-o eth+`,
-    which is the container's bridge interface. On a host-network deployment,
-    or any host whose uplink is called something else, the masquerade and
-    forwarding rules matched nothing and no client reached the internet — on
-    either stack. They now resolve the interface per family from
-    `ip route show default` and `ip -6 route show default`, and print what is
-    missing when there is no default route at all.
+*   **The uplink is read, not assumed**: both scripts resolve the interface per
+    family from `ip route show default` and `ip -6 route show default`, and
+    print what is missing when there is no default route at all. A rule scoped
+    with `-o eth+` — the container's bridge interface — matches nothing on a
+    host-network deployment, or on any host whose uplink is called something
+    else, and no client reaches the internet on either stack.
 *   **What the container needs for IPv6 egress**: a global IPv6 address and a
     default route of its own. By default a container on a bridge network gets a
     unique local address at best (`fd00:…`/`fddd:…`), and Docker does not
@@ -253,7 +249,7 @@ automatically.
     `traffic.go`, `system.go`
 *   `internal/awg` — the only place that shells out: `awg`, `awg-quick`,
     `ip link`, the iptables scripts — behind the `Runner` interface, which the
-    tests replace with the fake from `awg/awgtest`
+    tests replace with the fake from `internal/awg/awgtest`
 *   `internal/wgconf` — the `.conf` text: rendering the `[Interface]` and the
     client config (one shared AmneziaWG 3.x parameter block for both sides),
     peer-block markers, suspended blocks, the default I1–I5
@@ -397,14 +393,15 @@ make deploy        # build the image, save it to proxy.tar and deploy over ssh (
 `make run` is the simplest way to get a fully working container (with the real
 AmneziaWG engine in user space, v3 capable) without installing anything but
 Docker. It tags the result `amneziawg-ui:local`, so a locally built image never
-overwrites the published one. Settings are optional: `.env.example` lists every
-variable with its default, and `.env` is read when it exists — a clone without
-one starts on `54845/tcp` for the web UI, `54844/udp` for the VPN and the
-password `changeme`. The production settings (their own ports and
-`WEB_UI_PASSWORD`) live separately in `deploy/.env` — git ignores it, so create
-it once on the machine you deploy from: `make deploy` builds the image, saves it
-as `proxy.tar`, copies it together with that file and `docker-compose.yml` to
-the server, and starts it with `IMAGE=proxy:latest`.
+overwrites the published one. Settings are optional: `.env.example` carries the
+variables a deployment normally sets, with their defaults (the
+[Environment variables](#environment-variables) table has the full list), and
+`.env` is read when it exists — a clone without one starts on `54845/tcp` for
+the web UI, `54844/udp` for the VPN and the password `changeme`. The production
+settings (their own ports and `WEB_UI_PASSWORD`) live separately in `deploy/.env`
+— git ignores it, so create it once on the machine you deploy from: `make deploy`
+builds the image, saves it as `proxy.tar`, copies it together with that file and
+`docker-compose.yml` to the server, and starts it with `IMAGE=proxy:latest`.
 
 ### Browser tests
 
@@ -413,9 +410,11 @@ interactive part of the page registers a name (`window.awgTarget`), and the
 tests in `e2e` click the centre of the one they mean and check the result
 through the REST API, saving a screenshot of every step into `e2e/shots/`. A
 widget that grows a row, moves into an overflow menu or changes its column
-count cannot silently send a click somewhere else. The last test runs the same
-page in a 390-point-wide touch context - phone layout, taps instead of clicks -
-and fails if anything reaches past the right edge. They are written in Go on
+count cannot silently send a click somewhere else. `07_narrow_test.go` runs the
+same page in a 390-point-wide touch context - phone layout, taps instead of
+clicks - and fails if anything reaches past the right edge;
+`09_dialog_test.go` opens the client config dialog in a phone-sized window.
+They are written in Go on
 [playwright-go](https://github.com/mxschmitt/playwright-go) and live in their
 own `e2e` module so the dependency stays out of the main `go.mod`. The tests
 share one backend and build on each other's state (`02` creates the server that
@@ -441,9 +440,10 @@ instance runs with `AUTO_START_SERVERS=false`, which is the only thing
 up after the run so a failing test can be inspected; `make e2e-down` removes
 the containers together with the volumes.
 
-These are overridden with Makefile variables: `E2E_PORT`, `E2E_NAME`,
-`E2E_VOLUME`, `E2E_URL`, `E2E_TIMEOUT`, `E2E_TEST_TIMEOUT`, and the `_NOAUTO`
-versions of the first four for the second instance. Running the tests
+These are overridden with Makefile variables: `E2E_IMAGE`, `E2E_NAME`,
+`E2E_VOLUME`, `E2E_PORT`, `E2E_URL`, `E2E_PASSWORD`, `E2E_TIMEOUT`,
+`E2E_TEST_TIMEOUT`, and the `_NOAUTO` versions of `E2E_NAME`, `E2E_VOLUME`,
+`E2E_PORT` and `E2E_URL` for the second instance. Running the tests
 against an instance that is already up, without recreating anything, still
 works directly:
 
@@ -521,9 +521,9 @@ carries `subnet_v6` and `server_ipv6`, and a client carries `client_ipv6`.
 
 #### AmneziaWG 3.1 (header protection, random trailers)
 
-There is only one obfuscation mode now: `"obfuscation": true` always enables
-the full AmneziaWG 3.x parameter set, header protection included. The old
-1.0/1.5/2.0-only modes (and the former `awg2`/`awg3` request flags) are gone.
+There is one obfuscation mode: `"obfuscation": true` always enables the full
+AmneziaWG 3.x parameter set, header protection included. There are no
+1.0/1.5/2.0-only modes and no `awg2`/`awg3` request flags.
 
 *   `S1`, `S2`, `S3`, `S4` must be **≥ 12** (the header protection cipher takes
     its 12-byte nonce from the start of that padding); otherwise the server
@@ -557,7 +557,8 @@ the full AmneziaWG 3.x parameter set, header protection included. The old
     | `PersistentKeepalive` | 25 s | `22-30` (from the example in `amneziawg-go`'s own README) |
 
     The "engine value" column is taken straight from `device/constants.go` in
-    `amneziawg-go` (WireGuard's standard timing constants).
+    the upstream `amneziawg-go` source tree (WireGuard's standard timing
+    constants).
     An officially documented recommended range exists only for `Jc` (`4-12`)
     and `PersistentKeepalive` (`22-30`) — the rest of the "recommended range"
     column is conservative jitter around the defaults, not an official
@@ -666,7 +667,7 @@ response — what the frontend polls every 5 seconds:
   "client_traffic": {
     "<server_id>": {
       "<client_id>": {
-        "received": "…", "sent": "…", "last_handshake": "…", "endpoint": "…"
+        "received": "…", "sent": "…", "last_handshake": "…", "endpoint": "…", "online": true
       }
     }
   },
@@ -682,13 +683,14 @@ Every value is instantaneous: `rx_bytes`/`tx_bytes` and `cpu` are cumulative
 counters since the interface came up and since the system booted, and the panel
 derives the rate and the CPU load from the difference between two consecutive
 responses. The server and client bytes come from one source,
-`awg show <iface> transfer`: the server is the sum over its peers, so its
-figure always equals the sum of the client rows (peers written into the `.conf`
-outside the panel count in the sum but get no row). Only the page keeps the
-5-minute history; the server remembers nothing between requests. `storage` is
-the filesystem of the `/etc/amnezia` volume, `memory` is as `free` reports it
-(used = total − available). A reading that could not be taken comes back as
-zeros.
+`awg show <iface> dump` (falling back to `awg show <iface>` plus
+`awg show <iface> transfer` on an `awg` without `dump`): the server is the sum
+over its peers, so its figure always equals the sum of the client rows (peers
+written into the `.conf` outside the panel count in the sum but get no row).
+Only the page keeps the 5-minute history; the server remembers nothing between
+requests. `storage` is the filesystem under `/etc/amnezia/amneziawg` (the
+config volume), `memory` is as `free` reports it (used = total − available). A
+reading that could not be taken comes back as zeros.
 
 ### Client management
 
@@ -837,7 +839,7 @@ The settings are overridden with make variables:
 | `PPROF_SECONDS` | `30` | How long the CPU profile is collected |
 | `PPROF_DIR` | `profiles` | Where the downloaded profiles go |
 | `PPROF_KIND` | `heap` | What `profile-diff` compares: `heap`, `cpu` or `alloc` |
-| `PPROF_FLAGS` | — | Extra `go tool pprof` flags: `-http=:8081` opens the web UI (needs graphviz), `-top -nodecount=20` just prints the hot spots |
+| `PPROF_FLAGS` | `-http=:8081` | `go tool pprof` flags: the default opens the web UI (needs graphviz); `-top -nodecount=20` just prints the hot spots, and an empty value gives the interactive prompt |
 
 ```bash
 make profile-mem PPROF_PASSWORD=secret PPROF_FLAGS=-http=:8081
@@ -865,11 +867,11 @@ The package is public, so `docker pull ghcr.io/noelbennettz/amneziawg-ui:latest`
 needs no login. To run your own build instead, `make run` or
 `docker compose build` produce the image locally.
 
-The image weighs about **35 MB**: no nginx, no supervisor, no language runtime
-beyond the shell `awg-quick` itself needs (bash, `ip`, `iptables`,
-`resolvconf`). For
-comparison, [`ghcr.io/w0rng/amnezia-wg-easy:latest`](https://github.com/w0rng/amnezia-wg-easy)
-is ~80 MB.
+The pulled image is about **35 MB** compressed — the figure the CI job's size
+report prints on every build, with a warning above 40 MB. No nginx, no
+supervisor, no language runtime beyond the shell `awg-quick` itself needs
+(bash, `ip`, `iptables`, `resolvconf`); most of the size is the wasm bundle,
+which ships gzipped at about 14 MB (49 MB uncompressed).
 
 The upstream AmneziaWG versions are pinned in the `Dockerfile`
 (`AWG_GO_VERSION=v3.1.20260828`, `AWG_TOOLS_VERSION=v3.1.20260812`), so a
@@ -891,7 +893,7 @@ docker build --build-arg AWG_GO_VERSION=vX.Y.Z --build-arg AWG_TOOLS_VERSION=vX.
 | `WEB_UI_PASSWORD` | `changeme` | Login password — SHA-256 in base64: `printf 'secret' \| openssl dgst -binary -sha256 \| base64` |
 | `WEB_UI_SECURE_COOKIE` | *auto* | `true` marks every cookie `Secure`, `false` never does, unset follows the request and `X-Forwarded-Proto`. Behind a TLS proxy the container sees plain HTTP, so `true` (or a proxy that sends the header) is what makes the flag appear at all |
 | `WEB_UI_AUDIT_LOG` | `false` | Append logins, logouts and every change made through the API to `/etc/amnezia/audit.log`: time, address, user, route, status. Off by default — it records who reached the panel |
-| `WEB_UI_AUDIT_RETENTION_HOURS` | `24` | How long an entry stays in that file: at least `1`, at most `720` (30 days), anything else falls back to the default. The file is swept at most once an hour, and rewritten atomically only when something has aged out |
+| `WEB_UI_AUDIT_RETENTION_HOURS` | `24` | How long an entry stays in that file: a value below `1` is raised to `1`, one above `720` (30 days) is lowered to `720`, and anything that is not a number falls back to `24`. The file is swept at most once an hour, and rewritten atomically only when something has aged out |
 | `WEB_UI_LOGIN_RATE_LIMIT` | `false` | Five failed logins from one address block it for 15 minutes; the second block lasts 30, and each one after that doubles, up to 24 hours. A blocked address gets `429` and `Retry-After` on the login form, on the API and on a basic-auth header alike. Off by default — behind a proxy that does not forward the client address, every request looks like one address, and the limiter would lock the operator out along with the attacker |
 | `WEB_UI_TRUST_PROXY` | `false` | Take the client address from `X-Forwarded-For` instead of the connection: the left-most entry, and only when it parses as an IP. It feeds the limiter and the audit log. Only turn it on when every request arrives through a proxy that appends the address it saw — a client that can reach the panel directly sets that header itself, and a limiter counting a value the attacker picks is no limiter |
 | `WEB_UI_PPROF` | `false` | Enables the profiler at `/debug/pprof` (behind the same login). Parsed as a boolean (`1`, `true`, `t`); anything else is "off" |
@@ -905,15 +907,15 @@ docker build --build-arg AWG_GO_VERSION=vX.Y.Z --build-arg AWG_TOOLS_VERSION=vX.
 
 `docker-compose.yml` is the file the panel is normally run with, `.env` (copied
 from `.env.example`) overrides the variables in it, and
-`docker-compose.example.yml` is the same service with every key commented and
-every variable listed. What each key does:
+`docker-compose.example.yml` is the same service with every key and variable
+spelled out and the optional ones commented. What each key does:
 
 | Key | Meaning |
 | --- | --- |
 | `image` | The image to run. `${IMAGE:-ghcr.io/noelbennettz/amneziawg-ui:latest}` lets `make run` and `make deploy` substitute their own build; pin a dated tag (`…:2026.11.18`) to keep an upgrade a decision |
 | `ports` | `"host address:host port:container port"`. Naming the host address (`127.0.0.1:54845:54845/tcp`) binds that address only — the usual setup behind a local TLS proxy. A UDP range (`54844-54864:54844-54864/udp`) publishes several servers at once |
-| `environment` / `env_file` | The variables from the table above. `.env` is optional (`required: false`), because every one of them repeats an image default |
-| `volumes` | `/etc/amnezia` holds `web_config.json`, every server's `.conf` and `audit.log`. A named volume or a host directory both work; this is the only state to back up |
+| `environment` / `env_file` | The variables from the table above. `.env` is optional (`required: false`), because every one of them has a default — in the image's `ENV` (`WEB_UI_PORT`) or in the binary |
+| `volumes` | `/etc/amnezia` holds `web_config.json` and `audit.log`, plus the servers' `.conf` files under `amneziawg/`, `suspended/` included. A named volume or a host directory both work; this is the only state to back up |
 | `cap_add: NET_ADMIN` | Needed to write iptables rules, create the interface and manage routes inside the container's network namespace |
 | `devices: /dev/net/tun` | The TUN device the userspace engine attaches to. No kernel module, so no `SYS_MODULE` |
 | `sysctls` | Forwarding for the tunnel. With `network_mode: host` Docker refuses them; `docker-compose.host.yml` drops them and they belong on the host |
@@ -923,7 +925,7 @@ every variable listed. What each key does:
 ### docker compose example
 
 The repository already ships three compose files: `docker-compose.yml` (the
-base one, running the published `image:` and reading an optional `.env`), 
+base one, running the published `image:` and reading an optional `.env`),
 `docker-compose.build.yml` (an overlay adding `build: .`) and
 `docker-compose.host.yml` (an overlay switching the service to host networking,
 which is what gives the clients IPv4 and IPv6 egress on a host with a public
@@ -932,11 +934,12 @@ to bring up the published image, use the base file alone:
 `docker compose -f docker-compose.yml up -d`. It needs a `.env` only if you want
 to change something: `cp .env.example .env` and edit it, or set `IMAGE`,
 `WEB_UI_PORT`, `DEFAULT_PORT` and the credentials in the environment. Without
-`.env`, the defaults the image already carries apply — `54845/tcp` for the web
-UI and `54844/udp` for the VPN. `env_file` is declared with
+`.env`, the built-in defaults apply — `54845/tcp` for the web UI and `54844/udp`
+for the VPN, the same numbers `docker-compose.yml` substitutes when a variable
+is not set. `env_file` is declared with
 `required: false` (Compose 2.24+), which is why a missing `.env` is not an
-error. `docker-compose.example.yml` is the same service with every key and
-variable commented out in place, and [Compose
+error. `docker-compose.example.yml` is the same service, key by key, with the
+optional variables commented out in place, and [Compose
 parameters](#compose-parameters) explains what each key does.
 
 A standalone `docker-compose.yml` for a VPS with the ready image from GitHub
@@ -1026,10 +1029,11 @@ advice stop applying.
 | `DisableCookies` | bool | `true` | AmneziaWG 3.1: never send a cookie reply, skip the MAC2 checks under load |
 | `MTU` | 1280-1440 | 1280 | MTU of the tunnel interface |
 
-The `S1`/`S2` bounds depend on the MTU (`S1 ≤ MTU-148`, `S2 ≤ MTU-92`, both
-capped at 150); the application checks that, along with the `S1+56 ≠ S2` rule
-and `S3`/`S4` ≥ 12, both in the client (form validation) and on the server —
-before any configuration file is written.
+The `S1`/`S2` bounds depend on the MTU (`S1 ≤ MTU-148`, `S2 ≤ MTU-92`); the
+application checks that, along with the `S1+56 ≠ S2` rule and `S3`/`S4` ≥ 12,
+both in the client (form validation) and on the server — before any
+configuration file is written. The generator keeps every draw inside the
+recommended 15-150 window.
 
 The types come from the
 [AmneziaWG 3.1 parameter reference](https://docs.amnezia.org/documentation/amnezia-wg/):
@@ -1046,7 +1050,7 @@ Two recommendations are specific to the AmneziaWG 3.1 mode and explain the
     `RandomTrailers`, it is recommended to set the same values for `S1`, `S2`,
     `S3` and `S4`" — the random trailers make the packet sizes float, and equal
     `S` values keep one message type from being taken for another. With the
-    checkbox cleared that requirement is gone.
+    checkbox cleared that requirement does not apply.
 
     The advice has a cost the documentation does not mention: with equal `S`
     values the difference between the minimum sizes of the message types stays
@@ -1106,7 +1110,10 @@ reject.
     | `<rd N>` | N random digits `[0-9]` | N ≤ 1000 |
 
     Example: `<b 0xd100000001><rc 8><t><r 50>`. Text outside the tags is
-    ignored by the engine.
+    ignored by the engine. The parser also accepts `d`, `ds` and `dz`, the
+    three tags in `obfBuilders` that copy or measure a source buffer: an
+    I-packet is built with no source, so they add nothing, and a value that
+    uses them is accepted rather than refused.
 *   The application parses the value by the same rules as `newObfChain` in
     `amneziawg-go` — in the form and on the server, before the config is
     written. It is stricter than the engine in exactly one place: a non-empty
@@ -1153,14 +1160,15 @@ reject.
     `/api/system/status`) rather than from a hardcoded constant. The advanced
     mode seeds the field with it too when the form opens, until you type your
     own.
-*   With AmneziaWG 3.x that is no longer just "in some networks": the `S4`
-    padding is added to **every** transport packet, and it must be ≥ 12. A
-    full-size packet on the wire weighs `MTU + 32` (the WireGuard header and
-    tag) `+ 28` (IPv4/UDP) `+ S4`, so on a normal 1500-byte path `1440 − MTU`
-    is left for the padding: at MTU 1280 that is 160 (the whole recommended
-    15-150 window fits), at 1420 only 20, and at 1440 nothing at all is left
-    and fragmentation is unavoidable. The generator takes this into account and
-    narrows the padding window to the chosen MTU.
+*   With AmneziaWG 3.x the `S4` padding is added to **every** transport packet
+    and must be ≥ 12, so fragmentation is a calculation rather than a property
+    of the network. A full-size packet on the wire weighs `MTU + 32` (the
+    WireGuard header and tag) `+ 28` (IPv4/UDP) `+ S4`, so on a normal
+    1500-byte path `1440 − MTU` is left for the padding: at MTU 1280 that is
+    160 (the whole recommended 15-150 window fits), at 1420 only 20, and at
+    1440 nothing at all is left and fragmentation is unavoidable. The
+    generator takes this into account and narrows the padding window to the
+    chosen MTU.
 
 ## Logs and monitoring
 
@@ -1169,7 +1177,7 @@ reject.
 The application writes to stdout/stderr only (the usual practice for
 containers); read it with:
 
-`docker logs -f amnezia-web-ui`
+`docker compose logs -f app`
 
 The base `docker-compose.yml` caps the log at three 10 MB files.
 
@@ -1190,10 +1198,11 @@ bodies or query strings.
 
 There is no separate export/import endpoint — back up the whole AmneziaWG state
 directory: it holds `web_config.json` (the server and client metadata, the keys,
-all the AmneziaWG 3.x parameters) and the `.conf` file of every interface:
+all the AmneziaWG 3.x parameters) and, under `amneziawg/`, the `.conf` file of
+every interface:
 
 ```bash
-docker cp amnezia-web-ui:/etc/amnezia ./amnezia-backup/
+docker cp "$(docker compose ps -q app)":/etc/amnezia ./amnezia-backup/
 ```
 
 To restore, stop the container, copy the saved directory back into the
@@ -1233,14 +1242,14 @@ A single server or client can also simply be downloaded through the UI or with
 
 ### Check the server status
 
-`curl -u admin:changeme http://localhost/api/system/status`
+`curl -u admin:changeme http://localhost:54845/api/system/status`
 
-`-u` still works: a basic-auth header is accepted on every route, so scripts do
-not need the login page or a cookie.
+`-u` works on any route: a basic-auth header is accepted everywhere, so scripts
+do not need the login page or a cookie.
 
 ### Check the iptables setup
 
-`curl -u admin:changeme "http://localhost/api/system/iptables-test?server_id=wg_abc123"`
+`curl -u admin:changeme "http://localhost:54845/api/system/iptables-test?server_id=wg_abc123"`
 
 A start that could not apply the rules says so on stdout and still reports the
 server as running:
@@ -1258,12 +1267,12 @@ directory that did not make it into the image, a container without
 
 ### Check that the container is alive (no credentials)
 
-`curl http://localhost/status`
+`curl http://localhost:54845/status`
 
 # Security
 
-The application is exposed directly on port 80 (or the configured
-`WEB_UI_PORT`) with the login built into the Fiber application itself
+The application is exposed directly on `WEB_UI_PORT` (`54845` by default) with
+the login built into the Fiber application itself
 (`internal/auth`, registered before every route and the assets). Three paths
 answer without credentials: `/status` (the container health check), `/login`
 and `/logout`. Everything else, the wasm bundle and `/debug/pprof` included,
@@ -1360,12 +1369,11 @@ navigation is redirected to the login page.
 
 ## Basic auth for scripts
 
-An `Authorization: Basic` header is still accepted on every route, checked
-against the same pair, which is what keeps `curl -u admin:changeme`, the
-`make profile-*` targets and existing automation working. The only part
-that is gone is the browser's native credential prompt: no
-`WWW-Authenticate` header is sent any more, so a browser never pops up a dialog
-and always sees the login page instead.
+An `Authorization: Basic` header is accepted on every route, checked against
+the same pair, which is what keeps `curl -u admin:changeme`, the
+`make profile-*` targets and existing automation working. No
+`WWW-Authenticate` header is sent, so a browser never shows its native
+credential dialog and always gets the login page instead.
 
 > [!IMPORTANT]
 > I strongly recommend restricting access to the panel with a firewall and/or a
