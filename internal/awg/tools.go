@@ -1,0 +1,386 @@
+package awg
+
+import (
+	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
+	"strconv"
+	"strings"
+	"time"
+)
+
+// Tools wraps the host commands behind names that say what they are for.
+// Nothing here knows about servers or clients; it takes interface names and
+// subnets and reports what the host said.
+type Tools struct {
+	run Runner
+
+	// ScriptsDir holds setup_iptables.sh and cleanup_iptables.sh. A
+	// deployment without them - a development tree - gets an error from the
+	// firewall step rather than a silent skip: the rules the caller believes
+	// it applied are not there either way.
+	ScriptsDir string
+
+	// BinDir is where awg and awg-quick are installed.
+	BinDir string
+}
+
+// New returns Tools issuing commands through run, with the container's
+// default locations.
+func New(run Runner) *Tools {
+	return &Tools{run: run, ScriptsDir: "/app/scripts", BinDir: "/usr/bin"}
+}
+
+// Available reports whether both amneziawg-tools binaries are installed.
+func (t *Tools) Available() bool {
+	_, awgErr := os.Stat(filepath.Join(t.BinDir, "awg"))
+	_, quickErr := os.Stat(filepath.Join(t.BinDir, "awg-quick"))
+	return awgErr == nil && quickErr == nil
+}
+
+// QuickUp brings an interface up from its .conf.
+func (t *Tools) QuickUp(iface string) error {
+	if _, err := t.run.Run(fmt.Sprintf("%s up %s", filepath.Join(t.BinDir, "awg-quick"), iface)); err != nil {
+		return fmt.Errorf("awg-quick up %s: %w", iface, quickFailure(err))
+	}
+	return nil
+}
+
+// QuickDown tears an interface down.
+func (t *Tools) QuickDown(iface string) error {
+	if _, err := t.run.Run(fmt.Sprintf("%s down %s", filepath.Join(t.BinDir, "awg-quick"), iface)); err != nil {
+		return fmt.Errorf("awg-quick down %s: %w", iface, quickFailure(err))
+	}
+	return nil
+}
+
+// quickFailure cuts awg-quick's stderr down to the output of the command that
+// failed. awg-quick echoes each step as "[#] command", and a start that falls
+// back to userspace also carries the kernel attempt's "Unknown device type",
+// a "[!]" notice and a box-drawn banner - none of it the reason, all of it
+// ahead of the one line that is. The last step with output is that line: the
+// steps after a failure are awg-quick's own cleanup, and they say nothing.
+func quickFailure(err error) error {
+	var exitErr *ExitError
+	if !errors.As(err, &exitErr) {
+		return err
+	}
+	var last, current []string
+	inBanner := false
+	for _, line := range strings.Split(exitErr.Stderr, "\n") {
+		line = strings.TrimSpace(line)
+		switch {
+		case strings.HasPrefix(line, "┌"):
+			inBanner = true
+		case strings.HasPrefix(line, "└"):
+			inBanner = false
+		case inBanner, line == "", strings.HasPrefix(line, "[!]"):
+		case strings.HasPrefix(line, "[#]"):
+			current = nil
+		default:
+			current = append(current, line)
+			last = current
+		}
+	}
+	if len(last) == 0 {
+		return err
+	}
+	return &ExitError{Err: exitErr.Err, Stderr: strings.Join(last, "\n")}
+}
+
+// SyncConf pushes the interface's .conf onto the running interface without
+// taking it down, so existing peers keep their sessions.
+func (t *Tools) SyncConf(iface string) error {
+	cmd := fmt.Sprintf("bash -c 'awg syncconf %s <(awg-quick strip %s)'", iface, iface)
+	_, err := t.run.Run(cmd)
+	return err
+}
+
+// InterfaceUp reports whether the kernel has the interface. It shells out,
+// so callers must not hold a lock other requests wait on while asking.
+func (t *Tools) InterfaceUp(iface string) bool {
+	if iface == "" {
+		return false
+	}
+	result, err := t.run.Run(fmt.Sprintf("ip link show %s", iface))
+	if err != nil {
+		return false
+	}
+	return strings.Contains(result, "state UNKNOWN") || strings.Contains(result, iface)
+}
+
+// SetupIPTables adds the forwarding and NAT rules for an interface, if the
+// script for it is deployed. subnetV6 is the server's ULA /64; the script adds
+// the matching ip6tables rules - the NAT66 masquerade included - only when it
+// is not empty.
+//
+// The error is the caller's to report: a server whose port and addresses are
+// wrong announces it by not working, but one that is up with no NAT accepts
+// every handshake and forwards nothing, which looks like a dead uplink from
+// the client's side.
+func (t *Tools) SetupIPTables(iface, subnet, subnetV6 string) error {
+	return t.runScript("setup_iptables.sh", iface, subnet, subnetV6)
+}
+
+// CleanupIPTables removes what SetupIPTables added.
+func (t *Tools) CleanupIPTables(iface, subnet, subnetV6 string) error {
+	return t.runScript("cleanup_iptables.sh", iface, subnet, subnetV6)
+}
+
+// runScript runs one of the two iptables scripts. A script that is not
+// deployed and a script that fails are both errors: either way the rules the
+// caller believes it applied are not there.
+func (t *Tools) runScript(name, iface, subnet, subnetV6 string) error {
+	script := filepath.Join(t.ScriptsDir, name)
+	if _, err := os.Stat(script); err != nil {
+		return fmt.Errorf("%s is not deployed at %s: %w", name, script, err)
+	}
+	if _, err := t.run.Run(fmt.Sprintf("%s %s %s %s", script, iface, subnet, subnetV6)); err != nil {
+		return fmt.Errorf("%s %s: %w", name, iface, err)
+	}
+	return nil
+}
+
+// CheckIPTables looks for the rules SetupIPTables should have left, keyed by
+// the command that looked. The values are "Found" or "Not found". The ip6tables
+// checks only appear for a server with an IPv6 subnet, since those are the only
+// servers the script writes them for.
+//
+// Those servers get two routing checks as well. A NAT66 rule is happy to exist
+// while there is nothing to masquerade onto - a container on a bridge network
+// has no IPv6 uplink at all - and the tunnel then works while the IPv6
+// internet behind it does not. "Found" on both lines means the rest of the v6
+// path is really there.
+func (t *Tools) CheckIPTables(iface, subnet, subnetV6 string) map[string]string {
+	checks := []string{
+		fmt.Sprintf("iptables -L INPUT -n | grep %s", iface),
+		fmt.Sprintf("iptables -L FORWARD -n | grep %s", iface),
+		fmt.Sprintf("iptables -t nat -L POSTROUTING -n | grep %s", subnet),
+		// Without a default route the masquerade above matches nothing, which
+		// is a rule that reads "Found" and does not work.
+		"ip route show default | head -1",
+	}
+	if subnetV6 != "" {
+		checks = append(checks,
+			fmt.Sprintf("ip6tables -L INPUT -n | grep %s", iface),
+			fmt.Sprintf("ip6tables -L FORWARD -n | grep %s", iface),
+			fmt.Sprintf("ip6tables -t nat -L POSTROUTING -n | grep %s", subnetV6),
+			"ip -6 route show default | head -1",
+			"ip -6 addr show scope global | head -1",
+		)
+	}
+	results := map[string]string{}
+	for _, cmd := range checks {
+		out, err := t.run.Run(cmd)
+		if err == nil && out != "" {
+			results[cmd] = "Found"
+		} else {
+			results[cmd] = "Not found"
+		}
+	}
+	return results
+}
+
+// RouteSourceIP is the address the host would use to reach the internet,
+// from its routing table. It is the fallback when no external service could
+// say what the public address is.
+func (t *Tools) RouteSourceIP() (string, error) {
+	return t.run.Run("ip route get 1 | awk '{print $7}' | head -1")
+}
+
+// RouteSourceIP6 is RouteSourceIP for IPv6. The field is looked up by name
+// rather than by position: an IPv6 route prints its own "from ::" before the
+// gateway, so the source address is not the seventh word the way it is for
+// IPv4.
+func (t *Tools) RouteSourceIP6() (string, error) {
+	return t.run.Run("ip -6 route get 2001:4860:4860::8888 2>/dev/null" +
+		" | awk '{for (i = 1; i < NF; i++) if ($i == \"src\") { print $(i + 1); exit }}'")
+}
+
+// PeerStats is what `awg show` reports about one peer: the exact byte counts
+// of the `transfer` listing, the endpoint and handshake age as the plain
+// listing words them, and the moment of that handshake from the
+// `latest-handshakes` listing (zero when the peer never shook hands).
+type PeerStats struct {
+	RXBytes, TXBytes        uint64
+	LastHandshake, Endpoint string
+	HandshakeAt             time.Time
+}
+
+// ShowPeers reads the peers of an interface, keyed by public key.
+//
+// It asks for the dump format first: one call to awg that carries every figure
+// this needs, instead of three calls that each make the kernel dump the whole
+// peer table again. The panel polls this every few seconds for every open tab,
+// so the difference is three processes per server per poll against one. Older
+// amneziawg-tools without `dump` fall back to the three listings, unchanged.
+func (t *Tools) ShowPeers(iface string) map[string]PeerStats {
+	awg := filepath.Join(t.BinDir, "awg")
+
+	if dump, err := t.run.Run(fmt.Sprintf("%s show %s dump", awg, iface)); err == nil {
+		return ParsePeerDump(dump, time.Now())
+	}
+
+	output, err := t.run.Run(fmt.Sprintf("%s show %s", awg, iface))
+	if err != nil || output == "" {
+		return nil
+	}
+	peers := ParseShow(output)
+	transfer, _ := t.run.Run(fmt.Sprintf("%s show %s transfer", awg, iface))
+	for key, tr := range ParseTransfer(transfer) {
+		p := peers[key]
+		p.RXBytes, p.TXBytes = tr.RXBytes, tr.TXBytes
+		peers[key] = p
+	}
+	handshakes, _ := t.run.Run(fmt.Sprintf("%s show %s latest-handshakes", awg, iface))
+	for key, at := range ParseLatestHandshakes(handshakes) {
+		if p, ok := peers[key]; ok {
+			p.HandshakeAt = at
+			peers[key] = p
+		}
+	}
+	return peers
+}
+
+// ParsePeerDump reads `awg show <iface> dump`, whose peer lines are
+//
+//	<pubkey> <psk> <endpoint> <allowed ips> <handshake> <rx> <tx> <keepalive>
+//
+// tab separated, with "(none)" for an endpoint or a handshake there is not.
+// The handshake is a unix timestamp here rather than the wording of the plain
+// listing, so its age is worded the way awg words it.
+func ParsePeerDump(output string, now time.Time) map[string]PeerStats {
+	peers := map[string]PeerStats{}
+	for _, line := range strings.Split(output, "\n") {
+		fields := strings.Split(line, "\t")
+		if len(fields) < 7 {
+			continue
+		}
+		rx, errRX := strconv.ParseUint(strings.TrimSpace(fields[5]), 10, 64)
+		tx, errTX := strconv.ParseUint(strings.TrimSpace(fields[6]), 10, 64)
+		if errRX != nil || errTX != nil {
+			continue
+		}
+		stats := PeerStats{RXBytes: rx, TXBytes: tx, LastHandshake: "Never"}
+		if endpoint := strings.TrimSpace(fields[2]); endpoint != "(none)" {
+			stats.Endpoint = endpoint
+		}
+		if sec, err := strconv.ParseInt(strings.TrimSpace(fields[4]), 10, 64); err == nil && sec > 0 {
+			stats.HandshakeAt = time.Unix(sec, 0)
+			stats.LastHandshake = FormatHandshakeAge(now.Sub(stats.HandshakeAt))
+		}
+		peers[strings.TrimSpace(fields[0])] = stats
+	}
+	return peers
+}
+
+// FormatHandshakeAge words an age the way `awg show` does: every non-zero unit
+// from years down, comma separated, always ending in seconds and " ago".
+func FormatHandshakeAge(age time.Duration) string {
+	seconds := int64(age / time.Second)
+	if seconds < 0 {
+		seconds = 0
+	}
+
+	units := []struct {
+		name    string
+		seconds int64
+	}{
+		{"year", 365 * 24 * 60 * 60},
+		{"day", 24 * 60 * 60},
+		{"hour", 60 * 60},
+		{"minute", 60},
+	}
+
+	var parts []string
+	for _, unit := range units {
+		if seconds < unit.seconds {
+			continue
+		}
+		n := seconds / unit.seconds
+		seconds %= unit.seconds
+		parts = append(parts, plural(n, unit.name))
+	}
+	parts = append(parts, plural(seconds, "second"))
+
+	return strings.Join(parts, ", ") + " ago"
+}
+
+func plural(n int64, unit string) string {
+	if n == 1 {
+		return "1 " + unit
+	}
+	return strconv.FormatInt(n, 10) + " " + unit + "s"
+}
+
+// ParseShow reads the output of `awg show`: who the peers are, where they
+// are, and when they last shook hands. It is separate from ShowPeers so the
+// parser can be tested on captured output.
+func ParseShow(output string) map[string]PeerStats {
+	peers := map[string]PeerStats{}
+	current := ""
+	for _, line := range strings.Split(output, "\n") {
+		line = strings.TrimSpace(line)
+		switch {
+		case strings.HasPrefix(line, "peer:"):
+			current = strings.TrimSpace(strings.TrimPrefix(line, "peer:"))
+			peers[current] = PeerStats{LastHandshake: "Never"}
+		case current == "":
+			continue
+		case strings.HasPrefix(line, "endpoint:"):
+			p := peers[current]
+			p.Endpoint = strings.TrimSpace(strings.TrimPrefix(line, "endpoint:"))
+			peers[current] = p
+		case strings.HasPrefix(line, "latest handshake:"):
+			p := peers[current]
+			p.LastHandshake = strings.TrimSpace(strings.TrimPrefix(line, "latest handshake:"))
+			peers[current] = p
+		}
+	}
+	return peers
+}
+
+// Transfer is one line of `awg show <iface> transfer`: what the interface
+// received from a peer and sent to it, in bytes.
+type Transfer struct {
+	RXBytes, TXBytes uint64
+}
+
+// ParseTransfer reads `awg show <iface> transfer`, one "<key>\t<rx>\t<tx>"
+// line per peer. Lines that do not fit are skipped.
+func ParseTransfer(output string) map[string]Transfer {
+	peers := map[string]Transfer{}
+	for _, line := range strings.Split(output, "\n") {
+		fields := strings.Fields(line)
+		if len(fields) != 3 {
+			continue
+		}
+		rx, errRX := strconv.ParseUint(fields[1], 10, 64)
+		tx, errTX := strconv.ParseUint(fields[2], 10, 64)
+		if errRX != nil || errTX != nil {
+			continue
+		}
+		peers[fields[0]] = Transfer{RXBytes: rx, TXBytes: tx}
+	}
+	return peers
+}
+
+// ParseLatestHandshakes reads `awg show <iface> latest-handshakes`, one
+// "<key>\t<unix seconds>" line per peer. A zero timestamp is a peer that
+// never shook hands and is left out, as are lines that do not fit.
+func ParseLatestHandshakes(output string) map[string]time.Time {
+	peers := map[string]time.Time{}
+	for _, line := range strings.Split(output, "\n") {
+		fields := strings.Fields(line)
+		if len(fields) != 2 {
+			continue
+		}
+		sec, err := strconv.ParseInt(fields[1], 10, 64)
+		if err != nil || sec <= 0 {
+			continue
+		}
+		peers[fields[0]] = time.Unix(sec, 0)
+	}
+	return peers
+}

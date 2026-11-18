@@ -1,0 +1,7 @@
+# Build artefacts that the image rebuilds from source anyway.
+web-ui/wasm/
+*.bin
+*.tar
+
+.idea/
+.env

@@ -1,0 +1,249 @@
+package manager
+
+import (
+	"errors"
+	"os"
+	"slices"
+	"strings"
+	"testing"
+
+	"amneziawg-web-ui/web-ui/api"
+)
+
+// TestCreateServerRejectsAPortAnotherServerAlreadyUses covers the check that
+// runs before anything is written: two interfaces on one UDP port would only
+// fail much later, when the second one cannot bind.
+func TestCreateServerRejectsAPortAnotherServerAlreadyUses(t *testing.T) {
+	m, _ := newTestManager(t) // its one server, "srv", listens on 54844
+
+	_, err := m.CreateServer(api.CreateServerRequest{Name: "second", Port: 54844, MTU: 1420})
+	if !errors.Is(err, ErrConflict) {
+		t.Fatalf("want ErrConflict, got %v", err)
+	}
+	if !strings.Contains(err.Error(), `"srv"`) {
+		t.Fatalf("error should name the server holding the port, got %v", err)
+	}
+	if got := len(m.cfg.Servers); got != 1 {
+		t.Fatalf("nothing should have been created, got %d servers", got)
+	}
+}
+
+// The panel's own port counts as taken too: publishing one number for both
+// the web UI and a tunnel is a trap even though TCP and UDP would coexist.
+func TestCreateServerRejectsTheWebUIsOwnPort(t *testing.T) {
+	m, _ := newTestManager(t)
+
+	_, err := m.CreateServer(api.CreateServerRequest{Name: "second", Port: 54845, MTU: 1420})
+	if !errors.Is(err, ErrConflict) {
+		t.Fatalf("want ErrConflict, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "web UI") {
+		t.Fatalf("error should say what holds the port, got %v", err)
+	}
+}
+
+// A port awg-quick cannot bind is a bad request: accepted, it would be saved
+// and then fail only when the server is started.
+func TestCreateServerRejectsAPortOutOfRange(t *testing.T) {
+	m, _ := newTestManager(t)
+
+	for _, port := range []int{-5, api.MaxPort + 1} {
+		_, err := m.CreateServer(api.CreateServerRequest{Name: "second", Port: port, MTU: 1420})
+		if !errors.Is(err, ErrInvalid) {
+			t.Fatalf("port %d: want ErrInvalid, got %v", port, err)
+		}
+	}
+	if got := len(m.cfg.Servers); got != 1 {
+		t.Fatalf("nothing should have been created, got %d servers", got)
+	}
+}
+
+// A subnet sharing addresses with another server's is a conflict, whether it
+// is the same block or one that contains or sits inside it.
+func TestCreateServerRejectsAnOverlappingSubnet(t *testing.T) {
+	m, _ := newTestManager(t) // "srv" holds 10.0.1.0/24
+
+	for _, subnet := range []string{"10.0.1.0/24", "10.0.0.0/16", "10.0.1.128/25"} {
+		_, err := m.CreateServer(api.CreateServerRequest{Name: "second", Port: 54846, Subnet: subnet, MTU: 1420})
+		if !errors.Is(err, ErrConflict) {
+			t.Fatalf("subnet %s: want ErrConflict, got %v", subnet, err)
+		}
+		if !strings.Contains(err.Error(), `"srv"`) {
+			t.Fatalf("subnet %s: error should name the server holding it, got %v", subnet, err)
+		}
+	}
+	if got := len(m.cfg.Servers); got != 1 {
+		t.Fatalf("nothing should have been created, got %d servers", got)
+	}
+}
+
+// A subnet that is not an IPv4 block with room for a client is a bad request.
+func TestCreateServerRejectsAMalformedSubnet(t *testing.T) {
+	m, _ := newTestManager(t)
+
+	for _, subnet := range []string{"abc", "10.0.2.0", "10.0.2.0/31", "fd00::/64"} {
+		_, err := m.CreateServer(api.CreateServerRequest{Name: "second", Port: 54846, Subnet: subnet, MTU: 1420})
+		if !errors.Is(err, ErrInvalid) {
+			t.Fatalf("subnet %q: want ErrInvalid, got %v", subnet, err)
+		}
+	}
+}
+
+// A DNS resolver is an address on either stack: a client on an IPv6-only
+// network cannot reach 8.8.8.8 at all, and the panel used to refuse the v6
+// form outright. The stored list is canonical, so two spellings of one
+// address cannot look like two resolvers.
+func TestCreateServerTakesADNSResolverOnEitherStack(t *testing.T) {
+	m, _ := newTestManager(t)
+
+	srv, err := m.CreateServer(api.CreateServerRequest{
+		Name: "dns", Port: 54846, Subnet: "10.20.0.0/24", MTU: 1420,
+		DNS: "9.9.9.9, 2606:4700:4700::1111 , 0:0:0:0:0:0:0:1",
+	})
+	if err != nil {
+		t.Fatalf("CreateServer: %v", err)
+	}
+	want := []string{"9.9.9.9", "2606:4700:4700::1111", "::1"}
+	if strings.Join(srv.DNS, " ") != strings.Join(want, " ") {
+		t.Fatalf("DNS = %v, want %v", srv.DNS, want)
+	}
+
+	// A name resolver is not something a client config can use before the
+	// tunnel is up, and it stays a bad request.
+	if _, err := m.CreateServer(api.CreateServerRequest{
+		Name: "bad-dns", Port: 54847, MTU: 1420, DNS: "dns.google",
+	}); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("want ErrInvalid for a host-name resolver, got %v", err)
+	}
+}
+
+// An IPv6 endpoint is stored in its canonical form and written bracketed, so
+// the config a client downloads carries an address it can actually dial.
+func TestCreateServerKeepsAnIPv6EndpointDialable(t *testing.T) {
+	m, _ := newTestManager(t)
+
+	srv, err := m.CreateServer(api.CreateServerRequest{
+		Name: "v6", Port: 54846, Subnet: "10.21.0.0/24", MTU: 1420, Endpoint: " [2001:0db8::1] ",
+	})
+	if err != nil {
+		t.Fatalf("CreateServer: %v", err)
+	}
+	if srv.Endpoint != "2001:db8::1" {
+		t.Fatalf("endpoint = %q, want the canonical 2001:db8::1", srv.Endpoint)
+	}
+
+	client, _, err := m.AddClient(srv.ID, api.AddClientRequest{Name: "alice"})
+	if err != nil {
+		t.Fatalf("AddClient: %v", err)
+	}
+	conf, err := m.ClientConfig(srv.ID, client.ID, false)
+	if err != nil {
+		t.Fatalf("ClientConfig: %v", err)
+	}
+	if !strings.Contains(conf, "Endpoint = [2001:db8::1]:54846\n") {
+		t.Fatalf("client config does not carry a bracketed IPv6 endpoint:\n%s", conf)
+	}
+
+	// The name case keeps working, and the port the operator might paste in
+	// is refused instead of ending up in the config twice.
+	named, err := m.CreateServer(api.CreateServerRequest{Name: "named", Port: 54848, Subnet: "10.22.0.0/24", MTU: 1420, Endpoint: "vpn.example.com"})
+	if err != nil {
+		t.Fatalf("CreateServer with a host name: %v", err)
+	}
+	if named.Endpoint != "vpn.example.com" {
+		t.Fatalf("endpoint = %q, want vpn.example.com", named.Endpoint)
+	}
+	if _, err := m.CreateServer(api.CreateServerRequest{
+		Name: "bad-endpoint", Port: 54849, Subnet: "10.23.0.0/24", MTU: 1420, Endpoint: "vpn.example.com:54846",
+	}); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("want ErrInvalid for an endpoint carrying a port, got %v", err)
+	}
+}
+
+func TestPortInUse(t *testing.T) {
+	m, _ := newTestManager(t)
+
+	if holder, ok := m.portInUse(54844); !ok || holder != `server "srv"` {
+		t.Errorf(`portInUse(54844) = %q, %v; want server "srv", true`, holder, ok)
+	}
+	if holder, ok := m.portInUse(54845); !ok || holder != "the web UI" {
+		t.Errorf(`portInUse(54845) = %q, %v; want the web UI, true`, holder, ok)
+	}
+	if holder, ok := m.portInUse(54846); ok {
+		t.Errorf("portInUse(54846) = %q, %v; want the port to be free", holder, ok)
+	}
+}
+
+// A created server gets a .conf whose [Interface] carries the same
+// obfuscation lines its clients will, and is brought up when asked.
+func TestCreateServerWritesTheConfAndAutoStarts(t *testing.T) {
+	m, run := newTestManager(t)
+	run.Stub("awg genkey", "SPRIV").Stub("echo 'SPRIV' | awg pubkey", "SPUB")
+	run.Stub("/usr/bin/awg-quick up wg-", "")
+	yes := true
+
+	srv, err := m.CreateServer(api.CreateServerRequest{Name: "second", Port: 54846, Subnet: "10.0.2.0/24", AutoStart: &yes})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if srv.ServerPublicKey != "SPUB" || srv.ServerIP != "10.0.2.1" || !srv.ObfuscationEnabled {
+		t.Errorf("server = %+v", srv)
+	}
+
+	conf, err := os.ReadFile(srv.ConfigPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, line := range []string{"PrivateKey = SPRIV", "Address = 10.0.2.1/24", "ListenPort = 54846", "HeaderProtectionKey = "} {
+		if !strings.Contains(string(conf), line) {
+			t.Errorf("conf missing %q:\n%s", line, conf)
+		}
+	}
+
+	if !run.Ran("/usr/bin/awg-quick up " + srv.Interface) {
+		t.Errorf("the server was not brought up: %v", run.Commands)
+	}
+	if got := m.ServerStatus(srv.ID); got != "running" {
+		t.Errorf("status after auto-start = %q", got)
+	}
+}
+
+func TestDeleteServerStopsARunningInterfaceFirst(t *testing.T) {
+	m, run := newTestManager(t)
+	run.Stub("ip link show wg-test-absent", "wg-test-absent: state UNKNOWN")
+	run.Stub("/usr/bin/awg-quick down wg-test-absent", "")
+	confPath := m.cfg.Servers[0].ConfigPath
+
+	if err := m.DeleteServer("s1"); err != nil {
+		t.Fatal(err)
+	}
+	if !run.Ran("/usr/bin/awg-quick down wg-test-absent") {
+		t.Errorf("the interface was left up: %v", run.Commands)
+	}
+	if _, err := os.Stat(confPath); !os.IsNotExist(err) {
+		t.Errorf("the .conf was left behind (err %v)", err)
+	}
+	if _, ok := m.Server("s1"); ok {
+		t.Error("the server is still listed")
+	}
+}
+
+// The resolvers in a client config are written canonically, by the same rule
+// the create form applies: both stacks, no port, no zone. A value the form
+// refuses must not reach a config, and one it accepts must not fail here.
+func TestNormalizeDNSWritesCanonicalResolvers(t *testing.T) {
+	got, err := normalizeDNS([]string{" 8.8.8.8 ", "0:0:0:0:0:0:0:1", "::ffff:1.1.1.1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"8.8.8.8", "::1", "1.1.1.1"}
+	if !slices.Equal(got, want) {
+		t.Errorf("normalizeDNS = %q, want %q", got, want)
+	}
+
+	for _, in := range []string{"dns.google", "8.8.8.8:53", "fe80::1%eth0", "::1/128"} {
+		if _, err := normalizeDNS([]string{in}); err == nil {
+			t.Errorf("normalizeDNS(%q) accepted it", in)
+		}
+	}
+}

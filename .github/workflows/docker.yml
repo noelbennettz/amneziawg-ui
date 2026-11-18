@@ -1,0 +1,247 @@
+name: Build and Push Docker Image
+
+# Runs on every push to the default branch and publishes two tags: `latest`,
+# which always points at the newest commit on main, and the date the build was
+# made (`2026.11.11`), which does not move again. Pinning the dated tag is how
+# an upgrade becomes a decision instead of a restart. A day with several pushes
+# moves that day's tag: the registry holds one version per tag, and the panel
+# carries no version of its own to tell them apart.
+on:
+  push:
+    branches:
+      - main
+  # Manual runs use the same pipeline; the image is tagged `latest` plus the
+  # date of the build.
+  workflow_dispatch:
+
+# Two pushes racing on the same ref would both try to move `latest`; the
+# newer one wins, and the older build is not worth finishing.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  REGISTRY: ghcr.io
+  PLATFORMS: linux/amd64,linux/arm64
+
+jobs:
+  # Nothing is published that has not passed the tests. The panel is a network
+  # service and `latest` is what people pull: a commit that fails `go test` must
+  # not become the newest image.
+  test:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Set up Go
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Vet and test the server
+        run: |
+          go vet ./...
+          go test ./...
+
+      - name: Vet the frontend
+        run: |
+          cd web-ui
+          GOOS=js GOARCH=wasm go vet ./...
+          GOOS=js GOARCH=wasm go build ./...
+
+      # The frontend's unit tests run the wasm binary through node. The
+      # runner has one; a fork or a self-hosted runner may not, and a missing
+      # interpreter is not a failing test.
+      #
+      # The exec wrapper is named explicitly rather than left to the go
+      # command's own lookup: `go test` for js/wasm has to be told what to run
+      # the .test file with, and where it looks for that has moved between Go
+      # releases. The module root is left out on purpose - it is the fyne app
+      # itself, and importing it pulls in the glfw wasm driver, whose init
+      # reads `window`, which node does not have: the binary panics before a
+      # single test runs. Everything under api/ and internal/ runs there.
+      - name: Test the frontend
+        run: |
+          cd web-ui
+          if command -v node >/dev/null 2>&1; then
+            GOOS=js GOARCH=wasm go test \
+              -exec "node $(go env GOROOT)/lib/wasm/wasm_exec_node.js" \
+              ./api/... ./internal/...
+          else
+            echo "::warning::node is not on PATH - the wasm unit tests did not run"
+          fi
+
+      - name: Vet the end-to-end suite
+        run: cd e2e && go vet ./...
+
+  build-and-push:
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # Pushing to GitHub Packages with the built-in token: no secret to set up.
+      packages: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      # GHCR rejects an image reference with uppercase letters, and a GitHub
+      # owner or repository name may have them. Lowercase it once here rather
+      # than expecting every repository name to be spelled in lowercase.
+      - name: Compute the image name
+        run: echo "IMAGE_NAME=${REGISTRY}/${GITHUB_REPOSITORY,,}" >> "$GITHUB_ENV"
+
+      # Every compiler in the Dockerfile cross-compiles, so QEMU is only ever
+      # asked to run apk and busybox while the final arm64 layer is assembled.
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3
+        with:
+          platforms: arm64
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata for Docker
+        id: meta
+        uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5
+        with:
+          images: ${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=latest
+            type=raw,value={{date 'YYYY.MM.DD'}}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: ${{ env.PLATFORMS }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # The size of the image is one of the numbers the project is sold on, so
+      # it gets reported on every build instead of being remembered. It is a
+      # warning and not a gate: a release should not fail because a layer grew,
+      # and the number is only worth acting on when a human looks at what
+      # changed. The sum is of the compressed layers the registry holds, which
+      # is what `docker pull` reports - not the unpacked size on disk.
+      - name: Report the image size
+        continue-on-error: true
+        run: |
+          ref="${IMAGE_NAME}:latest"
+          largest=0
+          for digest in $(docker buildx imagetools inspect "$ref" --format '{{json .Manifest}}' \
+              | python3 -c 'import json,sys;print(" ".join(m["digest"] for m in json.load(sys.stdin).get("manifests",[])))'); do
+            size=$(docker buildx imagetools inspect "${ref}@${digest}" --format '{{json .Manifest}}' \
+              | python3 -c 'import json,sys;print(sum(l.get("size",0) for l in json.load(sys.stdin).get("layers",[])))')
+            echo "  ${digest}: $((size / 1000000)) MB"
+            if [ "$size" -gt "$largest" ]; then largest=$size; fi
+          done
+          echo "Largest platform: $((largest / 1000000)) MB compressed"
+          if [ "$largest" -gt 40000000 ]; then
+            echo "::warning::the image is $((largest / 1000000)) MB compressed, over the 40 MB line"
+          fi
+
+      - name: Verify pushed image
+        run: |
+          echo "Image successfully pushed to ${{ env.REGISTRY }}"
+          echo "Platforms: ${{ env.PLATFORMS }}"
+          echo "Tags: ${{ steps.meta.outputs.tags }}"
+          echo
+          echo "The package is private until you change its visibility at"
+          echo "https://github.com/users/${{ github.repository_owner }}/packages/container/${GITHUB_REPOSITORY#*/}/settings"
+          echo "A private package needs 'docker login ghcr.io' on the host that pulls it."
+
+  # Housekeeping: this workflow deletes its own older runs, keeping the three
+  # newest. The history of a workflow that runs on every push is mostly noise
+  # after a while, and every run carries its logs and artifacts with it.
+  #
+  # It runs whether the jobs above passed or failed - a red run is worth
+  # keeping until it ages out, and a failed build is exactly when the logs are
+  # worth reading.
+  #
+  # "The three newest" is spelled out as "this run plus the two newest of the
+  # others" rather than as a slice of some filtered list: the first version
+  # filtered by status and then sliced, which kept three *completed* runs and
+  # deleted more than it meant to. A run that is still in progress is skipped
+  # and ages out on a later run, so an active build is never touched.
+  prune:
+    needs: [test, build-and-push]
+    if: always()
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # Deleting runs is an actions write, not a contents one.
+      actions: write
+
+    steps:
+      - name: Delete every run but the three newest
+        # Housekeeping must not turn a good release red: a warning in the run
+        # summary is the right weight for "the history is piling up".
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_RUN_ID: ${{ github.run_id }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+
+          gh api "repos/${REPO}/actions/workflows/docker.yml/runs?per_page=100" \
+            > runs.json
+
+          python3 - <<'PY'
+          import json, os, subprocess, sys
+
+          repo = os.environ["REPO"]
+          current = int(os.environ["GITHUB_RUN_ID"])
+          runs = json.load(open("runs.json"))["workflow_runs"]
+
+          others = [r for r in runs if r["id"] != current]
+          # This run is the first of the three; the two newest of the rest
+          # follow it.
+          keep = {r["id"] for r in others[:2]} | {current}
+          victims = [r for r in others[2:] if r["status"] == "completed"]
+
+          print(f"{len(runs)} run(s); keeping {sorted(keep)}")
+          for r in victims:
+              print(f"  delete {r['id']} {r['created_at']} {r['conclusion']}")
+
+          # Deleting the current run would kill the job doing the deleting, and
+          # deleting more than the list allows means the arithmetic went wrong.
+          budget = len(runs) - 3
+          if budget < 0:
+              budget = 0
+          if len(victims) > budget:
+              sys.exit(f"refusing: {len(victims)} deletions for a budget of {budget}")
+
+          for r in victims:
+              subprocess.run(
+                  ["gh", "run", "delete", str(r["id"]), "--repo", repo],
+                  check=True,
+              )
+
+          print(f"deleted {len(victims)}; {len(runs) - len(victims)} left")
+          PY
+
+          left=$(gh api "repos/${REPO}/actions/workflows/docker.yml/runs?per_page=100" \
+            --jq '.workflow_runs | length')
+          echo "now ${left} run(s)"
+          if [ "$left" -lt 3 ]; then
+            echo "::warning::only ${left} run(s) left; the pruning kept fewer than it meant to"
+          fi
