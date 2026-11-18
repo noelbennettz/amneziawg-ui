@@ -213,6 +213,12 @@ ls -l /dev/net/tun</code></pre>
       <h2>Install</h2>
       <p>A Linux host with Docker and Compose. The panel ends up on port 54845.</p>
     </div>
+    <p class="note">
+      <strong>The image ships with <code>admin</code> / <code>changeme</code>.</strong>
+      Until <code>WEB_UI_PASSWORD</code> holds your own hash, anyone who reaches
+      the port can sign in. Replace it first — or keep the port on
+      <code>127.0.0.1</code> until you have.
+    </p>
     <div class="steps">
       <div class="step">
         <h3>Hash the panel password</h3>
@@ -263,8 +269,11 @@ volumes:
         <p>Then open <code>http://your-server:54845/</code> with the user and password from step 1.</p>
         <div class="copy-wrap">
           <button class="copy" type="button" data-copy>Copy</button>
-          <pre><code>docker compose up -d</code></pre>
+          <pre><code>docker compose up -d
+docker compose ps        # expected: Up ... (healthy)
+curl -s localhost:54845/status   # expected: Container Uptime: 0d 0h 0m 3s</code></pre>
         </div>
+        <p>If the container restarts instead of staying up, <code>docker compose logs app</code> names the reason: a port already in use, or a host without <code>/dev/net/tun</code>.</p>
       </div>
     </div>
     <p class="note">

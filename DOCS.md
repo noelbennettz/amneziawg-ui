@@ -902,6 +902,24 @@ different tags:
 docker build --build-arg AWG_GO_VERSION=vX.Y.Z --build-arg AWG_TOOLS_VERSION=vX.Y.Z -t awgui .
 ```
 
+### After `up`: what to expect
+
+- `docker compose ps` shows the container as `Up … (healthy)`; the image carries
+  a `HEALTHCHECK` that asks `127.0.0.1:54845/status` every 30 s.
+- `docker compose logs -f app` prints `AmneziaWG Web UI (Go/Fiber) starting...`,
+  an `=== Environment Configuration ===` block with the values it resolved, and
+  the address it listens on. A line per auto-started server follows.
+- `curl -s http://127.0.0.1:54845/status` answers `Container Uptime: 0d 0h 0m 3s`
+  and needs no credentials. `curl -u admin:<password> http://127.0.0.1:54845/api/servers`
+  answers a JSON list that is empty on a fresh volume.
+- `http://<server>:54845/` serves the login page; after signing in with the
+  credentials the container was started with, the server list is empty and
+  **Create server** is the only action.
+
+If the container restarts instead of staying up, `docker compose logs app` is
+the first place to look: a port already in use and a missing `/dev/net/tun` are
+the two failures that happen before anything is logged by the panel itself.
+
 ### Environment variables
 
 | Variable | Default | Description |
@@ -1256,6 +1274,39 @@ expected in the error, and the client stays suspended.
 A single server or client can also simply be downloaded through the UI or with
 `GET /api/servers/{server_id}/config` /
 `GET /api/servers/{server_id}/clients/{client_id}/config`.
+
+## Removing it
+
+The compose file declares one named volume, `data`, mounted at `/etc/amnezia`.
+What each command removes:
+
+| Command | Removes | Keeps |
+| --- | --- | --- |
+| `docker compose stop` | the running container (process) | container, volume, image, `.env` |
+| `docker compose down` | the container and the compose network | the `data` volume, the image, `.env`, `docker-compose.yml` |
+| `docker compose down -v` | the above **and the `data` volume**: every server, every client, every private key, the obfuscation parameters and `audit.log` | the image, `.env`, the compose file |
+| `docker image rm ghcr.io/noelbennettz/amneziawg-ui:latest` | the downloaded image only | — |
+
+`down -v` cannot be undone: the client private keys are not stored anywhere
+else, so a client whose `.conf` was handed out cannot be recreated — only
+issued again with a new key. Copy the volume out first
+([Backup and restore](#backup-and-restore)).
+
+Three details the table does not show:
+
+*   If you mounted a host directory at `/etc/amnezia` instead of the named
+    volume, `down -v` leaves it alone — deleting it is a `rm -rf` you run
+    yourself.
+*   `.env` holds your password hash and is never touched by compose. Remove it
+    separately if it must not stay on the host.
+*   Firewall rules follow the network mode. In the default bridge deployment
+    every rule the panel writes lives in the container's network namespace, so
+    the rules disappear with the container and nothing on the host changes.
+    With `docker-compose.host.yml` (`network_mode: host`) the rules are written
+    in the host's namespace: stop the servers in the panel before removing the
+    container (that runs `cleanup_iptables.sh`), or check `iptables -S` and
+    `ip6tables -S` for leftover `awg` rules afterwards and delete them by hand.
+
 
 ## Debugging commands
 

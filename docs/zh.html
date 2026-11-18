@@ -211,6 +211,11 @@ ls -l /dev/net/tun</code></pre>
       <h2>安裝</h2>
       <p>一台裝好 Docker 與 Compose 的 Linux 主機。面板會開在 54845 埠。</p>
     </div>
+    <p class="note">
+      <strong>image 預設是 <code>admin</code> / <code>changeme</code>。</strong>
+      在 <code>WEB_UI_PASSWORD</code> 換成你自己的 hash 之前，連得到這個埠的人都能登入。
+      先換掉——或先只綁在 <code>127.0.0.1</code>。
+    </p>
     <div class="steps">
       <div class="step">
         <h3>先算面板密碼的 hash</h3>
@@ -261,8 +266,11 @@ volumes:
         <p>然後開 <code>http://your-server:54845/</code>，用步驟 1 的使用者與密碼登入。</p>
         <div class="copy-wrap">
           <button class="copy" type="button" data-copy>複製</button>
-          <pre><code>docker compose up -d</code></pre>
+          <pre><code>docker compose up -d
+docker compose ps        # 預期：Up ... (healthy)
+curl -s localhost:54845/status   # 預期：Container Uptime: 0d 0h 0m 3s</code></pre>
         </div>
+        <p>如果容器一直重啟而不是穩定執行，<code>docker compose logs app</code> 會說原因：埠被佔用，或主機沒有 <code>/dev/net/tun</code>。</p>
       </div>
     </div>
     <p class="note">

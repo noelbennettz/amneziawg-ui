@@ -42,6 +42,25 @@ starts it; `.env` is optional, and leaving it out keeps the defaults. Open
 then **Create server → Add client** and take the `.conf`, the QR code or the
 `vpn://` link. Update with `docker compose pull && docker compose up -d`.
 
+Check it came up:
+
+- `docker compose ps` shows `Up … (healthy)` within a minute.
+- `docker compose logs app` ends with `AmneziaWG Web UI (Go/Fiber) starting...`,
+  the environment block and the listening address.
+- `curl -s http://127.0.0.1:54845/status` answers `Container Uptime: 0d 0h 0m 3s`
+  without a login.
+- `http://<server-ip>:54845/` shows the login page.
+
+> [!IMPORTANT]
+> The image's default login is `admin` / `changeme`. Anyone who reaches the port
+> before `WEB_UI_PASSWORD` holds your own hash can sign in. Change it first, or
+> publish the port on `127.0.0.1` until you have.
+
+Removing it later: `docker compose down` stops the container and keeps the
+`/etc/amnezia` volume; `docker compose down -v` deletes that volume — every
+server, client and key — and cannot be undone. [DOCS.md](DOCS.md#removing-it)
+lists what each command leaves behind.
+
 The container does not terminate TLS. Restrict port `54845` with a firewall or
 put a TLS proxy in front of it before exposing it — the
 [FAQ](DOCS.md#do-i-need-https-and-how-do-i-enable-it) has the two settings that
