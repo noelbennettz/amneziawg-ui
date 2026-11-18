@@ -286,13 +286,13 @@ volumes:
           <li><strong>Both stacks by default.</strong> The panel listens on <code>0.0.0.0</code> and <code>[::]</code>, and a client config accepts an IPv4 or IPv6 endpoint and DNS resolvers of either family.</li>
           <li><strong>Each server gets a ULA /64 and NAT6.</strong> The firewall script decides per family and only writes forwarding and masquerade rules when that family has a default route and a routable source.</li>
           <li><strong>By default a bridge network has no IPv6 uplink.</strong> Docker gives the container a unique local address at best, so clients get an IPv6 tunnel and no IPv6 egress; <code>nat6.state</code> reads <code>ula-only</code>.</li>
-          <li><strong>Three ways to give clients IPv6.</strong> Add a global prefix to the default network, define a separate IPv6 network and attach this service to it, or run with host networking. <code>nat6.state</code> then reads <code>ok</code>.</li>
+          <li><strong>Three ways to give clients IPv6.</strong> Add a global prefix to the default network; give the service its own IPv6 network — compose can create it, or you create it with <code>docker network create</code> and mark it external; or run with host networking. <code>nat6.state</code> then reads <code>ok</code>.</li>
         </ul>
       </div>
       <div>
         <div class="copy-wrap">
           <button class="copy" type="button" data-copy>Copy</button>
-          <pre><code># a separate IPv6-enabled network for this service
+          <pre><code># Option 1: compose creates the network (named &lt;project&gt;_awg6)
 services:
   app:
     networks: [awg6]
@@ -302,7 +302,13 @@ networks:
     enable_ipv6: true
     ipam:
       config:
-        - subnet: 2001:db8:1::/64</code></pre>
+        - subnet: 2001:db8:1::/64
+
+# Option 2: create it first, then reference it as external
+#   docker network create --ipv6 --subnet=2001:db8:1::/64 awg6
+# networks:
+#   awg6:
+#     external: true</code></pre>
         </div>
         <div class="copy-wrap">
           <button class="copy" type="button" data-copy>Copy</button>

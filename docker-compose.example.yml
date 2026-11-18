@@ -109,7 +109,8 @@ services:
 #       config:
 #         - subnet: 2001:db8:1::/64
 #
-# or keep it separate and attach the service to that network:
+# or keep it separate and attach the service to that network. Compose creates it
+# on the first `up` (named <project>_awg6) and removes it on `down`:
 #
 # services:
 #   app:
@@ -120,6 +121,19 @@ services:
 #     ipam:
 #       config:
 #         - subnet: 2001:db8:1::/64
+#
+# To create the network yourself instead:
+#
+#   docker network create --ipv6 --subnet=2001:db8:1::/64 awg6
+#
+# and reference it as external (compose then never creates or removes it):
+#
+# services:
+#   app:
+#     networks: [awg6]
+# networks:
+#   awg6:
+#     external: true
 
 volumes:
   data:

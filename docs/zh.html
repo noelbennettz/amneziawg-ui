@@ -284,13 +284,13 @@ volumes:
           <li><strong>預設雙棧。</strong>面板同時聽 <code>0.0.0.0</code> 與 <code>[::]</code>；用戶端設定接受 IPv4 或 IPv6 的 endpoint，DNS 也能填任一雙棧位址。</li>
           <li><strong>每個伺服器一個 ULA /64 與 NAT6。</strong>防火牆腳本按位址族別判斷，只有該族有 default route 且 uplink 有可路由來源時才寫 forwarding 與 masquerade。</li>
           <li><strong>一般 Docker bridge 預設沒有 IPv6 上行。</strong>Docker 最多只給容器一個 unique local 位址，所以用戶端有 IPv6 通道卻沒有 IPv6 egress，<code>nat6.state</code> 顯示 <code>ula-only</code>。</li>
-          <li><strong>要讓用戶端上 IPv6，有三條路。</strong>替預設網路加對外前綴、另外建一個支援 IPv6 的網路並把這個服務接上去，或改用 host network；之後 <code>nat6.state</code> 會變 <code>ok</code>。</li>
+          <li><strong>要讓用戶端上 IPv6，有三條路。</strong>替預設網路加對外前綴；給這個服務自己的 IPv6 網路（compose 可以自己建，或你先用 <code>docker network create</code> 建好再標成 external）；或改用 host network。之後 <code>nat6.state</code> 會變 <code>ok</code>。</li>
         </ul>
       </div>
       <div>
         <div class="copy-wrap">
           <button class="copy" type="button" data-copy>複製</button>
-          <pre><code># 另外建一個支援 IPv6 的網路，給這個服務用
+          <pre><code># 做法一：讓 compose 建（網路名會是 &lt;project&gt;_awg6）
 services:
   app:
     networks: [awg6]
@@ -300,7 +300,13 @@ networks:
     enable_ipv6: true
     ipam:
       config:
-        - subnet: 2001:db8:1::/64</code></pre>
+        - subnet: 2001:db8:1::/64
+
+# 做法二：先用 docker 建好，再以 external 引用
+#   docker network create --ipv6 --subnet=2001:db8:1::/64 awg6
+# networks:
+#   awg6:
+#     external: true</code></pre>
         </div>
         <div class="copy-wrap">
           <button class="copy" type="button" data-copy>複製</button>

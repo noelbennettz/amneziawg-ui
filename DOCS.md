@@ -183,7 +183,9 @@ server and every client therefore gets an IPv6 address automatically.
         `/etc/docker/daemon.json`), and the host has to route that prefix to the
         bridge. `docker-compose.example.yml` carries the same block, commented.
     *   **A separate IPv6-enabled network** — same prefix requirement, but the
-        service joins its own network instead of the default one:
+        service joins its own network instead of the default one. Compose
+        creates it on the first `up` (as `<project>_awg6`) and removes it with
+        `docker compose down`:
 
         ```yaml
         services:
@@ -196,6 +198,23 @@ server and every client therefore gets an IPv6 address automatically.
             ipam:
               config:
                 - subnet: 2001:db8:1::/64
+        ```
+
+        If you would rather create the network yourself, do it with the daemon
+        and mark it external — compose then neither creates nor removes it:
+
+        ```bash
+        docker network create --ipv6 --subnet=2001:db8:1::/64 awg6
+        ```
+
+        ```yaml
+        services:
+          app:
+            networks: [awg6]
+
+        networks:
+          awg6:
+            external: true
         ```
 
     *   **Host networking** —
