@@ -5,11 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>AmneziaWG Web UI — 一個容器跑起自架 VPN 面板</title>
 <meta name="description" content="自架的 AmneziaWG 3.1 管理面板，約 35 MB 的 Docker image。建立伺服器與用戶端、匯出 .conf／QR／vpn://、即時看流量，支援 IPv4 與 IPv6。">
-<meta name="theme-color" content="#0b1220">
+<meta name="theme-color" content="#0e0e11">
 <link rel="canonical" href="https://noelbennettz.github.io/amneziawg-ui/zh.html">
 <link rel="alternate" hreflang="en" href="index.html">
 <link rel="icon" href="assets/icon.png" type="image/png">
 <link rel="apple-touch-icon" href="assets/icon.png">
+<link rel="preload" href="assets/fonts/plex-700.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="style.css">
 <meta property="og:type" content="website">
 <meta property="og:title" content="AmneziaWG Web UI — 一個容器跑起自架 VPN">
@@ -44,7 +45,7 @@
     <nav class="nav" aria-label="主要導覽">
       <a class="hide-sm" href="#features">功能</a>
       <a class="hide-sm" href="#how">運作方式</a>
-      <a href="#deploy">部署</a>
+      <a class="nav-cta" href="#deploy">部署</a>
       <a class="hide-sm" href="https://github.com/noelbennettz/amneziawg-ui">GitHub</a>
       <a class="lang" href="index.html" hreflang="en" lang="en">English</a>
     </nav>
@@ -377,6 +378,7 @@ sysctl -w net.ipv4.ip_forward=1 \
       <a href="https://github.com/noelbennettz/amneziawg-ui/blob/main/SECURITY.md">安全性</a>
       <a href="https://github.com/noelbennettz/amneziawg-ui/pkgs/container/amneziawg-ui">容器</a>
       <a href="https://github.com/noelbennettz/amneziawg-ui/blob/main/LICENSE">授權</a>
+      <a href="assets/fonts/OFL.txt">字型授權（OFL）</a>
       <a href="index.html" hreflang="en" lang="en">English</a>
     </nav>
   </div>

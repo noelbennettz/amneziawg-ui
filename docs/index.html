@@ -5,11 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>AmneziaWG Web UI — a self-hosted VPN panel in one container</title>
 <meta name="description" content="A self-hosted AmneziaWG 3.1 admin panel in a ~35 MB Docker image. Create servers and clients, export .conf, QR codes and vpn:// links, and watch traffic. IPv4 and IPv6.">
-<meta name="theme-color" content="#0b1220">
+<meta name="theme-color" content="#0e0e11">
 <link rel="canonical" href="https://noelbennettz.github.io/amneziawg-ui/">
 <link rel="alternate" hreflang="zh-Hant" href="zh.html">
 <link rel="icon" href="assets/icon.png" type="image/png">
 <link rel="apple-touch-icon" href="assets/icon.png">
+<link rel="preload" href="assets/fonts/plex-700.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="style.css">
 <meta property="og:type" content="website">
 <meta property="og:title" content="AmneziaWG Web UI — your VPN, one container">
@@ -44,7 +45,7 @@
     <nav class="nav" aria-label="Main">
       <a class="hide-sm" href="#features">Features</a>
       <a class="hide-sm" href="#how">How it works</a>
-      <a href="#deploy">Deploy</a>
+      <a class="nav-cta" href="#deploy">Deploy</a>
       <a class="hide-sm" href="https://github.com/noelbennettz/amneziawg-ui">GitHub</a>
       <a class="lang" href="zh.html" hreflang="zh-Hant" lang="zh-Hant">繁體中文</a>
     </nav>
@@ -379,6 +380,7 @@ sysctl -w net.ipv4.ip_forward=1 \
       <a href="https://github.com/noelbennettz/amneziawg-ui/blob/main/SECURITY.md">Security</a>
       <a href="https://github.com/noelbennettz/amneziawg-ui/pkgs/container/amneziawg-ui">Container</a>
       <a href="https://github.com/noelbennettz/amneziawg-ui/blob/main/LICENSE">License</a>
+      <a href="assets/fonts/OFL.txt">Font licence (OFL)</a>
       <a href="zh.html" hreflang="zh-Hant" lang="zh-Hant">繁體中文</a>
     </nav>
   </div>
