@@ -26,13 +26,25 @@ import (
 const (
 	testUser     = "admin"
 	testPassword = "changeme"
-	// base64(SHA-256("changeme")), the format WEB_UI_PASSWORD holds.
-	testHash = "BXugPWxEEEhj3HNh/kV4ll0YhzYPkKCJWILlimJI/IY="
 
 	// testNow is the clock every test starts with, so a token's expiry is a
 	// number and not a race with the wall.
 	testNow = 1_700_000_000
 )
+
+// testHash is a hash of testPassword in the one format the panel accepts.
+// "changeme" is used as the password because it is also what CheckDefault
+// refuses at startup: the tests that check credentials live below that gate,
+// with a store built directly, so the hash is all that matters here.
+var testHash = mustHash(testPassword)
+
+func mustHash(password string) string {
+	encoded, err := adminpw.HashPassword(password)
+	if err != nil {
+		panic(err)
+	}
+	return encoded
+}
 
 // base64Std and base64url are the two encodings the package and its tokens use.
 func base64Std(s string) string { return base64.StdEncoding.EncodeToString([]byte(s)) }
@@ -127,7 +139,7 @@ func TestSessionEndsWithThePassword(t *testing.T) {
 
 	// Another password is another signing key, so every session minted under
 	// the old one stops being accepted the moment it is changed.
-	other := New(testUser, testStore("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="))
+	other := New(testUser, testStore(mustHash("another password")))
 	if other.sessionValid(token, now) {
 		t.Fatal("a token signed with the old password is still valid")
 	}

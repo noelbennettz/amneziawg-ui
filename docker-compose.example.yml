@@ -48,7 +48,9 @@ services:
       #   printf '%s' 'your-password' | docker run --rm -i \
       #     ghcr.io/noelbennettz/amneziawg-ui:latest api hash-password
       # The result is a $argon2id$... PHC string, and compose reads $ as the
-      # start of a variable: write every $ of the hash as $$ here.
+      # start of a variable: write every $ of the hash as $$ here. Any other
+      # format - the base64(SHA-256) releases before argon2id used included -
+      # makes the container refuse to start.
       # WEB_UI_PASSWORD: "$$argon2id$$v=19$$m=19456,t=2,p=1$$<salt>$$<hash>"
       # Behind a TLS proxy that does not send X-Forwarded-Proto, say so here or
       # the session cookie goes out without Secure.

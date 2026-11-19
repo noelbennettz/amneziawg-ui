@@ -154,12 +154,12 @@ For manual testing, you can use `playwright-cli`.
 `internal/auth` guards the panel; `internal/adminpw` owns the password itself.
 The credentials are `WEB_UI_USER` (default `admin`) and one password, resolved at
 startup in this order: `WEB_UI_PASSWORD`, which holds a hash — **argon2id**
-(`$argon2id$v=19$m=19456,t=2,p=1$…`, what `api hash-password` prints) or the old
-base64 of the SHA-256, which still works and warns; then
+(`$argon2id$v=19$m=19456,t=2,p=1$…`, what `api hash-password` prints); the
+base64-of-SHA-256 format releases before it used is refused at startup; then
 `/etc/amnezia/admin.hash` on the config volume (`0600`); and with neither, a
 password generated on the first start, printed once in the log, with only its
 hash stored. There is no user table. A hash that verifies `changeme` is refused
-at startup, in either format.
+at startup.
 
 Two things bound what verifying costs, because argon2id allocates 19 MiB per
 attempt and a script re-sends its header with every request: at most two

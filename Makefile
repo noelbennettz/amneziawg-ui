@@ -104,10 +104,11 @@ E2E_NAME_NOAUTO   ?= awgui-test-noautostart
 E2E_VOLUME_NOAUTO ?= awgui-test-noautostart-data
 E2E_PORT_NOAUTO   ?= 51837
 E2E_URL_NOAUTO    ?= http://localhost:$(E2E_PORT_NOAUTO)
-# base64 of the SHA-256 of "not-the-default-password" - the password the tests
-# log in with. Not "changeme": the panel refuses that one at startup, so a test
-# instance configured with it would never come up.
-E2E_PASSWORD ?= fMxvKVr4YtZNuRnQZ4ayA5jzCjr6yeZZrBvbMGFcSP4=
+# argon2id hash of "not-the-default-password" - the password the tests log in
+# with. Not "changeme": the panel refuses that one at startup, so a test
+# instance configured with it would never come up. The hash is written with $$
+# because make would otherwise read every $argon2id... as a variable.
+E2E_PASSWORD ?= $$argon2id$$v=19$$m=19456,t=2,p=1$$IxNc8lB5oTwTeuTaFbSidQ$$XE0UaF4KrEbAo4C0ch/090rqUBxxVBrvmUmMdMyXNC4
 # How long to wait for the fresh container to answer, in seconds.
 E2E_TIMEOUT ?= 120
 # The ceiling for the whole suite, as go test -timeout takes it.

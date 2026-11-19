@@ -106,9 +106,6 @@ func TestOpenGeneratesOnFirstRun(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Parse: %v", err)
 	}
-	if stored.Legacy() {
-		t.Error("the stored hash is in the legacy format")
-	}
 	if !stored.Verify(generated) {
 		t.Error("the stored hash does not verify the generated password")
 	}
@@ -128,7 +125,6 @@ func TestCheckDefault(t *testing.T) {
 		hash string
 		want bool
 	}{
-		"legacy changeme":   {changemeLegacy, true},
 		"argon2id changeme": {argon2OfChangeme, true},
 		"another password":  {hashOf(t), false},
 	}
@@ -145,6 +141,32 @@ func TestCheckDefault(t *testing.T) {
 		case !tc.want && err != nil:
 			t.Errorf("%s: CheckDefault = %v, want no error", name, err)
 		}
+	}
+}
+
+// A hash in the format earlier releases used stops the panel from starting,
+// whichever of the two sources it came from. There is no migration path on
+// purpose: the format is a bare SHA-256 of the password, and nothing should go
+// on accepting one.
+func TestOpenRejectsTheLegacyFormat(t *testing.T) {
+	// From WEB_UI_PASSWORD: the caller - main - turns this into a refusal to
+	// start, naming the variable.
+	if _, _, err := Open(storePath(t), changemeLegacy); !errors.Is(err, ErrLegacyFormat) {
+		t.Errorf("Open with a legacy WEB_UI_PASSWORD = %v, want ErrLegacyFormat", err)
+	}
+
+	// From the file: the message names the file, because that is what an
+	// operator has to go and look at.
+	path := storePath(t)
+	if err := os.WriteFile(path, []byte(changemeLegacy+"\n"), 0o600); err != nil {
+		t.Fatalf("write %s: %v", path, err)
+	}
+	_, _, err := Open(path, "")
+	if !errors.Is(err, ErrLegacyFormat) {
+		t.Fatalf("Open with a legacy hash file = %v, want ErrLegacyFormat", err)
+	}
+	if !strings.Contains(err.Error(), path) {
+		t.Errorf("the error does not name the file it came from: %v", err)
 	}
 }
 

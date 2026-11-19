@@ -1,10 +1,13 @@
 // Package adminpw owns the admin password of the panel: the argon2id hash it
-// is stored as, the SHA-256 format earlier releases used and this one still
-// accepts, the admin.hash file on the config volume, and the password that is
-// generated on the first start when nobody configured one.
+// is stored as, the admin.hash file on the config volume, and the password
+// that is generated on the first start when nobody configured one.
 //
 // The password is never written to disk and never kept in memory in the
 // clear: only the hash is stored, and only the hash is compared against.
+//
+// The base64(SHA-256) format releases before argon2id used is refused, not
+// migrated: it is a single fast digest of the password, and a hash is worth
+// exactly what it costs to attack. Nothing accepts it any more.
 package adminpw
 
 import (
@@ -79,12 +82,9 @@ var ErrDefaultPassword = errors.New(`the configured password is the old default 
 // read out of a log line and typed into a phone.
 const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
 
-// Hash is a password hash, in either of the two formats the panel accepts.
+// Hash is a password hash: an argon2id PHC string and the parameters it
+// carries.
 type Hash struct {
-	// legacy is set when the hash is in the old format: base64 of the
-	// SHA-256 of the password, which is what WEB_UI_PASSWORD used to hold.
-	legacy string
-
 	// The argon2id parameters, as the PHC string carries them.
 	memory      uint32
 	time        uint32
@@ -93,15 +93,15 @@ type Hash struct {
 	key         []byte
 }
 
-// Legacy reports whether the hash is in the old SHA-256 format. It is still
-// accepted so that an existing deployment keeps working, and it is worth a
-// warning: it is fast to compute, and therefore fast to attack.
-func (h Hash) Legacy() bool { return h.legacy != "" }
+// ErrLegacyFormat is returned for a hash in the base64(SHA-256) format that
+// earlier releases used. It is refused rather than migrated, and named as its
+// own error so that the message an operator reads says what to do about it.
+var ErrLegacyFormat = errors.New(`the base64(SHA-256) password hash format is no longer supported; make an argon2id hash with "api hash-password" and use that instead`)
 
-// Parse reads a hash in either format.
+// Parse reads an argon2id PHC string.
 //
-// A PHC string is checked against the parameter ceilings; anything that does
-// not parse exactly is an error, because a hash nobody can verify is a panel
+// The parameters are checked against the ceilings; anything that does not
+// parse exactly is an error, because a hash nobody can verify is a panel
 // nobody can log in to, and the start is the moment to say so.
 func Parse(s string) (Hash, error) {
 	s = strings.TrimSpace(s)
@@ -109,14 +109,13 @@ func Parse(s string) (Hash, error) {
 		return Hash{}, errors.New("empty password hash")
 	}
 	if !strings.HasPrefix(s, "$") {
-		raw, err := base64.StdEncoding.DecodeString(s)
-		if err != nil {
-			return Hash{}, fmt.Errorf("not an argon2id hash and not base64 of a SHA-256 digest: %w", err)
+		// The one other format this project ever wrote: base64 of a bare
+		// SHA-256 digest. Recognise it to say what it is, rather than
+		// answering a migration problem with a syntax error.
+		if raw, err := base64.StdEncoding.DecodeString(s); err == nil && len(raw) == sha256.Size {
+			return Hash{}, ErrLegacyFormat
 		}
-		if len(raw) != sha256.Size {
-			return Hash{}, fmt.Errorf("legacy hash is %d bytes, want %d (base64 of a SHA-256 digest)", len(raw), sha256.Size)
-		}
-		return Hash{legacy: s}, nil
+		return Hash{}, errors.New("not an argon2id hash: want $argon2id$v=19$m=..,t=..,p=..$salt$hash, which is what \"api hash-password\" prints")
 	}
 
 	return parsePHC(s)
@@ -193,28 +192,18 @@ func parsePHC(s string) (Hash, error) {
 	return h, nil
 }
 
-// String renders the hash the way it is stored. The legacy format is kept as
-// it was read; a parsed PHC string is rebuilt from its parameters.
+// String renders the hash the way it is stored: rebuilt from its parameters,
+// which is what makes a hash that parsed exactly also print exactly.
 func (h Hash) String() string {
-	if h.Legacy() {
-		return h.legacy
-	}
-
 	return fmt.Sprintf("$argon2id$v=%d$m=%d,t=%d,p=%d$%s$%s", argon2.Version, h.memory, h.time, h.parallelism,
 		base64.RawStdEncoding.EncodeToString(h.salt),
 		base64.RawStdEncoding.EncodeToString(h.key))
 }
 
-// Verify reports whether password matches the hash. The comparison is
-// constant time in both formats: a wrong guess learns that it was wrong, and
-// nothing about how close it was.
+// Verify reports whether password matches the hash. The comparison is constant
+// time: a wrong guess learns that it was wrong, and nothing about how close it
+// was.
 func (h Hash) Verify(password string) bool {
-	if h.Legacy() {
-		sum := sha256.Sum256([]byte(password))
-		got := base64.StdEncoding.EncodeToString(sum[:])
-
-		return subtle.ConstantTimeCompare([]byte(got), []byte(h.legacy)) == 1
-	}
 	got := argon2.IDKey([]byte(password), h.salt, h.time, h.memory, h.parallelism, uint32(len(h.key)))
 
 	return subtle.ConstantTimeCompare(got, h.key) == 1
@@ -362,13 +351,6 @@ func (s *Store) Hash() (Hash, uint64) {
 	s.refreshLocked()
 
 	return s.hash, s.generation
-}
-
-// Legacy reports whether the password in force is a hash of the old format.
-func (s *Store) Legacy() bool {
-	hash, _ := s.Hash()
-
-	return hash.Legacy()
 }
 
 // FromEnv reports whether WEB_UI_PASSWORD is what is in force.

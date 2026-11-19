@@ -290,7 +290,6 @@ server and every client therefore gets an IPv6 address automatically.
     that lets `/status`, `/login` and `/logout` through and answers everything
     else — see [Security](#security)
 *   `internal/adminpw` — the admin password: the argon2id hash format, the
-    SHA-256 format earlier releases used and this one still accepts, the
     `admin.hash` file on the config volume, the password generated on first
     start, and the `hash-password` / `reset-password` subcommands
 *   `internal/security` — the response headers: the CSP and the nonce the
@@ -943,7 +942,7 @@ the two failures that happen before anything is logged by the panel itself.
 | `WEB_UI_PORT` | `54845` | Port the application listens on for the web UI. The same default is set in the image's `ENV`, in the binary and in `docker-compose.yml` (where it is also published on the host) |
 | `WEB_UI_BIND` | *every address* | Address the panel binds **inside the container**. Unset means `[::]` with `v6only` off, one listener for both stacks. With published ports this has to stay unset — Docker forwards to the container's address, not to its loopback — and the restriction belongs on the host side of the mapping (`"127.0.0.1:54845:54845/tcp"`). It exists for `network_mode: host`, where there is no mapping |
 | `WEB_UI_USER` | `admin` | Login name for the panel's login page and for `curl -u` |
-| `WEB_UI_PASSWORD` | *unset* | Login password, as a hash and never as the password itself. Two formats are accepted: `$argon2id$…` (what `api hash-password` prints, and what the panel writes) and the older base64 of the SHA-256, which still works but logs a warning at startup. Unset — the default — means the panel generates a password on its first start, prints it once in the log and keeps only the hash in `/etc/amnezia/admin.hash`; set it to override the stored hash. `changeme` is refused at startup in either format |
+| `WEB_UI_PASSWORD` | *unset* | Login password, as a hash and never as the password itself: an argon2id PHC string (`$argon2id$v=19$m=…`, what `api hash-password` prints, and what the panel writes). Unset — the default — means the panel generates a password on its first start, prints it once in the log and keeps only the hash in `/etc/amnezia/admin.hash`; set it to override the stored hash. `changeme` is refused at startup, and so is the old base64(SHA-256) format |
 | `WEB_UI_SECURE_COOKIE` | *auto* | `true` marks every cookie `Secure`, `false` never does, unset follows the request and `X-Forwarded-Proto`. Behind a TLS proxy the container sees plain HTTP, so `true` (or a proxy that sends the header) is what makes the flag appear at all |
 | `WEB_UI_AUDIT_LOG` | `false` | Append logins, logouts and every change made through the API to `/etc/amnezia/audit.log`: time, address, user, route, status. Off by default — it records who reached the panel |
 | `WEB_UI_AUDIT_RETENTION_HOURS` | `24` | How long an entry stays in that file: a value below `1` is raised to `1`, one above `720` (30 days) is lowered to `720`, and anything that is not a number falls back to `24`. The file is swept at most once an hour, and rewritten atomically only when something has aged out |
@@ -1471,11 +1470,12 @@ The panel has one user (`WEB_UI_USER`, `admin` by default) and one password,
 resolved in this order at every start:
 
 1. `WEB_UI_PASSWORD`, when it is set. It holds a hash, never the password: an
-   argon2id PHC string (`$argon2id$v=19$m=19456,t=2,p=1$…`), or the older
-   base64 of the SHA-256 that earlier releases used. The old format still works
-   and logs a line at startup pointing at the migration below. An environment
-   variable beats anything on the volume, so a deployment that sets it does not
-   care what `admin.hash` holds.
+   argon2id PHC string (`$argon2id$v=19$m=19456,t=2,p=1$…`), which is what
+   `api hash-password` prints. Any other format — including the base64 of a
+   SHA-256 that releases before argon2id used — stops the panel at startup with
+   a message that says what to generate instead. An environment variable beats
+   anything on the volume, so a deployment that sets it does not care what
+   `admin.hash` holds.
 2. `/etc/amnezia/admin.hash` on the config volume, mode `0600`, when it exists.
    This is what the panel writes, and nothing is printed for it.
 3. Neither: the first start generates a 24-character `[A-Za-z0-9]` password
@@ -1511,11 +1511,12 @@ and in `.env` alike every `$` of the hash is written `$$`.
 notices the rewritten file within a second and adopts it — no restart. With
 `WEB_UI_PASSWORD` set the variable still wins, and the command says so.
 
-Two refusals at startup: a hash that does not parse exactly (including argon2id
-parameters above the ceilings the panel will run — 256 MiB, `t=10`, `p=8`, so a
-compose file cannot turn every login attempt into a memory bomb), and a hash
-that verifies `changeme`, which the image used to ship. Both exit non-zero with
-the way out spelled out.
+Three refusals at startup: a hash in the base64(SHA-256) format releases before
+argon2id used (the message says to make a new one with `hash-password`), a hash
+that does not parse exactly (including argon2id parameters above the ceilings
+the panel will run — 256 MiB, `t=10`, `p=8`, so a compose file cannot turn every
+login attempt into a memory bomb), and a hash that verifies `changeme`, which
+the image used to ship. Each exits non-zero with the way out spelled out.
 
 ## Basic auth for scripts
 
@@ -1598,14 +1599,18 @@ are refused until it is reloaded, because the old bundle never sends the CSRF
 token the new one expects.
 
 > [!IMPORTANT]
-> **Breaking change: `changeme` no longer starts.** A deployment that still ships
-the old example hash (base64 of the SHA-256 of `changeme`, in `WEB_UI_PASSWORD`)
-> now refuses to start instead of accepting a password everybody knows. The log
-> says so and lists the ways out. Either remove `WEB_UI_PASSWORD` and let the
-> new version generate a password on the next start — it prints it once, in
-> `docker compose logs app` — or set your own hash from `api hash-password`. A
-> deployment whose own password is not `changeme` upgrades without a change; its
-> old SHA-256 hash keeps working, with a warning at startup.
+> **Breaking change: the base64(SHA-256) password hash no longer starts.** A
+> deployment whose `WEB_UI_PASSWORD` — or `/etc/amnezia/admin.hash` — holds the
+> old base64 of a SHA-256 digest stops with a message naming the format and the
+> way out: hash the password again with `api hash-password` and use that
+> argon2id string. There is nothing to migrate on the volume: the plaintext
+> cannot be recovered from the old hash, so set a new password. A deployment
+> that already uses an argon2id hash — which every release since the first one
+> wrote — upgrades without a change.
+>
+> **Breaking change: `changeme` no longer starts either.** The image used to
+> ship that password, and a hash that verifies it is refused at startup with
+> the same kind of message.
 
 ### Do I need HTTPS, and how do I enable it?
 
