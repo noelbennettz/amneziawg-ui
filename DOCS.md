@@ -1057,6 +1057,48 @@ to adjust `ports` as well.
 If you need HTTPS, put your own reverse proxy with TLS termination in front of
 the container (nginx, Caddy, Traefik and the like) and proxy to `WEB_UI_PORT`.
 
+### Verifying a published image
+
+Every image the workflow publishes is signed by [cosign](https://docs.sigstore.dev/cosign/overview/)
+with a keyless identity — the signature is made by the workflow run, recorded in
+the public transparency log, and tied to the commit it was built from. There is
+no long-lived signing key in this repository. The same run attaches an SPDX
+software bill of materials: an `amneziawg-ui.spdx.json` artifact on the run, and
+an attestation stored with the image itself.
+
+Both are checked against the digest, which is the only name of an image that
+cannot move:
+
+```bash
+digest=$(docker buildx imagetools inspect ghcr.io/noelbennettz/amneziawg-ui:latest --format '{{json .Manifest.Digest}}' | tr -d '"')
+
+cosign verify \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  --certificate-identity https://github.com/noelbennettz/amneziawg-ui/.github/workflows/docker.yml@refs/heads/main \
+  "ghcr.io/noelbennettz/amneziawg-ui@${digest}"
+```
+
+A `verify` that exits 0 says the image was built and pushed by this repository's
+`docker.yml` on `main`; anything else means it was not, and should be treated as
+somebody else's image. The SBOM is readable without trust in this file:
+
+```bash
+cosign verify-attestation --type spdxjson \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  --certificate-identity https://github.com/noelbennettz/amneziawg-ui/.github/workflows/docker.yml@refs/heads/main \
+  "ghcr.io/noelbennettz/amneziawg-ui@${digest}" \
+  | jq -r '.payload' | base64 -d | jq -r '.predicate.packages[].name' | sort -u
+```
+
+That list is the Alpine packages, the Go modules and the two upstream AmneziaWG
+trees the image was assembled from — the machine-readable counterpart of
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). The image is a multi-platform
+index; syft follows it to the runner's platform (`linux/amd64`), and the package
+set and its licences are the same on `linux/arm64` apart from the architecture
+suffix apk adds to a few package names. Pinning a deployment to the
+digest instead of `latest` is the other half: a tag can be moved, the digest
+cannot.
+
 ## Obfuscation parameters
 
 Every server created here uses the full AmneziaWG 3.x obfuscation parameter set

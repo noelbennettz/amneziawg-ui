@@ -86,6 +86,11 @@ jobs:
       contents: read
       # Pushing to GitHub Packages with the built-in token: no secret to set up.
       packages: write
+      # Cosign signs keylessly: it exchanges this token for a short-lived
+      # certificate from Fulcio, so there is no long-lived signing key in the
+      # repository and nothing to leak. The signature is recorded in the public
+      # transparency log (Rekor) under this workflow's identity.
+      id-token: write
 
     steps:
       - name: Checkout repository
@@ -124,6 +129,7 @@ jobs:
             type=raw,value={{date 'YYYY.MM.DD'}}
 
       - name: Build and push Docker image
+        id: build
         uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
         with:
           context: .
@@ -134,6 +140,71 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      # ── Supply chain: signature, SBOM, attestation ───────────────────────
+      # The image is signed by digest, not by tag: a tag moves, a digest does
+      # not. Both tools are pinned - the action by commit, cosign and syft by
+      # release - so a new upstream release cannot change what is published
+      # under this workflow.
+      - name: Install cosign
+        uses: sigstore/cosign-installer@756fe2d284c7292c4e9b62c8a28f1e5629c59532 # v4.1.3
+        with:
+          cosign-release: v3.1.4
+
+      - name: Sign the pushed image (keyless)
+        env:
+          IMAGE: ${{ env.IMAGE_NAME }}@${{ steps.build.outputs.digest }}
+        run: |
+          echo "signing ${IMAGE}"
+          cosign sign --yes "${IMAGE}"
+
+      # syft reads the pushed image out of the registry - both the Alpine
+      # packages and the Go modules the two binaries and the wasm bundle are
+      # built from. The SPDX document is attached to the run as an artifact and
+      # to the image as an attestation, so a consumer can check what is in the
+      # thing they pulled without trusting this repository's prose.
+      - name: Generate the SBOM (syft, SPDX JSON)
+        uses: anchore/sbom-action@66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c # v0.24.3
+        with:
+          image: ${{ env.IMAGE_NAME }}@${{ steps.build.outputs.digest }}
+          format: spdx-json
+          output-file: sbom.spdx.json
+          artifact-name: amneziawg-ui.spdx.json
+          syft-version: v1.57.2
+          dependency-snapshot: false
+
+      - name: Attest the SBOM against the image
+        env:
+          IMAGE: ${{ env.IMAGE_NAME }}@${{ steps.build.outputs.digest }}
+        run: |
+          cosign attest --yes --predicate sbom.spdx.json --type spdxjson "${IMAGE}"
+
+      - name: Write the verification instructions into the run summary
+        env:
+          IMAGE: ${{ env.IMAGE_NAME }}@${{ steps.build.outputs.digest }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+        run: |
+          {
+            echo "### Image ${IMAGE}"
+            echo
+            echo "Signed keylessly by this workflow; the SPDX SBOM is attached as"
+            echo "\`amneziawg-ui.spdx.json\` and as an attestation."
+            echo
+            echo '```sh'
+            echo "cosign verify \\"
+            echo "  --certificate-oidc-issuer https://token.actions.githubusercontent.com \\"
+            echo "  --certificate-identity https://github.com/${REPO}/.github/workflows/docker.yml@refs/heads/main \\"
+            echo "  ${IMAGE}"
+            echo
+            echo "cosign verify-attestation --type spdxjson \\"
+            echo "  --certificate-oidc-issuer https://token.actions.githubusercontent.com \\"
+            echo "  --certificate-identity https://github.com/${REPO}/.github/workflows/docker.yml@refs/heads/main \\"
+            echo "  ${IMAGE} | jq -r '.payload' | base64 -d | jq .predicate"
+            echo '```'
+            echo
+            echo "The commit this build was made from is \`${SHA}\`."
+          } >> "$GITHUB_STEP_SUMMARY"
 
       # The size of the image is one of the numbers the project is sold on, so
       # it gets reported on every build instead of being remembered. It is a

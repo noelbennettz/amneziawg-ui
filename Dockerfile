@@ -6,7 +6,17 @@ ARG AWG_TOOLS_VERSION=v3.1.20260812
 # target one. Emulating a full arm64 toolchain under QEMU - the Fyne WASM
 # package step above all - costs tens of minutes per image; a cross build
 # costs nothing, since none of the Go binaries here need cgo.
-FROM --platform=$BUILDPLATFORM golang:1.26-alpine AS base
+#
+# The base images are pinned by digest as well as by tag: a tag is a promise
+# the registry keeps until it does not, and the image this repo publishes is
+# something an operator may verify. The digest is the multi-platform index, so
+# one pin covers both architectures. To bump one:
+#
+#   docker buildx imagetools inspect golang:1.26-alpine --format '{{json .Manifest.Digest}}'
+#
+# and put tag@digest in the FROM line - keep the tag, it is what a reader needs
+# to know which release the digest belongs to.
+FROM --platform=$BUILDPLATFORM golang:1.26-alpine@sha256:ecb67f987aa1a57794c91d19ade7ae0209f2f0f5496aaef9e6ae85ddf92d02ab AS base
 RUN apk add --no-cache git make gcc musl-dev linux-headers
 
 WORKDIR /build
@@ -61,7 +71,7 @@ RUN --mount=type=cache,id=awg_mod,target=/go/pkg/mod \
 
 # ── AmneziaWG engine ──────────────────────────────────────────────
 # Pure Go, so it cross-compiles like the API binary does.
-FROM --platform=$BUILDPLATFORM golang:1.26-alpine AS awg
+FROM --platform=$BUILDPLATFORM golang:1.26-alpine@sha256:ecb67f987aa1a57794c91d19ade7ae0209f2f0f5496aaef9e6ae85ddf92d02ab AS awg
 RUN apk add --no-cache git make
 
 ARG TARGETARCH
@@ -87,7 +97,7 @@ RUN --mount=type=cache,id=awg_mod,target=/go/pkg/mod \
 # musl sysroot, assembled with apk out of the very same Alpine release the
 # final image runs. gcc lands in the sysroot for its runtime bits alone -
 # crtbeginS.o and libgcc - which clang links against but never executes.
-FROM --platform=$BUILDPLATFORM alpine:3.24.1 AS awg-tools
+FROM --platform=$BUILDPLATFORM alpine:3.24.1@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b AS awg-tools
 RUN apk add --no-cache git make clang lld
 
 ARG TARGETARCH
@@ -114,7 +124,7 @@ RUN git clone --depth 1 --branch "$AWG_TOOLS_VERSION" https://github.com/amnezia
     && make WITH_WGQUICK=yes install
 
 # ── Final image ───────────────────────────────────────────────────────────────
-FROM alpine:3.24.1
+FROM alpine:3.24.1@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b
 
 # awg-quick is a bash script and shells out to ip, iptables and resolvconf;
 # "iproute2-minimal" is the ip binary alone - tc, ss and friends from the full
