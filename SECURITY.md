@@ -98,11 +98,14 @@ Written down rather than left to be discovered:
   It is per-address only: five guesses from five addresses are not slowed down
   at all.
 * **No second factor.** There is no TOTP, no WebAuthn.
-* **The generated password is printed to the container log.** It is the only
-  copy — the volume holds just the hash — so anyone who can read `docker logs`
-  during or after the first start can read it, and it stays there until the log
-  rotates. `api reset-password` replaces it and ends every session, which is the
-  right answer if the log has been shipped somewhere.
+* **The generated password is readable on the volume until the first login.**
+  The first start writes it to `/etc/amnezia/first-run-password` (mode `0600`)
+  and does not print it, so the container log is not a copy; the file is deleted
+  by the first successful login, so the plaintext lives only until somebody has
+  read it. Anyone who can read the volume before that login can read it too —
+  which is the same access that can read every client private key there.
+  `api reset-password` replaces it and ends every session, which is the right
+  answer if the volume has been copied.
 * **No CSRF token on `GET /logout`.** It is a state change, it is reachable
   from another site, and `SameSite=Strict` is what keeps that from mattering.
 * **The audit log is opt-in.** `WEB_UI_AUDIT_LOG=true` appends to
