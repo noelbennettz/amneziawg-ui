@@ -31,26 +31,38 @@ The panel is assumed to be reachable from the internet. Port `54845` offers a
 `/status` page and a login form to anyone who scans it, and the tunnel port
 answers with an AmneziaWG handshake. An attacker is assumed to be able to:
 
-* guess and stuff passwords at the login form and at `curl -u`;
+* guess and stuff passwords at the login form and at `curl -u` — each attempt
+  costs the server an argon2id derivation, so the cost is theirs to pay but the
+  memory is the panel's;
 * send requests with any header, cookie or body they like;
 * make a victim's browser send requests to the panel from another site;
 * read every response the panel gives them, including the client configs and
   `vpn://` links, once they are logged in.
 
 An attacker is **not** assumed to have root or docker access on the host, to be
-able to read the container's environment, or to be on the path between the
-browser and the panel after TLS is terminated. If they have any of those, the
-credentials are readable in `docker inspect` and `WEB_UI_PASSWORD` in the
-compose file is the least of the problems.
+able to read the container's environment or its log, or to be on the path
+between the browser and the panel after TLS is terminated. If they have any of
+those, the password's hash is readable in `docker inspect` and in
+`/etc/amnezia/admin.hash`, the generated password may still be in the log, and
+`WEB_UI_PASSWORD` in the compose file is the least of the problems.
 
 How the panel addresses that model:
 
-* One credential pair, no user table: `WEB_UI_USER` / `WEB_UI_PASSWORD`. The
-  password is stored as base64 of its SHA-256 (the format fiber's basic-auth
-  middleware used), compared in constant time.
+* One credential pair, no user table: `WEB_UI_USER` and one password. It is
+  kept as an argon2id hash (19 MiB, `t=2`, `p=1`) — in `admin.hash` on the
+  config volume, or in `WEB_UI_PASSWORD` — and compared in constant time. The
+  hash is never the password: with no variable and no file the panel generates
+  one on the first start, prints it once and stores only its hash. The old
+  base64-of-SHA-256 format is still accepted so an upgrade does not lock
+  anybody out; it logs a warning, and `hash-password` migrates it.
+* Verifying a password is expensive by design, so it is bounded: no more than
+  two derivations run at a time, and a Basic credential that verified is cached
+  in memory for five minutes — an HMAC of the pair under a random per-process
+  key, never the password, and never on disk. A password change empties that
+  cache, because every entry carries the generation it was written under.
 * A signed session cookie (`HttpOnly`, `SameSite=Strict`, 12 hours) whose key is
-  derived from the credentials: a restart keeps sessions, changing the password
-  ends all of them. `Secure` follows `WEB_UI_SECURE_COOKIE`, the request, or
+  derived from the password hash: a restart keeps sessions, changing the password
+  — in `WEB_UI_PASSWORD` or with `reset-password` — ends all of them. `Secure` follows `WEB_UI_SECURE_COOKIE`, the request, or
   `X-Forwarded-Proto`.
 * A double-submit token on every state-changing request. A request that carries
   an `Authorization` header is exempt — that is not an ambient credential, and
@@ -85,8 +97,11 @@ Written down rather than left to be discovered:
   It is per-address only: five guesses from five addresses are not slowed down
   at all.
 * **No second factor.** There is no TOTP, no WebAuthn.
-* **The password is SHA-256 in base64, not argon2id.** It is a hash of a
-  password the operator chooses, in an environment variable they can read.
+* **The generated password is printed to the container log.** It is the only
+  copy — the volume holds just the hash — so anyone who can read `docker logs`
+  during or after the first start can read it, and it stays there until the log
+  rotates. `api reset-password` replaces it and ends every session, which is the
+  right answer if the log has been shipped somewhere.
 * **No CSRF token on `GET /logout`.** It is a state change, it is reachable
   from another site, and `SameSite=Strict` is what keeps that from mattering.
 * **The audit log is opt-in.** `WEB_UI_AUDIT_LOG=true` appends to
