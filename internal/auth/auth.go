@@ -1,13 +1,13 @@
-// Package auth guards the panel. The credentials are the pair the container is
-// started with (WEB_UI_USER, WEB_UI_PASSWORD - the password as base64 of its
-// SHA-256, the format fiber's basic-auth middleware used to expect), and
-// nothing else is stored: there is no user table to keep.
+// Package auth guards the panel. The credential the panel checks is the pair
+// from WEB_UI_USER and the admin password owned by internal/adminpw - an
+// argon2id hash, in the file on the config volume or in WEB_UI_PASSWORD -
+// and nothing else is stored: there is no user table to keep.
 //
 // A browser gets the login page and, once the form is posted, a signed session
-// cookie. The four public paths are the health check and the login page itself;
-// everything else - the wasm bundle above all - needs the cookie. A script
-// never sees the page: an Authorization: Basic header is still accepted, which
-// is what keeps "curl -u admin:changeme" working.
+// cookie. The three public paths are the health check and the login page
+// itself; everything else - the wasm bundle above all - needs the cookie. A
+// script never sees the page: an Authorization: Basic header is still
+// accepted, which is what keeps "curl -u admin:<password>" working.
 package auth
 
 import (
@@ -23,6 +23,7 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 
+	"amneziawg-web-ui/internal/adminpw"
 	"amneziawg-web-ui/internal/audit"
 	"amneziawg-web-ui/internal/config"
 	"amneziawg-web-ui/web-ui/api"
@@ -58,13 +59,10 @@ const UserLocalKey = audit.UserLocalKey
 // Auth answers "is this request allowed" and owns the login page.
 type Auth struct {
 	user string
-	// passwordHash is base64 of the SHA-256 of the password.
-	passwordHash string
-	// key signs the session cookie. It is derived from the credentials, so
-	// nothing random is generated and no extra environment variable is
-	// needed: a restart keeps the sessions, and changing the password ends
-	// every one of them.
-	key [sha256.Size]byte
+	// store is the admin password, and the source of the session key: the
+	// key is derived from the hash in force, so a restart keeps the sessions
+	// and a password change ends every one of them.
+	store *adminpw.Store
 	// now is the clock the token is checked against, swapped in the tests.
 	now func() time.Time
 	// secure is the policy for the Secure flag on both cookies.
@@ -75,7 +73,25 @@ type Auth struct {
 	limiter *limiter
 	// trustProxy makes the client address come from X-Forwarded-For.
 	trustProxy bool
+
+	// sem bounds how many verifications run at once. argon2id is deliberate
+	// about memory - 19 MiB per hash - and a script that polls the REST API
+	// sends its Authorization header with every request: without a bound,
+	// two dozen concurrent requests are half a gigabyte of allocations.
+	sem chan struct{}
+	// verified caches Basic credentials that have already been checked.
+	verified *credentialCache
 }
+
+// Verification cost control. Both numbers are about the same thing: argon2id
+// is expensive on purpose, and a correct password is re-sent on every request
+// of every script.
+const (
+	// verifyConcurrency is how many hashes may be computed at the same time.
+	verifyConcurrency = 2
+	// basicCacheTTL is how long a verified Basic credential is believed for.
+	basicCacheTTL = 5 * time.Minute
+)
 
 // Option configures the guard.
 type Option func(*Auth)
@@ -136,17 +152,18 @@ func (a *Auth) clientIP(c fiber.Ctx) string {
 	return c.IP()
 }
 
-// New builds the guard for the credentials the container was started with.
-func New(user, passwordHash string, opts ...Option) *Auth {
-	a := &Auth{user: user, passwordHash: strings.TrimSpace(passwordHash), now: time.Now}
+// New builds the guard for the configured user and the admin password store.
+func New(user string, store *adminpw.Store, opts ...Option) *Auth {
+	a := &Auth{
+		user:     user,
+		store:    store,
+		now:      time.Now,
+		sem:      make(chan struct{}, verifyConcurrency),
+		verified: newCredentialCache(basicCacheTTL),
+	}
 	for _, opt := range opts {
 		opt(a)
 	}
-
-	mac := hmac.New(sha256.New, []byte(a.passwordHash))
-	mac.Write([]byte(keyContext))
-	mac.Write([]byte(user))
-	copy(a.key[:], mac.Sum(nil))
 
 	return a
 }
@@ -163,15 +180,49 @@ func (a *Auth) cookieSecure(c fiber.Ctx) bool {
 	}
 }
 
-// Check reports whether the pair matches the credentials. The comparison is
-// constant time: the hash is fixed length, so mixing user and password can
-// leak nothing about where they differ.
-func (a *Auth) Check(user, password string) bool {
-	sum := sha256.Sum256([]byte(password))
-	got := base64.StdEncoding.EncodeToString(sum[:])
+// key is the signing key for the session cookie, derived from the hash in
+// force: nothing random is generated and no extra environment variable is
+// needed, so a restart keeps the sessions and a password change ends every one
+// of them.
+func (a *Auth) key() [sha256.Size]byte {
+	hash, _ := a.store.Hash()
 
+	mac := hmac.New(sha256.New, []byte(hash.String()))
+	mac.Write([]byte(keyContext))
+	mac.Write([]byte(a.user))
+
+	var key [sha256.Size]byte
+	copy(key[:], mac.Sum(nil))
+
+	return key
+}
+
+// Check reports whether the pair matches the credentials. Both comparisons are
+// constant time: the username field by field, and the password through the
+// hash, which is fixed length whatever the password's own length is.
+//
+// A correct password that has already been checked recently is answered from
+// the in-memory cache instead of a fresh argon2id derivation, and no more than
+// verifyConcurrency derivations run at once.
+func (a *Auth) Check(user, password string) bool {
 	userOK := subtle.ConstantTimeCompare([]byte(user), []byte(a.user)) == 1
-	passOK := subtle.ConstantTimeCompare([]byte(got), []byte(a.passwordHash)) == 1
+
+	hash, generation := a.store.Hash()
+	// The cache is keyed by an HMAC of the pair under a random per-process
+	// key, so what it holds cannot be turned back into the password, and it
+	// is memory only: nothing is written anywhere.
+	cacheKey := a.verified.key(user, password)
+	if a.verified.get(cacheKey, generation, a.now()) {
+		return userOK
+	}
+
+	a.sem <- struct{}{}
+	passOK := hash.Verify(password)
+	<-a.sem
+
+	if userOK && passOK {
+		a.verified.put(cacheKey, generation, a.now())
+	}
 
 	return userOK && passOK
 }

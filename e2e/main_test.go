@@ -24,7 +24,7 @@ import (
 
 const (
 	user     = "admin"
-	password = "changeme"
+	password = "not-the-default-password"
 
 	// Every coordinate in the tests assumes this viewport.
 	viewportWidth  = 1500

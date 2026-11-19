@@ -70,7 +70,8 @@ func (a *Auth) sessionValid(token string, now time.Time) bool {
 
 // sign is the MAC over a payload, in the encoding the token carries it.
 func (a *Auth) sign(payload string) string {
-	mac := hmac.New(sha256.New, a.key[:])
+	key := a.key()
+	mac := hmac.New(sha256.New, key[:])
 	mac.Write([]byte(payload))
 
 	return base64.RawURLEncoding.EncodeToString(mac.Sum(nil))

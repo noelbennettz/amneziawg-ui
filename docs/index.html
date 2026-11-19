@@ -214,23 +214,23 @@ ls -l /dev/net/tun</code></pre>
       <p>A Linux host with Docker and Compose. The panel ends up on port 54845.</p>
     </div>
     <p class="note">
-      <strong>The image ships with <code>admin</code> / <code>changeme</code>.</strong>
-      Until <code>WEB_UI_PASSWORD</code> holds your own hash, anyone who reaches
-      the port can sign in. Replace it first — or keep the port on
-      <code>127.0.0.1</code> until you have.
+      <strong>The panel generates its admin password on the first start.</strong>
+      It prints it once, in <code>docker compose logs app</code>, and stores only
+      its argon2id hash. Copy it there — or set <code>WEB_UI_PASSWORD</code> to a
+      hash of your own.
     </p>
     <div class="steps">
       <div class="step">
-        <h3>Hash the panel password</h3>
-        <p>The container stores <code>base64(sha256(password))</code>, never the password itself.</p>
+        <h3>Optionally: set your own password</h3>
+        <p>Left alone, the panel generates one on the first start and prints it once. To choose your own, hash it with the image — the password comes from stdin, and the output is an argon2id hash, never the password.</p>
         <div class="copy-wrap">
           <button class="copy" type="button" data-copy>Copy</button>
-          <pre><code>printf 'your-password' | openssl dgst -binary -sha256 | base64</code></pre>
+          <pre><code>printf '%s' 'your-password' | docker run --rm -i ghcr.io/noelbennettz/amneziawg-ui:latest api hash-password</code></pre>
         </div>
       </div>
       <div class="step">
         <h3>Save this as compose.yaml</h3>
-        <p>Put the hash from step 1 into <code>WEB_UI_PASSWORD</code>. The addresses, ports and volume are the parameters you are most likely to change — binding the panel to <code>127.0.0.1</code> keeps it reachable only from the host, which is what a local TLS proxy needs. Every key is explained in DOCS.md, and the repository ships the same file fully commented as <code>docker-compose.example.yml</code>.</p>
+        <p>Put the hash from step 1 into <code>WEB_UI_PASSWORD</code>, writing every <code>$</code> of it as <code>$$</code> (or leave the line out and read the generated password from <code>docker compose logs app</code>). The addresses, ports and volume are the parameters you are most likely to change — binding the panel to <code>127.0.0.1</code> keeps it reachable only from the host, which is what a local TLS proxy needs. Every key is explained in DOCS.md, and the repository ships the same file fully commented as <code>docker-compose.example.yml</code>.</p>
         <div class="copy-wrap">
           <button class="copy" type="button" data-copy>Copy</button>
           <pre><code>services:
@@ -246,7 +246,8 @@ ls -l /dev/net/tun</code></pre>
     environment:
       WEB_UI_PORT: "54845"
       WEB_UI_USER: "admin"
-      WEB_UI_PASSWORD: "REPLACE_WITH_HASH"
+      # optional: every $ of the hash written as $$
+      # WEB_UI_PASSWORD: "$$argon2id$$v=19$$m=19456,t=2,p=1$$<salt>$$<hash>"
     volumes:
       - data:/etc/amnezia
     cap_add:
@@ -357,8 +358,8 @@ sysctl -w net.ipv4.ip_forward=1 \
     <div class="grid">
       <article class="card">
         <div class="icon"><svg aria-hidden="true"><use href="#i-lock"/></svg></div>
-        <h3>Change the password first</h3>
-        <p>The example hash is <code>changeme</code>. Replace it before the port is reachable from the internet: the panel hashes the password, signs a 12-hour cookie, and ends every session when the password changes.</p>
+        <h3>Know where the password is</h3>
+        <p>It is generated on the first start, printed once in the log and never stored in the clear: <code>/etc/amnezia/admin.hash</code> holds an argon2id hash only. Replace it with your own before the port is reachable from the internet — <code>docker compose exec app api reset-password</code> does it in place — and remember that the panel signs a 12-hour cookie and ends every session when the password changes.</p>
       </article>
       <article class="card">
         <div class="icon"><svg aria-hidden="true"><use href="#i-shield"/></svg></div>

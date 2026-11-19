@@ -151,11 +151,24 @@ For manual testing, you can use `playwright-cli`.
 
 ## Authentication
 
-`internal/auth` guards the panel. The credentials are the pair the container was
-started with — `WEB_UI_USER` (default `admin`) and `WEB_UI_PASSWORD`, which holds
-the **base64 of the SHA-256 of the password** (default `changeme`, i.e.
-`printf 'changeme' | openssl dgst -binary -sha256 | base64`). Nothing else is
-stored: there is no user table and no extra environment variable.
+`internal/auth` guards the panel; `internal/adminpw` owns the password itself.
+The credentials are `WEB_UI_USER` (default `admin`) and one password, resolved at
+startup in this order: `WEB_UI_PASSWORD`, which holds a hash — **argon2id**
+(`$argon2id$v=19$m=19456,t=2,p=1$…`, what `api hash-password` prints) or the old
+base64 of the SHA-256, which still works and warns; then
+`/etc/amnezia/admin.hash` on the config volume (`0600`); and with neither, a
+password generated on the first start, printed once in the log, with only its
+hash stored. There is no user table. A hash that verifies `changeme` is refused
+at startup, in either format.
+
+Two things bound what verifying costs, because argon2id allocates 19 MiB per
+attempt and a script re-sends its header with every request: at most two
+verifications run at once (a semaphore), and a verified Basic credential is
+cached in memory for five minutes, keyed by an HMAC under a random per-process
+key. Both live in `internal/auth`. The cache and the sessions are tied to the
+password: the session key is an HMAC over the hash in force, so a rewritten
+`admin.hash` — which the store re-reads at most once a second, so
+`reset-password` needs no restart — ends every session and empties the cache.
 
 Three paths are public: `/status` (the docker health check), `/login` (GET renders
 the page, POST checks the form) and `/logout` (GET or POST, drops the cookie and
@@ -163,8 +176,8 @@ redirects to `/login`). Everything else — the wasm bundle and `/debug/pprof`
 included — needs either the `awg_session` cookie or an `Authorization: Basic`
 header. The cookie is `HttpOnly`, `SameSite=Strict`, `Secure` according to
 `WEB_UI_SECURE_COOKIE` (unset: the request and `X-Forwarded-Proto`), lives 12
-hours, and is signed with an HMAC keyed from the credentials: a restart keeps
-sessions, changing `WEB_UI_PASSWORD` ends them all.
+hours, and is signed with an HMAC keyed from the password hash: a restart keeps
+sessions, changing the password ends them all.
 
 Every `POST`, `PUT` and `DELETE` also has to carry the CSRF token: the `awg_csrf`
 cookie (not `HttpOnly` — the page has to read it) echoed in `X-CSRF-Token`, or
@@ -197,19 +210,20 @@ them are same-origin. `web-ui` needs no auth code of its own.
 make run
 ```
 
-Then open `http://localhost:54845/`, type `admin` / `changeme` into the form and
-submit. The form is the only thing in the panel with CSS selectors — the panel
+Then open `http://localhost:54845/`, type `admin` and the password from the
+banner in `docker logs <container>` (or the one `WEB_UI_PASSWORD` was hashed
+from) into the form and submit. The form is the only thing in the panel with CSS selectors — the panel
 itself is a canvas: `#username`, `#password`, `button[type=submit]` (the one
 labelled `Sign in`).
 A `playwright-cli` session is therefore `goto /login`, fill those two fields,
 press the button, and continue with `goto /`; the context keeps the cookie.
-Credentials in the URL (`http://admin:changeme@host/`) are **not** a substitute
+Credentials in the URL (`http://admin:<password>@host/`) are **not** a substitute
 any more: Chrome refuses `fetch()` on a URL that carries them, and no
 `WWW-Authenticate` header is sent, so there is no prompt and no realm to reuse.
 
 ### From a script, and in `e2e`
 
-`curl -u admin:changeme` still works: an `Authorization: Basic` header is
+`curl -u admin:<password>` still works: an `Authorization: Basic` header is
 accepted on every route, which is why existing automation and the profile
 targets in the `Makefile` needed no change. The e2e suite shows both halves —
 `startApp` logs a fresh context in through the form (`submitLogin` in

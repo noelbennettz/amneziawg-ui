@@ -1,5 +1,21 @@
 #!/bin/sh
 
+# A subcommand runs instead of the server: "hash-password" and "reset-password"
+# work on the password and exit, and the iptables and sysctl checks below are
+# about a panel that is about to start. Without this, arguments handed to the
+# container would be silently dropped and the entrypoint would start the panel.
+#
+# Both spellings work, because both are in the documentation:
+#   docker run --rm -i <image> hash-password
+#   docker run --rm -i <image> api hash-password   (the binary's own name)
+case "${1:-}" in
+    api | /usr/bin/api) shift ;;
+esac
+
+if [ "$#" -gt 0 ]; then
+    exec /usr/bin/api "$@"
+fi
+
 mkdir -p /var/log/amnezia
 chmod 755 /var/log/amnezia
 

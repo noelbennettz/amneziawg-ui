@@ -35,17 +35,16 @@ is on for every server, with nothing to configure by hand.
 ```bash
 git clone https://github.com/noelbennettz/amneziawg-ui.git
 cd amneziawg-ui
-cp .env.example .env
-printf 'your-password' | openssl dgst -binary -sha256 | base64   # paste into WEB_UI_PASSWORD
 docker compose up -d
+docker compose logs app        # the generated admin password is in this log
 ```
 
 `docker compose up -d` pulls `ghcr.io/noelbennettz/amneziawg-ui:latest` and
-starts it. `.env` is optional, but without it the panel runs with the image's
-default password (`changeme`) — see the warning below. Open
-`http://<server-ip>:54845`, sign in as `admin` with the password you hashed,
-then **Create server → Add client** and take the `.conf`, the QR code or the
-`vpn://` link. Update with `docker compose pull && docker compose up -d`.
+starts it. The first start generates an admin password and prints it **once**,
+in a banner in `docker compose logs app`; that is the password to copy. Open
+`http://<server-ip>:54845`, sign in as `admin` with it, then **Create server →
+Add client** and take the `.conf`, the QR code or the `vpn://` link. Update
+with `docker compose pull && docker compose up -d`.
 
 Check it came up:
 
@@ -60,9 +59,31 @@ Check it came up:
   a few seconds.
 
 > [!IMPORTANT]
-> The image's default login is `admin` / `changeme`. Anyone who reaches the port
-> before `WEB_UI_PASSWORD` holds your own hash can sign in. Change it first, or
-> publish the port on `127.0.0.1` until you have.
+> The generated password is shown once and is not stored anywhere in the clear:
+> `admin.hash` on the volume holds only its argon2id hash. Lose it and the fix
+> is `docker compose exec app api reset-password`, which writes a new one and
+> prints it.
+
+### Set your own password
+
+The panel reads `WEB_UI_PASSWORD` and uses it instead of the stored hash. It
+holds a hash, never the password, and the image produces one for you:
+
+```bash
+printf '%s' 'your-password' | docker run --rm -i ghcr.io/noelbennettz/amneziawg-ui:latest api hash-password
+```
+
+Paste the result into `.env` or into the compose file as `WEB_UI_PASSWORD`,
+writing every `$` of the hash as `$$`: compose reads `$` as the start of a
+variable in both files. Then `docker compose up -d`. Changing the password ends
+every session the panel had issued.
+
+To replace the generated password without leaving the container, use
+`docker compose exec app api reset-password`: it writes a new hash to
+`/etc/amnezia/admin.hash`, prints the password once, ends every session, and the
+running panel adopts it within a second — no restart, unless
+`WEB_UI_PASSWORD` is set, in which case the variable still wins and has to be
+removed first.
 
 Removing it later: `docker compose down` stops the container and keeps the
 `/etc/amnezia` volume; `docker compose down -v` deletes that volume — every
