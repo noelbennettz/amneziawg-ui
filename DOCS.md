@@ -1118,9 +1118,12 @@ cosign verify-attestation --type spdxjson \
   | jq -r '.payload' | base64 -d | jq -r '.predicate.packages[].name' | sort -u
 ```
 
-That list is the Alpine packages, the Go modules and the two upstream AmneziaWG
-trees the image was assembled from — the machine-readable counterpart of
-[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). The image is a multi-platform
+That list is the image's Alpine packages (name, version and the licence
+expression each declares), the server binary's Go modules by path and version,
+`amneziawg-go`, and the image itself — the machine-readable counterpart of
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md), which also says what the
+document does *not* cover (the wasm bundle's modules, `amneziawg-tools`) and
+what covers those. The image is a multi-platform
 index; syft follows it to the runner's platform (`linux/amd64`), and the package
 set and its licences are the same on `linux/arm64` apart from the architecture
 suffix apk adds to a few package names. Pinning a deployment to the

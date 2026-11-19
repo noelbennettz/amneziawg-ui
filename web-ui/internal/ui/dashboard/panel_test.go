@@ -6,7 +6,11 @@ import (
 	"testing"
 	"time"
 
+	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/test"
+
 	"amneziawg-web-ui/web-ui/api"
+	"amneziawg-web-ui/web-ui/internal/ui/testhook"
 )
 
 func snapshot(rx, tx uint64, busy, total float64) api.TrafficSnapshot {
@@ -112,3 +116,86 @@ func TestChartKeepsTheWindow(t *testing.T) {
 }
 
 func styleColor() color.NRGBA { return color.NRGBA{R: 1, G: 2, B: 3, A: 255} }
+
+// The four gauges sit beside the traffic card on a wide page and under it on
+// the compact one: that is the whole of what SetNarrow changes, and the two
+// columns are what makes the page taller than a phone can show.
+func TestSetNarrowMovesTheGaugesUnderTheCard(t *testing.T) {
+	test.NewApp()
+
+	p := New(5*time.Second, func() {})
+	win := test.NewWindow(p.CanvasObject())
+	defer win.Close()
+	win.Resize(fyne.NewSize(1400, 900))
+
+	card, gauges := p.hero.object, p.body.Objects[1]
+
+	p.panel.Resize(fyne.NewSize(1400, 900))
+	if gauges.Position().X <= card.Position().X {
+		t.Fatalf("wide: the gauges start at x=%.0f, the card at x=%.0f - want them beside it",
+			gauges.Position().X, card.Position().X)
+	}
+	if gauges.Position().Y != card.Position().Y {
+		t.Errorf("wide: the gauges start at y=%.0f, the card at y=%.0f - want them level",
+			gauges.Position().Y, card.Position().Y)
+	}
+
+	// The compact page: one column, the gauges under the card, both as wide
+	// as the page.
+	p.SetNarrow(true)
+	p.panel.Resize(fyne.NewSize(390, 900))
+	if got, want := gauges.Position().X, card.Position().X; got != want {
+		t.Errorf("narrow: the gauges start at x=%.0f, the card at x=%.0f - want one column", got, want)
+	}
+	if gauges.Position().Y < card.Position().Y+card.Size().Height {
+		t.Errorf("narrow: the gauges start at y=%.0f, the card ends at y=%.0f - want them under it",
+			gauges.Position().Y, card.Position().Y+card.Size().Height)
+	}
+
+	// And back: the wide layout is restored, not just the flag.
+	p.SetNarrow(false)
+	p.panel.Resize(fyne.NewSize(1400, 900))
+	if gauges.Position().X <= card.Position().X {
+		t.Errorf("back to wide: the gauges start at x=%.0f, the card at x=%.0f",
+			gauges.Position().X, card.Position().X)
+	}
+}
+
+// Folding the panel hides the body and tells the page, which is what re-clamps
+// the scroll offset; the button's glyph follows the state so the next tap is
+// the one the person expects.
+func TestToggleFoldsTheBodyAndAsksForAReflow(t *testing.T) {
+	test.NewApp()
+
+	reflows := 0
+	p := New(5*time.Second, func() { reflows++ })
+	if !p.body.Visible() {
+		t.Fatal("a new panel starts folded")
+	}
+
+	up := p.toggle.Icon
+	p.toggleOpen()
+	if p.body.Visible() {
+		t.Error("toggling left the body open")
+	}
+	if reflows != 1 {
+		t.Errorf("reflow ran %d times, want once", reflows)
+	}
+	if p.toggle.Icon == up {
+		t.Error("the toggle kept its glyph after folding")
+	}
+	if !testhook.Has("monitoring.toggle") {
+		t.Error("monitoring.toggle is not registered")
+	}
+
+	p.toggleOpen()
+	if !p.body.Visible() {
+		t.Error("toggling a second time did not unfold the body")
+	}
+	if reflows != 2 {
+		t.Errorf("reflow ran %d times, want twice", reflows)
+	}
+	if p.toggle.Icon != up {
+		t.Error("the toggle did not go back to its first glyph")
+	}
+}

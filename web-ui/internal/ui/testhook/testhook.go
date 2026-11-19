@@ -82,6 +82,17 @@ func Has(id string) bool {
 	return isTarget || isAction
 }
 
+// Object returns the widget registered under id, or nil.
+//
+// The browser suite never calls this - from outside the page there is only a
+// rectangle - but a Go test draws in-process, so it can tap the widget that a
+// browser would have to aim at.
+func Object(id string) fyne.CanvasObject {
+	mu.RLock()
+	defer mu.RUnlock()
+	return targets[id]
+}
+
 // Invoke runs the action registered under id, reporting whether there was one.
 func Invoke(id string) bool {
 	mu.RLock()
