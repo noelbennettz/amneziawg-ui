@@ -7,6 +7,7 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 
+	"amneziawg-web-ui/internal/version"
 	"amneziawg-web-ui/internal/wgconf"
 	"amneziawg-web-ui/web-ui/api"
 )
@@ -32,6 +33,14 @@ func (h *Handlers) getDefaultISettings(c fiber.Ctx) error {
 
 func (h *Handlers) systemStatus(c fiber.Ctx) error {
 	return c.JSON(h.mgr.SystemStatus())
+}
+
+// buildInfo answers the running build's identity: the release, the commit it
+// was made from, when, and with which Go. It sits behind the login with the
+// rest of the API - the answer is the first thing a bug report asks for, and
+// nothing on a public port needs to know which commit is running.
+func (h *Handlers) buildInfo(c fiber.Ctx) error {
+	return c.JSON(version.Current())
 }
 
 func (h *Handlers) refreshIP(c fiber.Ctx) error {

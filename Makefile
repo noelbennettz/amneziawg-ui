@@ -30,7 +30,16 @@ WASM_NAME = bundle
 # Reproducible, stripped builds. "fyne package --release" already applies the
 # same two to the wasm bundle itself, so only the server needs them spelled
 # out here.
-GO_BUILD_FLAGS = -trimpath -ldflags="-s -w"
+#
+# The build's identity goes in through the linker, which is what /api/version
+# answers with and what the image labels carry in a container. A shallow clone
+# or a source tarball has no tag and no history, and both fall back to
+# something true rather than an empty string.
+VERSION    ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
+COMMIT     ?= $(shell git rev-parse --short=8 HEAD 2>/dev/null || echo unknown)
+BUILD_TIME ?= $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
+VERSION_PKG = amneziawg-web-ui/internal/version
+GO_BUILD_FLAGS = -trimpath -ldflags="-s -w -X $(VERSION_PKG).Version=$(VERSION) -X $(VERSION_PKG).Commit=$(COMMIT) -X $(VERSION_PKG).BuildTime=$(BUILD_TIME)"
 
 # Where "fyne package" writes its output: the loader page, its light and dark
 # stylesheets, the spinners, wasm_exec.js and the bundle itself. Everything in there is
@@ -67,7 +76,8 @@ web-ui-clean: ## Remove the built frontend bundle
 
 .PHONY: run
 run: ## Build image from sources and run via docker-compose
-	IMAGE=amneziawg-ui:local docker compose -f docker-compose.yml -f docker-compose.build.yml up --build
+	IMAGE=amneziawg-ui:local VERSION=$(VERSION) COMMIT=$(COMMIT) BUILD_TIME=$(BUILD_TIME) \
+		docker compose -f docker-compose.yml -f docker-compose.build.yml up --build
 
 .PHONY: build
 build: web-ui ## Build the frontend bundle and the server binary that serves it

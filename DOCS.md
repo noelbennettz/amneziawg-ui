@@ -818,6 +818,24 @@ present apart from a rule with something routable to masquerade onto. A server
 without an IPv6 subnet has no `ip6tables` rules to look for, but `nat6` still
 reports the host's IPv6 view.
 
+#### Build identity
+
+`GET /api/version`
+
+```json
+{"version":"c7fc127","commit":"c7fc1277","build_time":"2026-11-19T16:49:46Z","go":"go1.26.4"}
+```
+
+The values are put into the binary by the linker, so they are the build's own,
+not something the process worked out at startup: the Makefile and the workflow
+take them from git and the clock, the Dockerfile carries the same three as
+image labels (`org.opencontainers.image.version`, `.revision`, `.created`), and
+a binary nobody passed them to answers `dev` / `unknown` — which is also true.
+Behind the login like the rest of the API. See
+[docs/versions/README.md](docs/versions/README.md) for what a version means in
+this project, and [Verifying a published image](#verifying-a-published-image)
+for checking a pulled image against the commit it claims.
+
 #### Health check (no credentials)
 
 `GET /status` — the container uptime; used by the image's `HEALTHCHECK`.

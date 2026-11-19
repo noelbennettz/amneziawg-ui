@@ -1,4 +1,13 @@
 #   docker compose -f docker-compose.yml -f docker-compose.build.yml up --build
+#
+# The build's identity is passed in rather than guessed inside the image: `make
+# run` fills them from git, and a plain `docker compose build` leaves the
+# defaults, which say "this build did not record where it came from".
 services:
   app:
-    build: .
+    build:
+      context: .
+      args:
+        VERSION: ${VERSION:-dev}
+        COMMIT: ${COMMIT:-unknown}
+        BUILD_TIME: ${BUILD_TIME:-unknown}

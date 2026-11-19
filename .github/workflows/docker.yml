@@ -102,6 +102,17 @@ jobs:
       - name: Compute the image name
         run: echo "IMAGE_NAME=${REGISTRY}/${GITHUB_REPOSITORY,,}" >> "$GITHUB_ENV"
 
+      # The build's identity, from the checkout that is being built: the tag
+      # (or the short commit when there is none), the commit, and now. They go
+      # into the binary through the linker - /api/version answers with them -
+      # and onto the image as labels, so a container can say which build it is
+      # without a login.
+      - name: Compute the build identity
+        run: |
+          echo "VERSION=$(git describe --tags --always)" >> "$GITHUB_ENV"
+          echo "COMMIT=$(git rev-parse --short=8 HEAD)" >> "$GITHUB_ENV"
+          echo "BUILD_TIME=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
+
       # Every compiler in the Dockerfile cross-compiles, so QEMU is only ever
       # asked to run apk and busybox while the final arm64 layer is assembled.
       - name: Set up QEMU
@@ -138,6 +149,10 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            VERSION=${{ env.VERSION }}
+            COMMIT=${{ env.COMMIT }}
+            BUILD_TIME=${{ env.BUILD_TIME }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
