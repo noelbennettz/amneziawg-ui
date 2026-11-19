@@ -894,7 +894,16 @@ its own to tell them apart — so pinning a dated tag is how an upgrade becomes 
 decision instead of a restart. A `v*.*.*` git tag does not start a build and
 produces no `3.1` / `3` images. The image is `ghcr.io/<owner>/<repository>`,
 built with the workflow's built-in `GITHUB_TOKEN` — no secret has to be
-configured.
+configured. Every build is also signed and accompanied by an SBOM: see
+[Verifying a published image](#verifying-a-published-image).
+
+Every action in every workflow is pinned by full commit SHA (with the release
+in a trailing comment), and `.github/dependabot.yml` keeps those pins, the three
+Go modules and the Dockerfile's base images moving with weekly pull requests.
+The browser workflow caches its test image in the Actions cache
+(`E2E_BUILD_FLAGS`), prints the Chrome and playwright-go versions it runs with,
+and retries the suite once before failing the run — a flaky browser is worth one
+second attempt, not a red pull request.
 
 The package is public, so `docker pull ghcr.io/noelbennettz/amneziawg-ui:latest`
 needs no login. To run your own build instead, `make run` or
