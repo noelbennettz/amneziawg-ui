@@ -917,8 +917,9 @@ docker build --build-arg AWG_GO_VERSION=vX.Y.Z --build-arg AWG_TOOLS_VERSION=vX.
 - `docker compose ps` shows the container as `Up … (healthy)`; the image carries
   a `HEALTHCHECK` that asks `127.0.0.1:54845/status` every 30 s.
 - `docker compose logs -f app` prints `AmneziaWG Web UI (Go/Fiber) starting...`,
-  an `=== Environment Configuration ===` block with the values it resolved, and
-  the address it listens on. A line per auto-started server follows.
+  then — on the first start — the banner with the generated password, the
+  `=== Environment Configuration ===` block, any `Auto-starting server:` lines,
+  `Serving the frontend from …` and `Listening on :54845`.
 - `curl -s http://127.0.0.1:54845/status` answers `Container Uptime: 0d 0h 0m 3s`
   and needs no credentials. `curl -u admin:<password> http://127.0.0.1:54845/api/servers`
   answers a JSON list that is empty on a fresh volume.
