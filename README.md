@@ -49,6 +49,11 @@ first successful login. Read it with the `cat` above, open
 Add client** and take the `.conf`, the QR code or the `vpn://` link. Update
 with `docker compose pull && docker compose up -d`.
 
+Every published image is signed keylessly with [cosign](https://docs.sigstore.dev/cosign/overview/)
+and carries an SPDX software bill of materials; [Verifying a published
+image](DOCS.md#verifying-a-published-image) has the one command that checks
+either, against the image digest.
+
 Check it came up:
 
 - `docker compose ps` shows `Up … (healthy)` within a minute.
