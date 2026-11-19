@@ -31,6 +31,17 @@ func TestLogin(t *testing.T) {
 	if next := landed.Query().Get("next"); next != "/" {
 		t.Errorf("the login page was given next=%q, want %q", next, "/")
 	}
+
+	// The form is the user and the password, and nothing else: the second
+	// factor's field is only drawn when WEB_UI_TOTP_SECRET is configured, and
+	// these instances have no secret. A field that is offered but not checked
+	// would be worse than none.
+	totpFields, err := anonymous.page.Locator("#totp").Count()
+	must(t, err)
+	if totpFields > 0 {
+		t.Error("the login page offers an authentication-code field although no TOTP secret is configured")
+	}
+
 	anonymous.shot("00-login")
 
 	// A wrong password is answered with the form again and a 401: the page
