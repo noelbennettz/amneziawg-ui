@@ -2,7 +2,8 @@
 
 > Applies to the current `main`, published under the dated image tags
 > (`ghcr.io/noelbennettz/amneziawg-ui:2026.11.18` at the time of writing). An
-> older tag keeps its documentation under `docs/versions/<tag>/`.
+> older tag keeps its documentation on the project site under
+> `versions/<tag>/`.
 
 [![Container image](https://img.shields.io/badge/ghcr.io-amneziawg--ui-blue?logo=github)](https://github.com/noelbennettz/amneziawg-ui/pkgs/container/amneziawg-ui)
 [![Website](https://img.shields.io/badge/website-noelbennettz.github.io%2Famneziawg--ui-5b7cff)](https://noelbennettz.github.io/amneziawg-ui/)
@@ -103,7 +104,7 @@ matter behind a proxy.
 | [DOCS.md](DOCS.md) | Features, AmneziaWG 3.1 parameters, IPv6 and NAT6, REST API, environment variables, compose variants, building from source, profiling, logs, backup and restore, security details, FAQ |
 | [SECURITY.md](SECURITY.md) | What the panel assumes, what it does not protect against |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Development environment, commit messages, the DCO sign-off every commit needs |
-| [`docs/`](docs/) | Project site in English and Traditional Chinese, published at <https://noelbennettz.github.io/amneziawg-ui/> |
+| [Project site](https://noelbennettz.github.io/amneziawg-ui/) | English and Traditional Chinese pages, hosted in the [`noelbennettz.github.io`](https://github.com/noelbennettz/noelbennettz.github.io) repository under `docs/amneziawg-ui/` |
 | [`.env.example`](.env.example) | Every environment variable with its default |
 | [`docker-compose.example.yml`](docker-compose.example.yml) | The same service with every compose key and variable commented |
 

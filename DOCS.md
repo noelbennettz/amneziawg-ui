@@ -2,7 +2,8 @@
 
 > Applies to the current `main`, published under the dated image tags
 > (`ghcr.io/noelbennettz/amneziawg-ui:2026.11.18` at the time of writing). An
-> older tag keeps its documentation under `docs/versions/<tag>/`.
+> older tag keeps its documentation on the project site under
+> `versions/<tag>/`.
 
 A self-hosted web panel for **AmneziaWG** — the obfuscated, DPI-resistant fork
 of WireGuard. It is a single Go/Fiber binary: create several AmneziaWG servers,
