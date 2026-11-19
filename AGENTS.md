@@ -210,9 +210,9 @@ them are same-origin. `web-ui` needs no auth code of its own.
 make run
 ```
 
-Then open `http://localhost:54845/`, type `admin` and the password from the
-banner in `docker logs <container>` (or the one `WEB_UI_PASSWORD` was hashed
-from) into the form and submit. The form is the only thing in the panel with CSS selectors — the panel
+Then open `http://localhost:54845/`, type `admin` and the password from
+`docker compose exec app cat /etc/amnezia/first-run-password` (or the one
+`WEB_UI_PASSWORD` was hashed from) into the form and submit. The form is the only thing in the panel with CSS selectors — the panel
 itself is a canvas: `#username`, `#password`, `button[type=submit]` (the one
 labelled `Sign in`).
 A `playwright-cli` session is therefore `goto /login`, fill those two fields,

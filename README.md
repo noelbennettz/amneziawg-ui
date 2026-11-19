@@ -37,12 +37,14 @@ is on for every server, with nothing to configure by hand.
 git clone https://github.com/noelbennettz/amneziawg-ui.git
 cd amneziawg-ui
 docker compose up -d
-docker compose logs app        # the generated admin password is in this log
+docker compose exec app cat /etc/amnezia/first-run-password   # the generated admin password
 ```
 
 `docker compose up -d` pulls `ghcr.io/noelbennettz/amneziawg-ui:latest` and
-starts it. The first start generates an admin password and prints it **once**,
-in a banner in `docker compose logs app`; that is the password to copy. Open
+starts it. The first start generates an admin password and writes it to
+`/etc/amnezia/first-run-password` inside the container (mode `0600`, on the
+config volume) — the log only says where it is, and the file is deleted on the
+first successful login. Read it with the `cat` above, open
 `http://<server-ip>:54845`, sign in as `admin` with it, then **Create server →
 Add client** and take the `.conf`, the QR code or the `vpn://` link. Update
 with `docker compose pull && docker compose up -d`.
@@ -51,8 +53,8 @@ Check it came up:
 
 - `docker compose ps` shows `Up … (healthy)` within a minute.
 - `docker compose logs app` prints `AmneziaWG Web UI (Go/Fiber) starting...`,
-  then on the first start the banner with the generated password, the
-  `=== Environment Configuration ===` block, and finally `Listening on :54845`.
+  then on the first start the banner naming `/etc/amnezia/first-run-password`,
+  the `=== Environment Configuration ===` block, and finally `Listening on :54845`.
 - `curl -s http://127.0.0.1:54845/status` answers `Container Uptime: 0d 0h 0m 3s`
   without a login.
 - `http://<server-ip>:54845/` shows the login page; an empty server list, then
@@ -61,9 +63,11 @@ Check it came up:
   a few seconds.
 
 > [!IMPORTANT]
-> The generated password is shown once and is not stored anywhere in the clear:
-> `admin.hash` on the volume holds only its argon2id hash. Lose it and the fix
-> is `docker compose exec app api reset-password`, which writes a new one and
+> The generated password is never printed: it is written to
+> `/etc/amnezia/first-run-password` on the volume (mode `0600`) and deleted the
+> first time a login succeeds, so the only copy that stays is the argon2id hash
+> in `admin.hash`. Lose the password and the fix is
+> `docker compose exec app api reset-password`, which writes a new one and
 > prints it.
 
 ### Set your own password

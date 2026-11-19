@@ -291,7 +291,8 @@ server and every client therefore gets an IPv6 address automatically.
     else — see [Security](#security)
 *   `internal/adminpw` — the admin password: the argon2id hash format, the
     `admin.hash` file on the config volume, the password generated on first
-    start, and the `hash-password` / `reset-password` subcommands
+    start (written to `first-run-password`, mode `0600`, deleted on the first
+    login), and the `hash-password` / `reset-password` subcommands
 *   `internal/security` — the response headers: the CSP and the nonce the
     loading page carries, `X-Frame-Options`, `nosniff`, `Referrer-Policy`
 *   `internal/audit` — the opt-in security log (`WEB_UI_AUDIT_LOG`): logins,
@@ -426,7 +427,9 @@ variables a deployment normally sets, with their defaults (the
 [Environment variables](#environment-variables) table has the full list), and
 `.env` is read when it exists — a clone without one starts on `54845/tcp` for
 the web UI and `54844/udp` for the VPN, with an admin password generated on the
-first start and printed once in `docker compose logs app`. The production
+first start and written to `/etc/amnezia/first-run-password` in the container —
+`docker compose exec app cat /etc/amnezia/first-run-password` reads it, and the
+first login deletes it. The production
 settings (their own ports and `WEB_UI_PASSWORD`) live separately in `deploy/.env`
 — git ignores it, so create it once on the machine you deploy from: `make deploy`
 builds the image, saves it as `proxy.tar`, copies it together with that file and
@@ -864,7 +867,7 @@ The settings are overridden with make variables:
 | `PPROF_HOST` | `localhost` | Host of the running instance |
 | `PPROF_PORT` | `54845` | Port (that instance's `WEB_UI_PORT`) |
 | `PPROF_USER` | `admin` | Login name, sent as `curl -u` |
-| `PPROF_PASSWORD` | *unset* | The password **in plain text**, not the hash from `WEB_UI_PASSWORD`. It has no default: the targets refuse to run without it, because the panel's password is generated on its first start (`docker compose logs app`) |
+| `PPROF_PASSWORD` | *unset* | The password **in plain text**, not the hash from `WEB_UI_PASSWORD`. It has no default: the targets refuse to run without it, because the panel's password is generated on its first start (`docker compose exec app cat /etc/amnezia/first-run-password`) |
 | `PPROF_SECONDS` | `30` | How long the CPU profile is collected |
 | `PPROF_DIR` | `profiles` | Where the downloaded profiles go |
 | `PPROF_KIND` | `heap` | What `profile-diff` compares: `heap`, `cpu` or `alloc` |
@@ -917,9 +920,12 @@ docker build --build-arg AWG_GO_VERSION=vX.Y.Z --build-arg AWG_TOOLS_VERSION=vX.
 - `docker compose ps` shows the container as `Up … (healthy)`; the image carries
   a `HEALTHCHECK` that asks `127.0.0.1:54845/status` every 30 s.
 - `docker compose logs -f app` prints `AmneziaWG Web UI (Go/Fiber) starting...`,
-  then — on the first start — the banner with the generated password, the
+  then — on the first start — the banner naming
+  `/etc/amnezia/first-run-password`, the
   `=== Environment Configuration ===` block, any `Auto-starting server:` lines,
-  `Serving the frontend from …` and `Listening on :54845`.
+  `Serving the frontend from …` and `Listening on :54845`. The password itself
+  is in that file, not in the log:
+  `docker compose exec app cat /etc/amnezia/first-run-password`.
 - `curl -s http://127.0.0.1:54845/status` answers `Container Uptime: 0d 0h 0m 3s`
   and needs no credentials. `curl -u admin:<password> http://127.0.0.1:54845/api/servers`
   answers a JSON list that is empty on a fresh volume.
@@ -942,7 +948,7 @@ the two failures that happen before anything is logged by the panel itself.
 | `WEB_UI_PORT` | `54845` | Port the application listens on for the web UI. The same default is set in the image's `ENV`, in the binary and in `docker-compose.yml` (where it is also published on the host) |
 | `WEB_UI_BIND` | *every address* | Address the panel binds **inside the container**. Unset means `[::]` with `v6only` off, one listener for both stacks. With published ports this has to stay unset — Docker forwards to the container's address, not to its loopback — and the restriction belongs on the host side of the mapping (`"127.0.0.1:54845:54845/tcp"`). It exists for `network_mode: host`, where there is no mapping |
 | `WEB_UI_USER` | `admin` | Login name for the panel's login page and for `curl -u` |
-| `WEB_UI_PASSWORD` | *unset* | Login password, as a hash and never as the password itself: an argon2id PHC string (`$argon2id$v=19$m=…`, what `api hash-password` prints, and what the panel writes). Unset — the default — means the panel generates a password on its first start, prints it once in the log and keeps only the hash in `/etc/amnezia/admin.hash`; set it to override the stored hash. `changeme` is refused at startup, and so is the old base64(SHA-256) format |
+| `WEB_UI_PASSWORD` | *unset* | Login password, as a hash and never as the password itself: an argon2id PHC string (`$argon2id$v=19$m=…`, what `api hash-password` prints, and what the panel writes). Unset — the default — means the panel generates a password on its first start, writes it to `/etc/amnezia/first-run-password` (mode `0600`, deleted on the first successful login) and keeps only the hash in `/etc/amnezia/admin.hash`; set it to override the stored hash. `changeme` is refused at startup, and so is the old base64(SHA-256) format |
 | `WEB_UI_SECURE_COOKIE` | *auto* | `true` marks every cookie `Secure`, `false` never does, unset follows the request and `X-Forwarded-Proto`. Behind a TLS proxy the container sees plain HTTP, so `true` (or a proxy that sends the header) is what makes the flag appear at all |
 | `WEB_UI_AUDIT_LOG` | `false` | Append logins, logouts and every change made through the API to `/etc/amnezia/audit.log`: time, address, user, route, status. Off by default — it records who reached the panel |
 | `WEB_UI_AUDIT_RETENTION_HOURS` | `24` | How long an entry stays in that file: a value below `1` is raised to `1`, one above `720` (30 days) is lowered to `720`, and anything that is not a number falls back to `24`. The file is swept at most once an hour, and rewritten atomically only when something has aged out |
@@ -967,7 +973,7 @@ spelled out and the optional ones commented. What each key does:
 | `image` | The image to run. `${IMAGE:-ghcr.io/noelbennettz/amneziawg-ui:latest}` lets `make run` and `make deploy` substitute their own build; pin a dated tag (`…:2026.11.18`) to keep an upgrade a decision |
 | `ports` | `"host address:host port:container port"`. Naming the host address (`127.0.0.1:54845:54845/tcp`) binds that address only — the usual setup behind a local TLS proxy. A UDP range (`54844-54864:54844-54864/udp`) publishes several servers at once |
 | `environment` / `env_file` | The variables from the table above. `.env` is optional (`required: false`) because every one of them has a default, and the password's default is to be generated on the first start and printed once in the log |
-| `volumes` | `/etc/amnezia` holds `web_config.json` and `audit.log`, plus the servers' `.conf` files under `amneziawg/`, `suspended/` included. A named volume or a host directory both work; this is the only state to back up |
+| `volumes` | `/etc/amnezia` holds `web_config.json` and `audit.log`, plus the servers' `.conf` files under `amneziawg/`, `suspended/` included, and `admin.hash` (and `first-run-password` until the first login). A named volume or a host directory both work; this is the only state to back up |
 | `cap_add: NET_ADMIN` | Needed to write iptables rules, create the interface and manage routes inside the container's network namespace |
 | `devices: /dev/net/tun` | The TUN device the userspace engine attaches to. No kernel module, so no `SYS_MODULE` |
 | `sysctls` | Forwarding for the tunnel. With `network_mode: host` Docker refuses them; `docker-compose.host.yml` drops them and they belong on the host |
@@ -1008,7 +1014,9 @@ services:
     environment:
       - WEB_UI_USER=admin
       # Leave this out and the panel generates a password on the first start and
-      # prints it once (docker compose logs app). To set your own:
+      # writes it to /etc/amnezia/first-run-password (0600); read it with
+      # "docker compose exec app cat /etc/amnezia/first-run-password". The first
+      # login deletes it. To set your own:
       #   printf '%s' 'your-password' | docker run --rm -i \
       #     ghcr.io/noelbennettz/amneziawg-ui:latest api hash-password
       # The hash is a $argon2id$... string, and compose reads $ as a variable:
@@ -1479,10 +1487,15 @@ resolved in this order at every start:
 2. `/etc/amnezia/admin.hash` on the config volume, mode `0600`, when it exists.
    This is what the panel writes, and nothing is printed for it.
 3. Neither: the first start generates a 24-character `[A-Za-z0-9]` password
-   with `crypto/rand`, stores only its argon2id hash in `admin.hash` and prints
-   the password once, in a banner in the container log. Nothing else ever holds
-   it in the clear, and the banner is the only copy — `docker compose logs app`
-   is how you read it back while that run is still in the log.
+   with `crypto/rand`, stores only its argon2id hash in `admin.hash`, and writes
+   the password itself to `/etc/amnezia/first-run-password` on the config
+   volume, mode `0600`. The log names that path and nothing else; the file is
+   deleted by the first successful login, so the plaintext lives on the volume
+   only until someone has read it:
+
+   ```bash
+   docker compose exec app cat /etc/amnezia/first-run-password
+   ```
 
 The hash is what is compared, in constant time. argon2id is deliberately
 expensive (19 MiB per verification), so two things bound what a script can make

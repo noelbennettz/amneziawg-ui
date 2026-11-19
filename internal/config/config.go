@@ -21,6 +21,12 @@ const (
 	// the rest of the state so that it survives a container restart - and so
 	// that "reset-password" can rewrite it from outside the process.
 	AdminHashFile = "/etc/amnezia/admin.hash"
+	// FirstRunPasswordFile is where the password generated on the first start
+	// is left for the operator, in the clear and mode 0600. It lives on the
+	// same volume as the rest of the state so that it is deleted together with
+	// it - and so that the first successful login can delete it without
+	// needing to know anything else about the deployment.
+	FirstRunPasswordFile = "/etc/amnezia/first-run-password"
 	// AuditFile is where the security log is appended when it is switched on.
 	// It lives on the same volume as the config, so it survives a restart of
 	// the container and is the operator's to read.
@@ -108,6 +114,11 @@ type Settings struct {
 	// a temp file so they never touch /etc.
 	AdminHashFile string
 
+	// FirstRunPasswordFile is where the password of the first start is written
+	// in the clear for the operator to read, and deleted again by the first
+	// successful login.
+	FirstRunPasswordFile string
+
 	// ConfigFile is where web_config.json lives. Tests point it at a temp
 	// file so they never touch /etc.
 	ConfigFile string
@@ -137,12 +148,14 @@ func FromEnv() Settings {
 		Pprof:                parseBool(os.Getenv("WEB_UI_PPROF")),
 		User:                 getenv("WEB_UI_USER", "admin"),
 		// Unset by default: with no hash configured the panel generates a
-		// password on its first start and prints it once. A default here
-		// would be a password everybody knows.
-		PasswordHash:       os.Getenv("WEB_UI_PASSWORD"),
-		AdminHashFile:      AdminHashFile,
-		ConfigFile:         ConfigFile,
-		WireguardConfigDir: WireguardConfigDir,
+		// password on its first start and leaves it in
+		// FirstRunPasswordFile. A default here would be a password
+		// everybody knows.
+		PasswordHash:         os.Getenv("WEB_UI_PASSWORD"),
+		AdminHashFile:        AdminHashFile,
+		FirstRunPasswordFile: FirstRunPasswordFile,
+		ConfigFile:           ConfigFile,
+		WireguardConfigDir:   WireguardConfigDir,
 	}
 	return s
 }

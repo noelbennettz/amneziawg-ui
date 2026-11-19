@@ -64,7 +64,8 @@ func main() {
 
 	// The admin password: WEB_UI_PASSWORD when it is set, the stored hash
 	// otherwise, and a generated password when there is neither. Only that
-	// last case prints anything - and it prints it once.
+	// last case writes anything down, and it writes a file on the config
+	// volume rather than a line in the log - the log is the copy that stays.
 	password, generated, err := adminpw.Open(settings.AdminHashFile, settings.PasswordHash)
 	if err != nil {
 		log.Fatalf("admin password: %v", err)
@@ -74,7 +75,10 @@ func main() {
 		os.Exit(1)
 	}
 	if generated != "" {
-		announceGeneratedPassword(os.Stdout, settings.User, generated)
+		if err := adminpw.WritePasswordFile(settings.FirstRunPasswordFile, generated); err != nil {
+			log.Fatalf("write the first-run password to %s: %v", settings.FirstRunPasswordFile, err)
+		}
+		announceGeneratedPassword(os.Stdout, settings.User, settings.FirstRunPasswordFile)
 	}
 
 	mgr := manager.New(settings, store.New(settings.ConfigFile), awg.New(awg.Shell{}))
@@ -106,6 +110,7 @@ func main() {
 		auth.WithAudit(auditLog),
 		auth.WithLoginRateLimit(settings.LoginRateLimit),
 		auth.WithTrustProxy(settings.TrustProxy),
+		auth.WithFirstRunPassword(settings.FirstRunPasswordFile),
 	)
 	app.Use(guard.Middleware())
 	// A write has to prove it came from this page, not from one that made

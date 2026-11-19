@@ -94,16 +94,55 @@ func TestResetPassword(t *testing.T) {
 	}
 }
 
-// The banner is the only copy of a generated password: it has to carry the
-// user, the password, the fact that it is shown once, and how to reset it.
+// The banner has to say where the password went and how to read it, and it
+// must not be a copy of the password itself.
 func TestAnnounceGeneratedPassword(t *testing.T) {
 	var out bytes.Buffer
-	announceGeneratedPassword(&out, "admin", "abc123DEF456ghi789JKL012")
+	announceGeneratedPassword(&out, "admin", "/etc/amnezia/first-run-password")
 
-	for _, want := range []string{"admin", "abc123DEF456ghi789JKL012", "shown once", "reset-password", "/etc/amnezia/admin.hash"} {
+	for _, want := range []string{"admin", "/etc/amnezia/first-run-password", "0600", "cat ", "deleted", "reset-password", "/etc/amnezia/admin.hash"} {
 		if !strings.Contains(out.String(), want) {
 			t.Errorf("the banner does not mention %q:\n%s", want, out.String())
 		}
+	}
+	if strings.Contains(out.String(), "Password:  ") && !strings.Contains(out.String(), "not in this log") {
+		t.Errorf("the banner still reads like a password line:\n%s", out.String())
+	}
+}
+
+// A first-run password reaches the operator through a file on the volume, mode
+// 0600, and nothing else: the file is the only copy of the plaintext, and it is
+// deleted again on the first successful login.
+func TestFirstRunPasswordFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "first-run-password")
+
+	if err := adminpw.WritePasswordFile(path, "generated-password"); err != nil {
+		t.Fatalf("WritePasswordFile: %v", err)
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatalf("stat: %v", err)
+	}
+	if perm := info.Mode().Perm(); perm != 0o600 {
+		t.Errorf("%s has mode %o, want 600", path, perm)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	if got := strings.TrimSpace(string(data)); got != "generated-password" {
+		t.Errorf("%s holds %q, want the generated password", path, got)
+	}
+
+	if err := adminpw.RemovePasswordFile(path); err != nil {
+		t.Fatalf("RemovePasswordFile: %v", err)
+	}
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Fatalf("%s still exists after RemovePasswordFile", path)
+	}
+	// Deleting it twice is what two logins in the same second look like.
+	if err := adminpw.RemovePasswordFile(path); err != nil {
+		t.Errorf("RemovePasswordFile on a missing file = %v, want nil", err)
 	}
 }
 
