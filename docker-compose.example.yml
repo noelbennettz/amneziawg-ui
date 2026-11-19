@@ -41,8 +41,10 @@ services:
       # WEB_UI_BIND: "127.0.0.1"
       WEB_UI_USER: "admin"
       # Leave WEB_UI_PASSWORD out and the panel generates a password on its
-      # first start, prints it once (docker compose logs app) and stores only
-      # its argon2id hash in /etc/amnezia/admin.hash.
+      # first start, writes it to /etc/amnezia/first-run-password (0600) and
+      # stores only its argon2id hash in /etc/amnezia/admin.hash. Read it with
+      #   docker compose exec app cat /etc/amnezia/first-run-password
+      # The first successful login deletes that file.
       #
       # To set your own, hash it with the image:
       #   printf '%s' 'your-password' | docker run --rm -i \

@@ -160,6 +160,47 @@ func TestSessionIsBoundToTheUser(t *testing.T) {
 	}
 }
 
+// The first-run password file is deleted by the first accepted credential and
+// not by anything else: a wrong password must not be able to remove the
+// operator's only way in.
+func TestFirstRunPasswordIsDeletedOnLogin(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "first-run-password")
+	write := func() {
+		t.Helper()
+		if err := adminpw.WritePasswordFile(path, testPassword); err != nil {
+			t.Fatalf("WritePasswordFile: %v", err)
+		}
+	}
+	exists := func() bool {
+		t.Helper()
+		_, err := os.Stat(path)
+		return err == nil
+	}
+
+	write()
+	a := New(testUser, testStore(testHash), WithFirstRunPassword(path))
+	if a.Check(testUser, "wrong") {
+		t.Fatal("the wrong password was accepted")
+	}
+	if !exists() {
+		t.Fatal("a wrong password deleted the first-run password file")
+	}
+
+	if !a.Check(testUser, testPassword) {
+		t.Fatal("the right password was refused")
+	}
+	if exists() {
+		t.Fatal("the first-run password file survived the first successful login")
+	}
+
+	// A second successful login is not an error, and neither is a file that is
+	// already gone.
+	write()
+	if !a.Check(testUser, testPassword) {
+		t.Fatal("the right password was refused after the file was rewritten")
+	}
+}
+
 func TestSafeNext(t *testing.T) {
 	cases := map[string]string{
 		"":                       "/",

@@ -72,21 +72,27 @@ func usage(w io.Writer) {
 	fmt.Fprintln(w, "  help             print this")
 }
 
-// announceGeneratedPassword prints the password the panel generated on its
-// first start. This is the only place it is ever written down: the hash is
-// what is stored, and the plaintext is gone once this process exits.
-func announceGeneratedPassword(w io.Writer, user, password string) {
+// announceGeneratedPassword tells the operator where the panel left the
+// password it generated on the first start, and how to read it. The password
+// itself is not printed: a container log outlives the process, is copied
+// around by `docker logs` and by anything that gathers logs, and is the least
+// protected copy of everything the panel holds. The file is mode 0600 on the
+// config volume and is deleted the first time a login succeeds.
+func announceGeneratedPassword(w io.Writer, user, path string) {
 	line := "================================================================"
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, line)
 	fmt.Fprintln(w, "  AmneziaWG Web UI: admin password generated")
 	fmt.Fprintln(w, line)
 	fmt.Fprintf(w, "  User:      %s\n", user)
-	fmt.Fprintf(w, "  Password:  %s\n", password)
+	fmt.Fprintf(w, "  Password:  in %s (mode 0600), not in this log\n", path)
 	fmt.Fprintln(w)
-	fmt.Fprintln(w, "  This is shown once. Copy it now: only its argon2id hash is")
-	fmt.Fprintln(w, "  stored, in /etc/amnezia/admin.hash, and the password cannot be")
-	fmt.Fprintln(w, "  read back out of it.")
+	fmt.Fprintln(w, "  Read it with:")
+	fmt.Fprintf(w, "    docker compose exec app cat %s\n", path)
+	fmt.Fprintln(w)
+	fmt.Fprintln(w, "  The file is deleted as soon as a login succeeds. Only the")
+	fmt.Fprintln(w, "  argon2id hash stays on the volume, in /etc/amnezia/admin.hash,")
+	fmt.Fprintln(w, "  and the password cannot be read back out of it.")
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, "  To replace it with one of your own:")
 	fmt.Fprintf(w, "    docker compose exec app %s reset-password\n", programName())
@@ -103,8 +109,11 @@ func explainDefaultPassword(w io.Writer, path string) {
 	fmt.Fprintln(w, "type it. Pick one of these:")
 	fmt.Fprintln(w)
 	fmt.Fprintf(w, "  * remove WEB_UI_PASSWORD, delete %s if the volume has one, and let the\n", path)
-	fmt.Fprintln(w, "    panel generate a password on the next start (it prints it once):")
-	fmt.Fprintln(w, "      docker compose up -d && docker compose logs app")
+	fmt.Fprintln(w, "    panel generate a password on the next start (it writes it to")
+	fmt.Fprintln(w, "    /etc/amnezia/first-run-password, mode 0600, and deletes that file on")
+	fmt.Fprintln(w, "    the first login):")
+	fmt.Fprintln(w, "      docker compose up -d")
+	fmt.Fprintln(w, "      docker compose exec app cat /etc/amnezia/first-run-password")
 	fmt.Fprintln(w, "  * or, when the stored file is what holds the old password, replace it in")
 	fmt.Fprintln(w, "    place - a running panel adopts it within a second:")
 	fmt.Fprintf(w, "      docker compose exec app %s reset-password\n", programName())

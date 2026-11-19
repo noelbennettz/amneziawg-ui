@@ -15,10 +15,12 @@ import (
 	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/base64"
+	"log"
 	"net"
 	"net/url"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gofiber/fiber/v3"
@@ -80,6 +82,10 @@ type Auth struct {
 	limiter *limiter
 	// trustProxy makes the client address come from X-Forwarded-For.
 	trustProxy bool
+	// firstRunPassword is the file holding the first-start password in the
+	// clear; the first accepted credential deletes it.
+	firstRunPassword string
+	dropOnce         sync.Once
 	// totp is the optional second factor, nil when none is configured.
 	totp *totp.Key
 
@@ -141,6 +147,15 @@ func WithLoginRateLimit(enabled bool) Option {
 // attempt and walk straight past the limiter.
 func WithTrustProxy(enabled bool) Option {
 	return func(a *Auth) { a.trustProxy = enabled }
+}
+
+// WithFirstRunPassword names the file the first-start password was written to,
+// so that the first accepted credential deletes it. The plaintext is on the
+// config volume only until somebody has proved they have read it - a file that
+// stayed there would be a second copy of the password, in the clear, for as
+// long as the volume lives.
+func WithFirstRunPassword(path string) Option {
+	return func(a *Auth) { a.firstRunPassword = path }
 }
 
 // WithTOTP adds a second factor: the six digits an authenticator app holding
@@ -230,6 +245,9 @@ func (a *Auth) Check(user, password string) bool {
 	// is memory only: nothing is written anywhere.
 	cacheKey := a.verified.key(user, password)
 	if a.verified.get(cacheKey, generation, a.now()) {
+		if userOK {
+			a.dropFirstRunPassword()
+		}
 		return userOK
 	}
 
@@ -239,9 +257,27 @@ func (a *Auth) Check(user, password string) bool {
 
 	if userOK && passOK {
 		a.verified.put(cacheKey, generation, a.now())
+		a.dropFirstRunPassword()
 	}
 
 	return userOK && passOK
+}
+
+// dropFirstRunPassword deletes the file the first start left the generated
+// password in, once and only after a credential was accepted: a wrong password
+// must not be able to remove the operator's only way in. A failed delete is not
+// worth failing a login over - the password that just verified is proof enough
+// that the file has been read - so it is reported and the flag stays set.
+func (a *Auth) dropFirstRunPassword() {
+	a.dropOnce.Do(func() {
+		if err := adminpw.RemovePasswordFile(a.firstRunPassword); err != nil {
+			log.Printf("warning: could not remove the first-run password file %s: %v", a.firstRunPassword, err)
+			return
+		}
+		if a.firstRunPassword != "" {
+			log.Printf("first-run password file %s deleted: the login it held is now the one in admin.hash", a.firstRunPassword)
+		}
+	})
 }
 
 // Middleware rejects everything that carries neither a session cookie nor a
