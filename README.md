@@ -49,8 +49,9 @@ with `docker compose pull && docker compose up -d`.
 Check it came up:
 
 - `docker compose ps` shows `Up … (healthy)` within a minute.
-- `docker compose logs app` ends with `AmneziaWG Web UI (Go/Fiber) starting...`,
-  the environment block and the listening address.
+- `docker compose logs app` prints `AmneziaWG Web UI (Go/Fiber) starting...`,
+  then on the first start the banner with the generated password, the
+  `=== Environment Configuration ===` block, and finally `Listening on :54845`.
 - `curl -s http://127.0.0.1:54845/status` answers `Container Uptime: 0d 0h 0m 3s`
   without a login.
 - `http://<server-ip>:54845/` shows the login page; an empty server list, then
