@@ -150,12 +150,12 @@ are not compiled into the Go binary on the server side.
 | `golang.org/x/sys` | `v0.46.0` | BSD-3-Clause | https://cs.opensource.google/go/x/sys/+/v0.46.0:LICENSE |
 | `golang.org/x/text` | `v0.38.0` | BSD-3-Clause | https://cs.opensource.google/go/x/text/+/v0.38.0:LICENSE |
 
-## Licences outside the project's allowlist
+## Unlicense packages
 
 `.github/workflows/licences.yml` checks the Go modules against the allowlist
-Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, MIT. Two packages of the frontend
-module carry **Unlicense** (public-domain dedication, OSI-approved and
-GPL-compatible, but not in the allowlist):
+Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, MIT and **Unlicense**. Two packages
+of the frontend module are public-domain dedications under Unlicense
+(OSI-approved and GPL-compatible) and are the reason that entry exists:
 
 | Package | Version | Licence | Text |
 | --- | --- | --- | --- |
@@ -163,9 +163,11 @@ GPL-compatible, but not in the allowlist):
 | `github.com/go-text/typesetting` | `v0.3.4` | Unlicense (BSD-3-Clause, MIT for parts) | <https://github.com/go-text/typesetting/blob/v0.3.4/LICENSE> |
 
 Both arrive through `fyne.io/fyne/v2`, the GUI toolkit the frontend is built
-with, and neither is used by the server. No GPL-2.0-only code is linked into
-either Go binary: the GPL components in the image are the separate programs and
-scripts listed above, which the panel executes rather than links.
+with, and neither is used by the server. Removing them would mean dropping
+Fyne's text stack, so they are allowed and recorded here instead. No GPL-2.0-only
+code is linked into either Go binary: the GPL components in the image are the
+separate programs and scripts listed above, which the panel executes rather than
+links.
 
 ## Source
 

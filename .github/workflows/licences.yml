@@ -2,8 +2,13 @@ name: Licences
 
 # Checks the licence of every Go dependency the panel and its frontend are built
 # from against the project's allowlist: Apache-2.0, BSD-2-Clause, BSD-3-Clause,
-# ISC and MIT. THIRD_PARTY_NOTICES.md lists what else is in the image and why.
+# ISC, MIT and Unlicense. THIRD_PARTY_NOTICES.md lists what else is in the image
+# and why.
 #
+# Unlicense is on the list for one reason: fyne.io/fyne/v2 pulls in
+# github.com/go-text/{render,typesetting}, which are public-domain dedications
+# (OSI-approved and GPL-compatible). Removing them would mean dropping Fyne's
+# text stack, which the frontend needs; they are recorded in the notices.
 # go-licenses is pinned to an exact released version - v2.0.1, published
 # 2025-09-08 - so a new release cannot change the answer under the project's
 # feet. It is installed with "go install", not through an action, so nothing
@@ -20,7 +25,7 @@ permissions:
 
 env:
   # The allowlist, in one place so both modules use exactly the same one.
-  ALLOWED: Apache-2.0,BSD-2-Clause,BSD-3-Clause,ISC,MIT
+  ALLOWED: Apache-2.0,BSD-2-Clause,BSD-3-Clause,ISC,MIT,Unlicense
   GO_LICENSES_VERSION: v2.0.1
 
 jobs:
