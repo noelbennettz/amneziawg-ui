@@ -947,7 +947,8 @@ the two failures that happen before anything is logged by the panel itself.
 | `WEB_UI_SECURE_COOKIE` | *auto* | `true` marks every cookie `Secure`, `false` never does, unset follows the request and `X-Forwarded-Proto`. Behind a TLS proxy the container sees plain HTTP, so `true` (or a proxy that sends the header) is what makes the flag appear at all |
 | `WEB_UI_AUDIT_LOG` | `false` | Append logins, logouts and every change made through the API to `/etc/amnezia/audit.log`: time, address, user, route, status. Off by default — it records who reached the panel |
 | `WEB_UI_AUDIT_RETENTION_HOURS` | `24` | How long an entry stays in that file: a value below `1` is raised to `1`, one above `720` (30 days) is lowered to `720`, and anything that is not a number falls back to `24`. The file is swept at most once an hour, and rewritten atomically only when something has aged out |
-| `WEB_UI_LOGIN_RATE_LIMIT` | `false` | Five failed logins from one address block it for 15 minutes; the second block lasts 30, and each one after that doubles, up to 24 hours. A blocked address gets `429` and `Retry-After` on the login form, on the API and on a basic-auth header alike. Off by default — behind a proxy that does not forward the client address, every request looks like one address, and the limiter would lock the operator out along with the attacker |
+| `WEB_UI_LOGIN_RATE_LIMIT` | `true` | Five failed logins from one address block it for 15 minutes; the second block lasts 30, and each one after that doubles, up to 24 hours. A blocked address gets `429` and `Retry-After` on the login form, on the API and on a basic-auth header alike. On by default; `false` turns it off, which is the right setting only behind a proxy that does not forward the client address — every request then looks like one address, and the limiter would lock the operator out along with the attacker. Any value other than `false`/`0`/`no`/`off` leaves it on |
+| `WEB_UI_TOTP_SECRET` | *unset* | Optional second factor: the base32 secret an authenticator app is given (grouping spaces and dashes are accepted). When set, the login form draws an authentication-code field, and a Basic credential has to carry the six digits in `X-TOTP-Code`. A code is accepted in its own 30-second step and one step either side. A secret that is not valid base32, or shorter than 80 bits, stops the container at startup |
 | `WEB_UI_TRUST_PROXY` | `false` | Take the client address from `X-Forwarded-For` instead of the connection: the left-most entry, and only when it parses as an IP. It feeds the limiter and the audit log. Only turn it on when every request arrives through a proxy that appends the address it saw — a client that can reach the panel directly sets that header itself, and a limiter counting a value the attacker picks is no limiter |
 | `WEB_UI_PPROF` | `false` | Enables the profiler at `/debug/pprof` (behind the same login). Parsed as a boolean (`1`, `true`, `t`); anything else is "off" |
 | `AUTO_START_SERVERS` | `true` | Bring servers up automatically: on container start, and for a server created in the panel — the form's "Auto-start server on creation" switch defaults to it |
@@ -1404,6 +1405,43 @@ cookie and redirects to `next`. A `next` that points at another host is ignored
 and the browser goes to `/` instead, so the form cannot be used as an open
 redirect.
 
+### The second factor
+
+With `WEB_UI_TOTP_SECRET` set, the same page draws one more field and the
+password alone is no longer a login. The secret is base32 — the string an
+authenticator app is given — and `internal/totp` derives the six digits itself:
+RFC 6238 on RFC 4226, HMAC-SHA1, a 30-second step, and no dependency beyond the
+standard library. A code is accepted in its own step and one step either side,
+which is the window a phone and a container need when nobody synchronised their
+clocks.
+
+A Basic credential cannot open a second form, so the code travels in a header:
+
+```bash
+curl -u admin:<password> -H "X-TOTP-Code: 123456" https://panel.example/api/servers
+```
+
+A wrong code is a failed login: it counts against the address, is audited, and
+the page says *Incorrect username, password or authentication code.* — the panel
+does not say which half was wrong, because that would tell somebody guessing
+passwords when they had found the right one. A secret that is not base32, or is
+shorter than 80 bits, stops the container at startup rather than leaving a
+factor nobody can produce.
+
+### The login limiter
+
+Five failures from one address inside fifteen minutes block it: the first block
+lasts fifteen minutes, and each one after that doubles, up to a day. It is on by
+default. A blocked address gets `429` with `Retry-After` on the form, on the API
+and on a refused Basic header alike; a request that is already authenticated
+never consults it, so a working session cannot be locked out by somebody sharing
+its address. `WEB_UI_LOGIN_RATE_LIMIT=false` turns it off — the setting for a
+deployment behind a proxy that does not forward the client address, where every
+request looks like one address and the limiter would lock the operator out
+along with the attacker. `WEB_UI_TRUST_PROXY=true` is the other way out: with it
+the address is read from `X-Forwarded-For`, which is only safe when a proxy in
+front of the panel appends it.
+
 ## The session cookie
 
 The cookie is called `awg_session`, is `HttpOnly` and `SameSite=Strict` (no other
@@ -1531,8 +1569,9 @@ credential dialog and always gets the login page instead.
 > I strongly recommend restricting access to the panel with a firewall and/or a
 > TLS-terminating reverse proxy in front of the container.
 > A login form and a 12-hour cookie are no substitute for TLS, and a password is
-> still worth brute-forcing — `WEB_UI_LOGIN_RATE_LIMIT=true` makes guessing
-> expensive per address, and it is off by default (see the table above for why).
+> still worth brute-forcing — `WEB_UI_LOGIN_RATE_LIMIT` is on by default and
+> makes guessing expensive per address (turn it off only when a proxy hides the
+> client address), and `WEB_UI_TOTP_SECRET` adds a second factor.
 
 The user is `admin` unless `WEB_UI_USER` says otherwise, and the password is
 the one generated on the first start until you replace it - with

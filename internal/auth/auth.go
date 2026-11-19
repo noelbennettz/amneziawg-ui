@@ -26,6 +26,7 @@ import (
 	"amneziawg-web-ui/internal/adminpw"
 	"amneziawg-web-ui/internal/audit"
 	"amneziawg-web-ui/internal/config"
+	"amneziawg-web-ui/internal/totp"
 	"amneziawg-web-ui/web-ui/api"
 )
 
@@ -41,6 +42,12 @@ const (
 	// CookieName is the session cookie. Nothing else in the panel sets a
 	// cookie, so the name needs no prefix.
 	CookieName = "awg_session"
+	// TOTPHeader carries the second factor of a Basic credential. A script
+	// keeps sending its header on every request; a six-digit code that has
+	// to be regenerated per request would make "curl -u" unusable, so the
+	// code is a header of its own, and the panel accepts it in the ±1 step
+	// window internal/totp defines.
+	TOTPHeader = "X-TOTP-Code"
 	// SessionTTL is how long a login lasts. It is deliberately short enough
 	// that a stolen cookie ages out on its own, and long enough not to
 	// interrupt a working day.
@@ -73,6 +80,8 @@ type Auth struct {
 	limiter *limiter
 	// trustProxy makes the client address come from X-Forwarded-For.
 	trustProxy bool
+	// totp is the optional second factor, nil when none is configured.
+	totp *totp.Key
 
 	// sem bounds how many verifications run at once. argon2id is deliberate
 	// about memory - 19 MiB per hash - and a script that polls the REST API
@@ -132,6 +141,14 @@ func WithLoginRateLimit(enabled bool) Option {
 // attempt and walk straight past the limiter.
 func WithTrustProxy(enabled bool) Option {
 	return func(a *Auth) { a.trustProxy = enabled }
+}
+
+// WithTOTP adds a second factor: the six digits an authenticator app holding
+// the same secret shows, required by the login form and, for a Basic
+// credential, in the X-TOTP-Code header. A nil key leaves the panel
+// password-only.
+func WithTOTP(key *totp.Key) Option {
+	return func(a *Auth) { a.totp = key }
 }
 
 // clientIP is the address the limiter counts and the audit log records.
@@ -322,7 +339,25 @@ func (a *Auth) basicValid(c fiber.Ctx) bool {
 	if !ok {
 		return false
 	}
-	return a.Check(user, password)
+	if !a.Check(user, password) {
+		return false
+	}
+
+	// The password was right; the second factor is checked after it, so a
+	// wrong code costs nothing to refuse and does not tell an attacker that
+	// the password they tried was the right one.
+	return a.secondFactorValid(c.Get(TOTPHeader))
+}
+
+// secondFactorValid reports whether code passes the second factor. With no
+// secret configured there is nothing to pass, and the check is a nil test: the
+// password is the whole of the credential, as it has always been.
+func (a *Auth) secondFactorValid(code string) bool {
+	if a.totp == nil {
+		return true
+	}
+
+	return a.totp.Verify(code, a.now())
 }
 
 // public lists the paths that need no credentials.

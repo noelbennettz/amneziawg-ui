@@ -205,6 +205,14 @@
 				<label for="password">{{.Text.Password}}</label>
 				<input id="password" name="password" type="password" autocomplete="current-password" required>
 			</div>
+			{{if .TOTP}}
+			<div class="field">
+				<label for="totp">{{.Text.Code}}</label>
+				<input id="totp" name="totp" type="text" inputmode="numeric" pattern="[0-9]*"
+					autocomplete="one-time-code" autocapitalize="none" autocorrect="off"
+					spellcheck="false" maxlength="6" required>
+			</div>
+			{{end}}
 			<button type="submit">{{.Text.SignIn}}</button>
 		</form>
 		<p class="source">

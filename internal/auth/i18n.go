@@ -14,8 +14,14 @@ type loginText struct {
 	Lang     string
 	Username string
 	Password string
-	SignIn   string
-	Error    string
+	// Code labels the second factor's field. It is only drawn when a secret
+	// is configured.
+	Code   string
+	SignIn string
+	Error  string
+	// ErrorCode is the failure message when a second factor is configured:
+	// the panel does not say which of the two halves was wrong.
+	ErrorCode string
 	// TooMany is what a blocked address is shown instead: the limit is not a
 	// wrong password, and telling somebody their password is wrong when it is
 	// not sends them looking for a problem that does not exist.
@@ -28,34 +34,40 @@ type loginText struct {
 // the comment on TestTranslationsPickTheMatchingLanguage in web-ui.
 var loginTexts = map[string]loginText{
 	"en": {
-		Lang: "en", Username: "Username", Password: "Password", SignIn: "Sign in",
-		Error:   "Incorrect username or password.",
-		TooMany: "Too many failed logins. Try again later.",
+		Lang: "en", Username: "Username", Password: "Password", Code: "Authentication code", SignIn: "Sign in",
+		Error:     "Incorrect username or password.",
+		ErrorCode: "Incorrect username, password or authentication code.",
+		TooMany:   "Too many failed logins. Try again later.",
 	},
 	"ru": {
-		Lang: "ru", Username: "Имя пользователя", Password: "Пароль", SignIn: "Войти",
-		Error:   "Неверное имя пользователя или пароль.",
-		TooMany: "Слишком много неудачных попыток входа. Попробуйте позже.",
+		Lang: "ru", Username: "Имя пользователя", Password: "Пароль", Code: "Код подтверждения", SignIn: "Войти",
+		Error:     "Неверное имя пользователя или пароль.",
+		ErrorCode: "Неверное имя пользователя, пароль или код подтверждения.",
+		TooMany:   "Слишком много неудачных попыток входа. Попробуйте позже.",
 	},
 	"fr": {
-		Lang: "fr", Username: "Nom d'utilisateur", Password: "Mot de passe", SignIn: "Se connecter",
-		Error:   "Nom d'utilisateur ou mot de passe incorrect.",
-		TooMany: "Trop de tentatives de connexion échouées. Réessayez plus tard.",
+		Lang: "fr", Username: "Nom d'utilisateur", Password: "Mot de passe", Code: "Code d'authentification", SignIn: "Se connecter",
+		Error:     "Nom d'utilisateur ou mot de passe incorrect.",
+		ErrorCode: "Nom d'utilisateur, mot de passe ou code d'authentification incorrect.",
+		TooMany:   "Trop de tentatives de connexion échouées. Réessayez plus tard.",
 	},
 	"es": {
-		Lang: "es", Username: "Usuario", Password: "Contraseña", SignIn: "Iniciar sesión",
-		Error:   "Usuario o contraseña incorrectos.",
-		TooMany: "Demasiados intentos de inicio de sesión fallidos. Inténtalo más tarde.",
+		Lang: "es", Username: "Usuario", Password: "Contraseña", Code: "Código de autenticación", SignIn: "Iniciar sesión",
+		Error:     "Usuario o contraseña incorrectos.",
+		ErrorCode: "Usuario, contraseña o código de autenticación incorrectos.",
+		TooMany:   "Demasiados intentos de inicio de sesión fallidos. Inténtalo más tarde.",
 	},
 	"zh-Hans": {
-		Lang: "zh-Hans", Username: "用户名", Password: "密码", SignIn: "登录",
-		Error:   "用户名或密码不正确。",
-		TooMany: "登录失败次数过多，请稍后再试。",
+		Lang: "zh-Hans", Username: "用户名", Password: "密码", Code: "验证码", SignIn: "登录",
+		Error:     "用户名或密码不正确。",
+		ErrorCode: "用户名、密码或验证码不正确。",
+		TooMany:   "登录失败次数过多，请稍后再试。",
 	},
 	"zh-TW": {
-		Lang: "zh-TW", Username: "使用者名稱", Password: "密碼", SignIn: "登入",
-		Error:   "使用者名稱或密碼不正確。",
-		TooMany: "登入失敗次數過多，請稍後再試。",
+		Lang: "zh-TW", Username: "使用者名稱", Password: "密碼", Code: "驗證碼", SignIn: "登入",
+		Error:     "使用者名稱或密碼不正確。",
+		ErrorCode: "使用者名稱、密碼或驗證碼不正確。",
+		TooMany:   "登入失敗次數過多，請稍後再試。",
 	},
 }
 

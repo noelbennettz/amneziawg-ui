@@ -87,17 +87,23 @@ How the panel addresses that model:
 
 Written down rather than left to be discovered:
 
-* **Rate limiting is opt-in.** `WEB_UI_LOGIN_RATE_LIMIT=true` blocks an address
-  for 15 minutes after five failed logins, doubling on each further block. It is
-  off by default because, behind a proxy that does not forward the client
-  address, every request looks like the proxy's address — and then the limiter
-  locks the operator out along with whoever is guessing. `WEB_UI_TRUST_PROXY=true`
-  is the other half of that: the client address is then read from
-  `X-Forwarded-For`, which is only safe when every request really does arrive
-  through a proxy.
+* **Rate limiting is per address, and on by default.** Five failed logins block
+  the address for 15 minutes, doubling on each further block up to a day.
+  `WEB_UI_LOGIN_RATE_LIMIT=false` turns it off, which is the right setting behind
+  a proxy that does not forward the client address — every request there looks
+  like the proxy's address, and the limiter would lock the operator out along
+  with whoever is guessing. `WEB_UI_TRUST_PROXY=true` is the other way out: the
+  client address is then read from `X-Forwarded-For`, which is only safe when
+  every request really does arrive through a proxy.
   It is per-address only: five guesses from five addresses are not slowed down
   at all.
-* **No second factor.** There is no TOTP, no WebAuthn.
+* **The second factor is optional and time-based.** `WEB_UI_TOTP_SECRET` turns on
+  a six-digit TOTP (RFC 6238, HMAC-SHA1, 30-second step, code accepted one step
+  either side) in the login form and in an `X-TOTP-Code` header for Basic
+  credentials. There is no WebAuthn, no recovery codes and one account, so the
+  secret in the environment (or in the compose file) is the whole of the second
+  factor's storage; a code is not single-use across the ±1 step window, which is
+  the compromise that keeps `curl -u` usable.
 * **The generated password is printed to the container log.** It is the only
   copy — the volume holds just the hash — so anyone who can read `docker logs`
   during or after the first start can read it, and it stays there until the log

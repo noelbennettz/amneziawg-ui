@@ -59,10 +59,16 @@ services:
       # WEB_UI_AUDIT_LOG: "true"
       # WEB_UI_AUDIT_RETENTION_HOURS: "24"
       # Five wrong passwords from one address block it for 15 minutes, doubling
-      # afterwards. Only with WEB_UI_TRUST_PROXY, and only behind a proxy that
-      # appends the client address, or everyone looks like one address.
-      # WEB_UI_LOGIN_RATE_LIMIT: "true"
+      # afterwards. On by default; turn it off only behind a proxy that hides
+      # the client address, or everyone looks like one address.
+      # WEB_UI_LOGIN_RATE_LIMIT: "false"
+      # The other way out: take the address from X-Forwarded-For. Only behind a
+      # proxy that appends it.
       # WEB_UI_TRUST_PROXY: "true"
+      # Optional second factor: the base32 secret an authenticator app is given.
+      # Adds an authentication-code field to the login form, and X-TOTP-Code to
+      # Basic credentials.
+      # WEB_UI_TOTP_SECRET: "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ"
       # Profiler at /debug/pprof, behind the same login.
       # WEB_UI_PPROF: "true"
       # Defaults for servers created in the panel. Each server can override them.

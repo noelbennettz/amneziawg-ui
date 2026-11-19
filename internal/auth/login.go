@@ -32,11 +32,16 @@ type pageData struct {
 	Next string
 	// CSRF is the double-submit token the form carries back.
 	CSRF string
-	// Failed is set after a wrong pair, and puts the error above the form.
+	// Failed is set after a wrong credential, and puts the error above the
+	// form.
 	Failed bool
 	// RateLimited is set when the address has failed too often, and shows the
 	// wait instead of the wrong-password message.
 	RateLimited bool
+	// TOTP draws the authentication-code field, and selects the failure
+	// message that mentions it. Set from the guard, not by the handler: the
+	// form is only offered a second field when there is a second factor.
+	TOTP bool
 	// Text is the page's wording, in the language the browser asked for.
 	Text loginText
 }
@@ -108,6 +113,28 @@ func (a *Auth) submitLogin(c fiber.Ctx) error {
 		})
 	}
 
+	// The second factor, when one is configured. A wrong code is a failed
+	// login like any other: it counts against the address, is audited, and
+	// the page says the credential was wrong without saying which half of it
+	// was - the person who mistyped their own code knows, and anybody else
+	// learns nothing.
+	if !a.secondFactorValid(c.FormValue("totp")) {
+		a.limiter.fail(a.clientIP(c))
+		a.audit.Record(audit.Event{
+			Event:  audit.EventLoginFailed,
+			User:   user,
+			IP:     a.clientIP(c),
+			Method: c.Method(),
+			Path:   c.Path(),
+			Status: fiber.StatusUnauthorized,
+		})
+		return a.render(c, fiber.StatusUnauthorized, pageData{
+			Next:   next,
+			CSRF:   a.csrfToken(c),
+			Failed: true,
+		})
+	}
+
 	a.audit.Record(audit.Event{
 		Event:  audit.EventLogin,
 		User:   a.user,
@@ -148,6 +175,14 @@ func (a *Auth) logout(c fiber.Ctx) error {
 // asked for.
 func (a *Auth) render(c fiber.Ctx, status int, data pageData) error {
 	data.Text = loginTextFor(c.Get(fiber.HeaderAcceptLanguage))
+	// The second factor is a property of the guard, not of the caller: every
+	// render decides it here, so a failure page can never offer a field the
+	// panel does not check, or hide one it does.
+	if data.TOTP = a.totp != nil; data.TOTP {
+		// One message for the pair: saying which half was wrong would tell
+		// somebody guessing passwords when they had found the right one.
+		data.Text.Error = data.Text.ErrorCode
+	}
 
 	var page bytes.Buffer
 	if err := loginTemplate.Execute(&page, data); err != nil {
