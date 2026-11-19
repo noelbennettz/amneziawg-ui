@@ -1,14 +1,15 @@
 name: Licences
 
 # Checks the licence of every Go dependency the panel and its frontend are built
-# from against the project's allowlist: Apache-2.0, BSD-2-Clause, BSD-3-Clause,
-# ISC, MIT and Unlicense. THIRD_PARTY_NOTICES.md lists what else is in the image
-# and why.
+# from. scripts/check-licences.sh runs go-licenses with a strict allowlist -
+# Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, MIT - and then audits the one
+# exception by name and version: fyne.io/fyne/v2 pulls in
+# github.com/go-text/{render,typesetting}, which are Unlicense (public-domain
+# dedications, OSI-approved and GPL-compatible). Unlicense is not on the
+# allowlist: those two modules are ignored by the strict check and matched
+# against the pair the script names, so a third Unlicense package - or either of
+# these at another version - fails. THIRD_PARTY_NOTICES.md records the reason.
 #
-# Unlicense is on the list for one reason: fyne.io/fyne/v2 pulls in
-# github.com/go-text/{render,typesetting}, which are public-domain dedications
-# (OSI-approved and GPL-compatible). Removing them would mean dropping Fyne's
-# text stack, which the frontend needs; they are recorded in the notices.
 # go-licenses is pinned to an exact released version - v2.0.1, published
 # 2025-09-08 - so a new release cannot change the answer under the project's
 # feet. It is installed with "go install", not through an action, so nothing
@@ -24,8 +25,6 @@ permissions:
   contents: read
 
 env:
-  # The allowlist, in one place so both modules use exactly the same one.
-  ALLOWED: Apache-2.0,BSD-2-Clause,BSD-3-Clause,ISC,MIT,Unlicense
   GO_LICENSES_VERSION: v2.0.1
 
 jobs:
@@ -45,33 +44,8 @@ jobs:
       - name: Install go-licenses
         run: go install "github.com/google/go-licenses/v2@${GO_LICENSES_VERSION}"
 
-      # The project's own packages are ignored: the panel is AGPL-3.0, which is
-      # not on the list because the list is about what the panel links, not
-      # about what it is.
-      - name: Check the server's dependencies
-        run: |
-          "$(go env GOPATH)/bin/go-licenses" check ./... \
-            --allowed_licenses="${ALLOWED}" \
-            --ignore amneziawg-web-ui
-
-      # The frontend is its own module (web-ui/go.mod) and is compiled into the
-      # WebAssembly bundle the image serves, so its dependencies ship with the
-      # image just as the server's do.
-      - name: Check the frontend's dependencies
-        working-directory: web-ui
-        run: |
-          "$(go env GOPATH)/bin/go-licenses" check ./... \
-            --allowed_licenses="${ALLOWED}" \
-            --ignore amneziawg-web-ui/web-ui
-
-      # A dependency that ships no licence at all is not "allowed" - it is
-      # unknown, and go-licenses fails on it above. This step only reports the
-      # inventory, so a reviewer can see what changed without reading a diff of
-      # go.sum.
-      - name: Report the inventory
-        run: |
-          bin="$(go env GOPATH)/bin/go-licenses"
-          echo "== server =="
-          "${bin}" report ./... 2>/dev/null | { grep -v '^amneziawg-web-ui' || true; }
-          echo "== frontend =="
-          ( cd web-ui && "${bin}" report ./... 2>/dev/null ) | { grep -v '^amneziawg-web-ui' || true; }
+      # The script covers both modules (the server's and the frontend's, which
+      # is compiled into the WebAssembly bundle and therefore ships too), the
+      # strict allowlist, the Unlicense exception and the inventory.
+      - name: Check every module
+        run: scripts/check-licences.sh
