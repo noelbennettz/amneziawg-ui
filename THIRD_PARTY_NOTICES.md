@@ -152,15 +152,23 @@ are not compiled into the Go binary on the server side.
 
 ## Unlicense packages
 
-`.github/workflows/licences.yml` checks the Go modules against the allowlist
-Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, MIT and **Unlicense**. Two packages
-of the frontend module are public-domain dedications under Unlicense
-(OSI-approved and GPL-compatible) and are the reason that entry exists:
+`scripts/check-licences.sh` - run by `.github/workflows/licences.yml` - checks the
+Go modules against the strict allowlist Apache-2.0, BSD-2-Clause, BSD-3-Clause,
+ISC, MIT. Unlicense is **not** on that list. Two packages of the frontend module
+are public-domain dedications under Unlicense (OSI-approved and GPL-compatible),
+and they are the one exception, named with their versions in the script:
 
 | Package | Version | Licence | Text |
 | --- | --- | --- | --- |
 | `github.com/go-text/render` | `v0.2.1` | Unlicense (BSD-3-Clause for parts) | <https://github.com/go-text/render/blob/v0.2.1/LICENSE> |
 | `github.com/go-text/typesetting` | `v0.3.4` | Unlicense (BSD-3-Clause, MIT for parts) | <https://github.com/go-text/typesetting/blob/v0.3.4/LICENSE> |
+
+The strict check runs with exactly those two module paths ignored; the script
+then reads go-licenses' report and fails if any other package is marked
+Unlicense, if either of these two is at a version the script does not name, or
+if one of them has stopped being a dependency and the exception has gone stale.
+Bumping a version means editing the pair in the script and this table in the
+same commit.
 
 Both arrive through `fyne.io/fyne/v2`, the GUI toolkit the frontend is built
 with, and neither is used by the server. Removing them would mean dropping

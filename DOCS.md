@@ -410,6 +410,7 @@ make build         # make web-ui + go build -o server.bin . — a build without 
 make build-server  # the binary only; it serves the bundle already in web-ui/wasm
 make web-ui        # rebuild only the WebAssembly bundle into web-ui/wasm
 make vet           # go vet ./... over every module (web-ui under GOOS=js GOARCH=wasm, plus e2e)
+make licences      # the licence gate: strict allowlist + the named Unlicense exception (needs go-licenses)
 make run           # docker compose -f docker-compose.yml -f docker-compose.build.yml up --build
                    # builds the full image from source (the Go binary + amneziawg-go + amneziawg-tools) and runs it
 make exec          # a shell inside the running container

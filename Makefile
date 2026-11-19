@@ -250,6 +250,12 @@ vet: check-go ## Run go vet over every module
 	cd web-ui && GOOS=js GOARCH=wasm go vet ./...
 	cd e2e && go vet ./...
 
+# The licence gate CI runs: a strict allowlist for every Go dependency, plus the
+# one named Unlicense exception for Fyne's text stack (see the script).
+.PHONY: licences
+licences: check-go ## Check every Go dependency's licence (needs go-licenses)
+	scripts/check-licences.sh
+
 .PHONY: fix
 fix: check-go ## Run go fix
 	go fix ./...
