@@ -137,6 +137,18 @@ RUN apk add --no-cache \
 
 RUN mkdir -p /var/log/amnezia /etc/amnezia/amneziawg
 
+# Licence texts. The project's own licence, the inventory of everything else in
+# the image, the font, and the two upstreams the image builds from source - read
+# out of their clones at the pinned tags rather than copied in by hand.
+#
+# The Alpine packages state their licence in /lib/apk/db/installed and do not
+# install the text; THIRD_PARTY_NOTICES.md names each one with its upstream.
+RUN mkdir -p /usr/share/doc/amneziawg-ui
+COPY LICENSE THIRD_PARTY_NOTICES.md /usr/share/doc/amneziawg-ui/
+COPY web-ui/internal/ui/style/font/LICENSE-OFL.txt /usr/share/doc/amneziawg-ui/NotoSansSC-OFL.txt
+COPY --from=awg /build/amneziawg-go/LICENSE /usr/share/doc/amneziawg-ui/amneziawg-go.LICENSE
+COPY --from=awg-tools /build/amneziawg-tools/COPYING /usr/share/doc/amneziawg-ui/amneziawg-tools.COPYING
+
 COPY --from=awg /usr/bin/amneziawg-go /usr/bin/proxy
 COPY --from=awg-tools /usr/bin/awg /usr/bin/awg
 COPY --from=awg-tools /usr/bin/awg-quick /usr/bin/awg-quick

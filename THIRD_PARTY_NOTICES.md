@@ -1,0 +1,176 @@
+# Third-party notices
+
+The AmneziaWG Web UI image is a single container that carries the panel, the
+AmneziaWG engine it drives, the command-line tools that engine needs, and the
+Alpine Linux userland around them. This file lists every third-party component
+in it, with the version, the licence as its own upstream or its own package
+states it, and where its source is.
+
+It is an inventory, not legal advice.
+
+## What the image ships, and where the licence texts are
+
+Licence texts the project can redistribute are installed in the image under
+`/usr/share/doc/amneziawg-ui/`:
+
+| File | What it is |
+| --- | --- |
+| `LICENSE` | The project's own licence, AGPL-3.0 |
+| `THIRD_PARTY_NOTICES.md` | This file |
+| `amneziawg-go.LICENSE` | MIT, from `amneziawg-go` at the pinned tag |
+| `amneziawg-tools.COPYING` | GPL-2.0, from `amneziawg-tools` at the pinned tag |
+| `NotoSansSC-OFL.txt` | SIL Open Font License 1.1, for the Chinese text face bundled into the WebAssembly frontend (`web-ui/internal/ui/style/font/LICENSE-OFL.txt`) |
+
+Alpine packages carry their licence in the package database
+(`/lib/apk/db/installed`) but do not install the licence text, so those texts
+are **not** in the image: the table below names the package, its declared
+licence and its upstream, which is where the text comes from. `apk info -a
+<pkg>` in a running container prints the same declaration.
+
+## Components built from source
+
+| Component | Version | Licence | Source |
+| --- | --- | --- | --- |
+| AmneziaWG Web UI (`/usr/bin/api`, the frontend under `/app/web-ui/wasm`) | the image's build, see the dated tag | AGPL-3.0 | this repository |
+| amneziawg-go (`/usr/bin/proxy`, the userspace tunnel engine) | `v3.1.20260828` | MIT | <https://github.com/amnezia-vpn/amneziawg-go/tree/v3.1.20260828> |
+| amneziawg-tools, `awg` and `awg-quick` (`/usr/bin/awg`, `/usr/bin/awg-quick`) | `v3.1.20260812` | GPL-2.0 | <https://github.com/amnezia-vpn/amneziawg-tools/tree/v3.1.20260812> |
+| Noto Sans SC (regular and bold, compiled into the frontend bundle) | as vendored in `web-ui/internal/ui/style/font/` | OFL-1.1 | <https://github.com/notofonts/noto-cjk> |
+
+`amneziawg-go` is a pure-Go program started as its own process, and `awg` /
+`awg-quick` are separate C and bash programs the panel executes: none of them is
+linked into the panel's own binary. The panel speaks to them over the same
+command line an operator would use.
+
+## Alpine Linux packages
+
+Base image `alpine:3.24.1`. The versions are those the pinned packages resolve
+to in that release (`iptables~1.8`, `iptables-legacy~1.8`, `bash~5.3`,
+`iproute2-minimal~7.0`, `openresolv~3.17`, `tini~0.19`, plus what the base image
+and their dependencies bring), read out of `/lib/apk/db/installed` in a built
+image. The licence is the package's own declared SPDX expression, which is why
+some rows carry more than one.
+
+| Package | Version | Licence | Upstream |
+| --- | --- | --- | --- |
+| `alpine-baselayout` | `3.7.2-r1` | GPL-2.0-only | https://gitlab.alpinelinux.org/alpine/aports/-/tree/master/main/alpine-baselayout |
+| `alpine-baselayout-data` | `3.7.2-r1` | GPL-2.0-only | https://gitlab.alpinelinux.org/alpine/aports/-/tree/master/main/alpine-baselayout |
+| `alpine-keys` | `2.6-r0` | MIT | https://alpinelinux.org |
+| `alpine-release` | `3.24.1-r0` | MIT | https://alpinelinux.org |
+| `apk-tools` | `3.0.6-r0` | GPL-2.0-only | https://gitlab.alpinelinux.org/alpine/apk-tools |
+| `bash` | `5.3.9-r1` | GPL-3.0-or-later | https://www.gnu.org/software/bash/bash.html |
+| `busybox` | `1.37.0-r31` | GPL-2.0-only | https://busybox.net/ |
+| `busybox-binsh` | `1.37.0-r31` | GPL-2.0-only | https://busybox.net/ |
+| `ca-certificates-bundle` | `20260611-r0` | MPL-2.0 AND MIT | https://www.mozilla.org/en-US/about/governance/policies/security-group/certs/ |
+| `iproute2-minimal` | `7.0.0-r0` | GPL-2.0-or-later | https://wiki.linuxfoundation.org/networking/iproute2 |
+| `iptables` | `1.8.13-r0` | GPL-2.0-or-later | https://www.netfilter.org/projects/iptables/index.html |
+| `iptables-legacy` | `1.8.13-r0` | GPL-2.0-or-later | https://www.netfilter.org/projects/iptables/index.html |
+| `libapk` | `3.0.6-r0` | GPL-2.0-only | https://gitlab.alpinelinux.org/alpine/apk-tools |
+| `libcap2` | `2.78-r0` | BSD-3-Clause OR GPL-2.0-only | https://sites.google.com/site/fullycapable/ |
+| `libcrypto3` | `3.5.7-r0` | Apache-2.0 | https://www.openssl.org/ |
+| `libelf` | `0.195-r0` | GPL-3.0-or-later AND ( GPL-2.0-or-later OR LGPL-3.0-or-later ) | https://sourceware.org/elfutils/ |
+| `libip4tc` | `1.8.13-r0` | GPL-2.0-or-later | https://www.netfilter.org/projects/iptables/index.html |
+| `libip6tc` | `1.8.13-r0` | GPL-2.0-or-later | https://www.netfilter.org/projects/iptables/index.html |
+| `libmnl` | `1.0.5-r2` | LGPL-2.1-or-later | https://www.netfilter.org/projects/libmnl/ |
+| `libncursesw` | `6.6_p20260516-r0` | X11 | https://invisible-island.net/ncurses/ |
+| `libnftnl` | `1.3.1-r0` | GPL-2.0-or-later | https://netfilter.org/projects/libnftnl |
+| `libssl3` | `3.5.7-r0` | Apache-2.0 | https://www.openssl.org/ |
+| `libxtables` | `1.8.13-r0` | GPL-2.0-or-later | https://www.netfilter.org/projects/iptables/index.html |
+| `musl` | `1.2.6-r2` | MIT | https://musl.libc.org/ |
+| `musl-utils` | `1.2.6-r2` | MIT AND BSD-2-Clause AND GPL-2.0-or-later | https://musl.libc.org/ |
+| `ncurses-terminfo-base` | `6.6_p20260516-r0` | X11 | https://invisible-island.net/ncurses/ |
+| `openresolv` | `3.17.4-r0` | BSD-2-Clause | https://roy.marples.name/projects/openresolv |
+| `readline` | `8.3.3-r1` | GPL-3.0-or-later | https://tiswww.cwru.edu/php/chet/readline/rltop.html |
+| `scanelf` | `1.3.9-r1` | GPL-2.0-only | https://wiki.gentoo.org/wiki/Hardened/PaX_Utilities |
+| `ssl_client` | `1.37.0-r31` | GPL-2.0-only | https://busybox.net/ |
+| `tini` | `0.19.0-r3` | MIT | https://github.com/krallin/tini |
+| `zlib` | `1.3.2-r0` | Zlib | https://zlib.net/ |
+| `zstd-libs` | `1.5.7-r2` | BSD-3-Clause OR GPL-2.0-or-later | https://facebook.github.io/zstd/ |
+
+## Go modules in the server binary
+
+Read from `go.mod` (`go list -m all`) and the licence each module's own files
+state (`go-licenses report`). All of these are linked into `/usr/bin/api`.
+
+| Module | Version | Licence | Licence text |
+| --- | --- | --- | --- |
+| `github.com/andybalholm/brotli` | `v1.2.2` | BSD-3-Clause AND MIT | https://github.com/andybalholm/brotli/blob/v1.2.2/LICENSE |
+| `github.com/gofiber/fiber/v3` | `v3.5.0` | MIT | https://github.com/gofiber/fiber/blob/v3.5.0/LICENSE |
+| `github.com/gofiber/schema` | `v1.8.3` | BSD-3-Clause | https://github.com/gofiber/schema/blob/v1.8.3/LICENSE |
+| `github.com/gofiber/utils/v2` | `v2.4.1` | MIT | https://github.com/gofiber/utils/blob/v2.4.1/LICENSE |
+| `github.com/google/uuid` | `v1.6.0` | BSD-3-Clause | https://github.com/google/uuid/blob/v1.6.0/LICENSE |
+| `github.com/klauspost/compress` | `v1.19.2` | Apache-2.0 AND BSD-3-Clause AND MIT | https://github.com/klauspost/compress/blob/v1.19.2/LICENSE |
+| `github.com/mattn/go-colorable` | `v0.1.15` | MIT | https://github.com/mattn/go-colorable/blob/v0.1.15/LICENSE |
+| `github.com/mattn/go-isatty` | `v0.0.24` | MIT | https://github.com/mattn/go-isatty/blob/v0.0.24/LICENSE |
+| `github.com/philhofer/fwd` | `v1.2.0` | MIT | https://github.com/philhofer/fwd/blob/v1.2.0/LICENSE.md |
+| `github.com/shirou/gopsutil/v4` | `v4.26.8` | BSD-3-Clause | https://github.com/shirou/gopsutil/blob/v4.26.8/LICENSE |
+| `github.com/tinylib/msgp` | `v1.6.4` | MIT | https://github.com/tinylib/msgp/blob/v1.6.4/LICENSE |
+| `github.com/tklauser/go-sysconf` | `v0.3.16` | BSD-3-Clause | https://github.com/tklauser/go-sysconf/blob/v0.3.16/LICENSE |
+| `github.com/tklauser/numcpus` | `v0.11.0` | Apache-2.0 | https://github.com/tklauser/numcpus/blob/v0.11.0/LICENSE |
+| `github.com/valyala/bytebufferpool` | `v1.0.0` | MIT | https://github.com/valyala/bytebufferpool/blob/v1.0.0/LICENSE |
+| `github.com/valyala/fasthttp` | `v1.73.0` | MIT | https://github.com/valyala/fasthttp/blob/v1.73.0/LICENSE |
+| `golang.org/x/crypto` | `v0.54.0` | BSD-3-Clause | https://cs.opensource.google/go/x/crypto/+/v0.54.0:LICENSE |
+| `golang.org/x/net` | `v0.57.0` | BSD-3-Clause | https://cs.opensource.google/go/x/net/+/v0.57.0:LICENSE |
+| `golang.org/x/sys` | `v0.47.0` | BSD-3-Clause | https://cs.opensource.google/go/x/sys/+/v0.47.0:LICENSE |
+| `golang.org/x/text` | `v0.40.0` | BSD-3-Clause | https://cs.opensource.google/go/x/text/+/v0.40.0:LICENSE |
+
+## Go modules in the WebAssembly frontend
+
+From `web-ui/go.mod`. They are compiled into `bundle.wasm`, which the panel
+serves to the browser: they are part of the image's content even though they
+are not compiled into the Go binary on the server side.
+
+| Module | Version | Licence | Licence text |
+| --- | --- | --- | --- |
+| `fyne.io/fyne/v2` | `v2.8.1` | BSD-3-Clause | https://github.com/fyne-io/fyne/blob/v2.8.1/LICENSE |
+| `fyne.io/systray` | `v1.12.3-0.20260810170012-af4e8e793ec4` | Apache-2.0 | https://github.com/fyne-io/systray/blob/af4e8e793ec4/LICENSE |
+| `github.com/BurntSushi/toml` | `v1.6.0` | MIT | https://github.com/BurntSushi/toml/blob/v1.6.0/COPYING |
+| `github.com/anthonynsimon/bild` | `v0.14.0` | MIT | https://github.com/anthonynsimon/bild/blob/v0.14.0/LICENSE |
+| `github.com/clipperhouse/uax29/v2` | `v2.2.0` | MIT | https://github.com/clipperhouse/uax29/blob/v2.2.0/LICENSE |
+| `github.com/fsnotify/fsnotify` | `v1.9.0` | BSD-3-Clause | https://github.com/fsnotify/fsnotify/blob/v1.9.0/LICENSE |
+| `github.com/fyne-io/image` | `v0.1.1` | Apache-2.0 | https://github.com/fyne-io/image/blob/v0.1.1/ico/LICENSE-reader |
+| `github.com/fyne-io/oksvg` | `v0.2.0` | BSD-3-Clause | https://github.com/fyne-io/oksvg/blob/v0.2.0/LICENSE |
+| `github.com/go-gl/gl` | `v0.0.0-20260331235117-4566fea9a276` | MIT | https://github.com/go-gl/gl/blob/4566fea9a276/LICENSE |
+| `github.com/go-gl/glfw/v3.4/glfw` | `v0.1.0-pre.1.0.20260707082822-2a407d02d01a` | BSD-3-Clause | https://github.com/go-gl/glfw/blob/2a407d02d01a/v3.4/glfw/LICENSE |
+| `github.com/go-text/render` | `v0.2.1` | BSD-3-Clause AND Unlicense | https://github.com/go-text/render/blob/v0.2.1/LICENSE |
+| `github.com/go-text/typesetting` | `v0.3.4` | BSD-3-Clause AND MIT AND Unlicense | https://github.com/go-text/typesetting/blob/v0.3.4/LICENSE |
+| `github.com/godbus/dbus/v5` | `v5.2.2` | BSD-2-Clause | https://github.com/godbus/dbus/blob/v5.2.2/LICENSE |
+| `github.com/jeandeaual/go-locale` | `v0.0.0-20250612000132-0ef82f21eade` | MIT | https://github.com/jeandeaual/go-locale/blob/0ef82f21eade/LICENSE |
+| `github.com/jsummers/gobmp` | `v0.0.0-20230614200233-a9de23ed2e25` | MIT | https://github.com/jsummers/gobmp/blob/a9de23ed2e25/COPYING.txt |
+| `github.com/mattn/go-runewidth` | `v0.0.24` | MIT | https://github.com/mattn/go-runewidth/blob/v0.0.24/LICENSE |
+| `github.com/nfnt/resize` | `v0.0.0-20180221191011-83c6a9932646` | ISC | https://github.com/nfnt/resize/blob/83c6a9932646/LICENSE |
+| `github.com/nicksnyder/go-i18n/v2` | `v2.5.1` | MIT | https://github.com/nicksnyder/go-i18n/blob/v2.5.1/LICENSE |
+| `github.com/rymdport/portal` | `v0.4.2` | Apache-2.0 | https://github.com/rymdport/portal/blob/v0.4.2/LICENSE |
+| `github.com/sdassow/fyne-datepicker` | `v0.0.0-20250403132905-bf906d02ba0c` | BSD-2-Clause | https://github.com/sdassow/fyne-datepicker/blob/bf906d02ba0c/LICENSE |
+| `github.com/skip2/go-qrcode` | `v0.0.0-20200617195104-da1b6568686e` | MIT | https://github.com/skip2/go-qrcode/blob/da1b6568686e/LICENSE |
+| `github.com/srwiley/oksvg` | `v0.0.0-20221011165216-be6e8873101c` | BSD-3-Clause | https://github.com/srwiley/oksvg/blob/be6e8873101c/LICENSE |
+| `github.com/srwiley/rasterx` | `v0.0.0-20220730225603-2ab79fcdd4ef` | BSD-3-Clause | https://github.com/srwiley/rasterx/blob/2ab79fcdd4ef/LICENSE |
+| `github.com/yuin/goldmark` | `v1.8.2` | MIT | https://github.com/yuin/goldmark/blob/v1.8.2/LICENSE |
+| `golang.org/x/image` | `v0.24.0` | BSD-3-Clause | https://cs.opensource.google/go/x/image/+/v0.24.0:LICENSE |
+| `golang.org/x/net` | `v0.56.0` | BSD-3-Clause | https://cs.opensource.google/go/x/net/+/v0.56.0:LICENSE |
+| `golang.org/x/sys` | `v0.46.0` | BSD-3-Clause | https://cs.opensource.google/go/x/sys/+/v0.46.0:LICENSE |
+| `golang.org/x/text` | `v0.38.0` | BSD-3-Clause | https://cs.opensource.google/go/x/text/+/v0.38.0:LICENSE |
+
+## Licences outside the project's allowlist
+
+`.github/workflows/licences.yml` checks the Go modules against the allowlist
+Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, MIT. Two packages of the frontend
+module carry **Unlicense** (public-domain dedication, OSI-approved and
+GPL-compatible, but not in the allowlist):
+
+| Package | Version | Licence | Text |
+| --- | --- | --- | --- |
+| `github.com/go-text/render` | `v0.2.1` | Unlicense (BSD-3-Clause for parts) | <https://github.com/go-text/render/blob/v0.2.1/LICENSE> |
+| `github.com/go-text/typesetting` | `v0.3.4` | Unlicense (BSD-3-Clause, MIT for parts) | <https://github.com/go-text/typesetting/blob/v0.3.4/LICENSE> |
+
+Both arrive through `fyne.io/fyne/v2`, the GUI toolkit the frontend is built
+with, and neither is used by the server. No GPL-2.0-only code is linked into
+either Go binary: the GPL components in the image are the separate programs and
+scripts listed above, which the panel executes rather than links.
+
+## Source
+
+The complete corresponding source of the GPL-2.0 components is the upstream
+tree at the pinned tag, listed above; the Dockerfile clones exactly those tags
+and builds the binaries from them. The panel's own source, including the
+Dockerfile that produces the image, is this repository at the tag of the image
+(`ghcr.io/noelbennettz/amneziawg-ui:<date>`).

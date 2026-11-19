@@ -116,3 +116,8 @@ turns an upgrade into a decision.
 panel as a network service and its users get the source of the version you run.
 Self-hosting, forking and selling support are fine; withholding your changes
 from the people using them is not.
+
+What the image ships besides this repository — amneziawg-go, the AmneziaWG
+tools, the Alpine packages and the Go modules — is listed with its version and
+licence in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md), and the texts are in
+the image under `/usr/share/doc/amneziawg-ui/`.
