@@ -113,6 +113,12 @@ E2E_PASSWORD ?= $$argon2id$$v=19$$m=19456,t=2,p=1$$IxNc8lB5oTwTeuTaFbSidQ$$XE0Ua
 E2E_TIMEOUT ?= 120
 # The ceiling for the whole suite, as go test -timeout takes it.
 E2E_TEST_TIMEOUT ?= 20m
+# Extra flags for the image build. CI points this at the GitHub Actions cache so
+# a pull request does not rebuild the whole toolchain from nothing:
+#   E2E_BUILD_FLAGS="--cache-from type=gha,scope=e2e --cache-to type=gha,mode=max,scope=e2e"
+# Empty locally, where the local layer cache is already the thing that saves the
+# work.
+E2E_BUILD_FLAGS ?=
 
 .PHONY: e2e
 e2e: e2e-reset ## Rebuild the test instances from empty volumes and run the browser tests
@@ -121,7 +127,7 @@ e2e: e2e-reset ## Rebuild the test instances from empty volumes and run the brow
 .PHONY: e2e-reset
 e2e-reset: ## Recreate the test instances from scratch, discarding every server they hold
 	@$(MAKE) --no-print-directory e2e-down
-	docker build -t $(E2E_IMAGE) .
+	docker buildx build $(E2E_BUILD_FLAGS) --load -t $(E2E_IMAGE) .
 	docker run -d --name $(E2E_NAME) -p $(E2E_PORT):$(E2E_PORT)/tcp \
 		-e WEB_UI_PORT=$(E2E_PORT) -e WEB_UI_USER=admin -e 'WEB_UI_PASSWORD=$(E2E_PASSWORD)' \
 		-e DEFAULT_SUBNET=10.9.0.0/24 -e 'DEFAULT_DNS=9.9.9.9,149.112.112.112' \

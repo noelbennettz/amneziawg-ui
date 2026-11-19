@@ -1,0 +1,64 @@
+# Dependabot keeps the things this project does not write itself current: the
+# actions every workflow pins by commit, the two Go modules and the images the
+# Dockerfile builds from. A pin is only useful if something moves it, and moving
+# it by hand is what gets forgotten.
+#
+# Each pull request it opens gets the usual CI. The actions are pinned by full
+# SHA on purpose - Dependabot updates the SHA and keeps the `# vN` comment, so a
+# reviewer still sees the release the commit belongs to.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: ci
+    groups:
+      actions:
+        patterns: ["*"]
+
+  - package-ecosystem: gomod
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: deps
+    groups:
+      go:
+        patterns: ["*"]
+
+  - package-ecosystem: gomod
+    directory: /web-ui
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: deps
+    groups:
+      go:
+        patterns: ["*"]
+
+  - package-ecosystem: gomod
+    directory: /e2e
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: deps
+    groups:
+      go:
+        patterns: ["*"]
+
+  # The base images are pinned by tag and digest; this is what moves the digest
+  # when upstream rebuilds a release, and what raises the tag when a new Alpine
+  # or Go minor is out.
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: docker
