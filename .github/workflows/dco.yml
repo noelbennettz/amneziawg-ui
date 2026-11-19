@@ -1,0 +1,113 @@
+name: DCO
+
+# Every commit of a pull request has to carry a Signed-off-by trailer, which is
+# what `git commit -s` adds. It is the Contributor Certificate of Origin in
+# CONTRIBUTING.md, and it is the contributor's statement that they wrote the
+# patch or have the right to send it.
+#
+# Self-contained on purpose: the REST API through curl, the answer through jq,
+# both already on the runner. Nothing third-party is installed and no GitHub App
+# has to be enabled on the repository or on a fork.
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, edited]
+  # A pull request from a fork runs this workflow with a read-only token, which
+  # is all it needs: the commits and their messages are public.
+  workflow_dispatch:
+    inputs:
+      pull_request:
+        description: Pull request number to check
+        required: true
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  signed-off-by:
+    name: Every commit is signed off
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check the commits
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number || github.event.inputs.pull_request }}
+        run: |
+          set -euo pipefail
+
+          api="https://api.github.com/repos/${REPO}"
+          auth=(-H "Authorization: Bearer ${GH_TOKEN}"
+                -H "Accept: application/vnd.github+json"
+                -H "X-GitHub-Api-Version: 2022-11-28")
+
+          failed=0
+          checked=0
+          skipped=0
+          commits=0
+          page=1
+
+          # The API pages at 100 commits; a pull request may hold up to 250.
+          while : ; do
+            json=$(curl -fsS "${auth[@]}" "${api}/pulls/${PR}/commits?per_page=100&page=${page}")
+            [ "$(jq 'length' <<<"${json}")" -eq 0 ] && break
+            commits=$((commits + $(jq 'length' <<<"${json}")))
+
+            # One line per commit: sha, author login, author e-mail, committer
+            # e-mail, number of parents, base64 of the message.
+            while IFS=$'\t' read -r sha login author_email committer_email parents message_b64; do
+              [ -n "${sha}" ] || continue
+
+              # A merge commit is not a patch anybody wrote: it has no content
+              # of its own to certify, and GitHub writes it. Same for the bots -
+              # dependabot and friends cannot sign off, and their commits are
+              # not a claim of authorship by a person.
+              if [ "${parents}" -gt 1 ] || [[ "${login}" == *"[bot]" ]] || [[ "${login}" == "github-actions" ]]; then
+                skipped=$((skipped + 1))
+                continue
+              fi
+
+              checked=$((checked + 1))
+              message=$(base64 -d <<<"${message_b64}")
+
+              ok=0
+              while IFS= read -r email; do
+                # The trailer's address must be the author's or the
+                # committer's: a signature by somebody else certifies nothing
+                # about this patch.
+                email=$(tr '[:upper:]' '[:lower:]' <<<"${email}")
+                if [ "${email}" = "$(tr '[:upper:]' '[:lower:]' <<<"${author_email}")" ] ||
+                   [ "${email}" = "$(tr '[:upper:]' '[:lower:]' <<<"${committer_email}")" ]; then
+                  ok=1
+                  break
+                fi
+              done < <(grep -oiE '^Signed-off-by: .*<[^>]+>' <<<"${message}" | sed -E 's/.*<([^>]+)>.*/\1/')
+
+              if [ "${ok}" -eq 0 ]; then
+                failed=1
+                subject=$(head -1 <<<"${message}")
+                echo "::error::${sha:0:7} has no Signed-off-by trailer for its author or committer: ${subject}"
+              fi
+            done < <(jq -r '.[] | [
+                .sha,
+                (.author.login // ""),
+                .commit.author.email,
+                .commit.committer.email,
+                (.parents | length),
+                (.commit.message | @base64)
+              ] | @tsv' <<<"${json}")
+
+            page=$((page + 1))
+          done
+
+          echo "checked ${checked} commit(s), skipped ${skipped} merge or bot commit(s)"
+          if [ "${commits}" -eq 0 ]; then
+            echo "::error::the API returned no commits for pull request ${PR}"
+            exit 1
+          fi
+          if [ "${failed}" -ne 0 ]; then
+            echo
+            echo "Add the trailer with 'git commit -s --amend' (or 'git rebase --signoff'),"
+            echo "then force-push the branch. CONTRIBUTING.md has the details."
+            exit 1
+          fi
