@@ -26,9 +26,6 @@ func TestHashPassword(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Parse: %v", err)
 	}
-	if hash.Legacy() {
-		t.Error("hash-password printed the legacy format")
-	}
 	if !hash.Verify("a password") {
 		t.Error("the printed hash does not verify the password")
 	}
@@ -107,20 +104,6 @@ func TestAnnounceGeneratedPassword(t *testing.T) {
 		if !strings.Contains(out.String(), want) {
 			t.Errorf("the banner does not mention %q:\n%s", want, out.String())
 		}
-	}
-}
-
-func TestWarnLegacyHash(t *testing.T) {
-	var out bytes.Buffer
-	warnLegacyHash(&out, "/etc/amnezia/admin.hash", false)
-	if !strings.Contains(out.String(), "hash-password") || !strings.Contains(out.String(), "SHA-256") {
-		t.Errorf("the warning does not point at the migration:\n%s", out.String())
-	}
-
-	out.Reset()
-	warnLegacyHash(&out, "/etc/amnezia/admin.hash", true)
-	if !strings.Contains(out.String(), "WEB_UI_PASSWORD") {
-		t.Errorf("the warning does not name the variable the hash came from:\n%s", out.String())
 	}
 }
 

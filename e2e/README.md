@@ -89,10 +89,10 @@ AWG_URL=http://localhost:54845 go test -count=1 -v .
 ```
 
 `AWG_URL` defaults to `http://localhost:51836`. Whatever it points at needs
-`WEB_UI_USER=admin` and `WEB_UI_PASSWORD=fMxvKVr4YtZNuRnQZ4ayA5jzCjr6yeZZrBvbMGFcSP4=`
-- the base64 SHA-256 of `not-the-default-password`, which is what the tests type
-into the login form. It is deliberately not `changeme`: the panel refuses the
-old default password at startup. `10_defaults_test.go` reads `AWG_URL_NOAUTOSTART` instead, and skips when
+`WEB_UI_USER=admin` and an argon2id hash of `not-the-default-password` in
+`WEB_UI_PASSWORD` - that is the password the tests type into the login form
+(`make e2e` sets exactly that). It is deliberately not `changeme`: the panel
+refuses the old default password at startup. `10_defaults_test.go` reads `AWG_URL_NOAUTOSTART` instead, and skips when
 it is not set.
 
 No Node.js is needed: on the first run `TestMain` downloads the Playwright

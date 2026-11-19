@@ -94,19 +94,6 @@ func announceGeneratedPassword(w io.Writer, user, password string) {
 	fmt.Fprintln(w)
 }
 
-// warnLegacyHash points at the migration when the configured hash is in the
-// old SHA-256 format. It still works - an upgrade must not lock anybody out -
-// but it is a fast hash, which is what makes a stolen hash worth attacking.
-func warnLegacyHash(w io.Writer, path string, fromEnv bool) {
-	source := path
-	if fromEnv {
-		source = "WEB_UI_PASSWORD"
-	}
-	fmt.Fprintf(w, "warning: the admin password in %s is a SHA-256 hash, the old format.\n", source)
-	fmt.Fprintf(w, "warning: it still works, but migrate with: printf '%%s' \"$PASSWORD\" | %s hash-password\n", programName())
-	fmt.Fprintln(w, "warning: and put the result where the old hash is now.")
-}
-
 // explainDefaultPassword is what a deployment that still carries the old
 // default password is started with: a refusal, and the two ways out of it.
 func explainDefaultPassword(w io.Writer, path string) {

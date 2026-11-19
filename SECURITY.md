@@ -52,9 +52,10 @@ How the panel addresses that model:
   kept as an argon2id hash (19 MiB, `t=2`, `p=1`) — in `admin.hash` on the
   config volume, or in `WEB_UI_PASSWORD` — and compared in constant time. The
   hash is never the password: with no variable and no file the panel generates
-  one on the first start, prints it once and stores only its hash. The old
-  base64-of-SHA-256 format is still accepted so an upgrade does not lock
-  anybody out; it logs a warning, and `hash-password` migrates it.
+  one on the first start, prints it once and stores only its hash. The base64
+  of a SHA-256 that earlier releases accepted is refused at startup — the
+  format is fast to compute, and therefore fast to attack — and so is a hash
+  that verifies `changeme`.
 * Verifying a password is expensive by design, so it is bounded: no more than
   two derivations run at a time, and a Basic credential that verified is cached
   in memory for five minutes — an HMAC of the pair under a random per-process

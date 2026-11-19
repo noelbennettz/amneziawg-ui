@@ -97,9 +97,9 @@ type Settings struct {
 	Pprof bool
 
 	// User and PasswordHash are the login credentials. PasswordHash is
-	// WEB_UI_PASSWORD as configured - an argon2id PHC string, or the old
-	// base64-of-SHA-256 format - and empty when the variable is unset, which
-	// is what makes the panel generate a password on its first start.
+	// WEB_UI_PASSWORD as configured - an argon2id PHC string - and empty
+	// when the variable is unset, which is what makes the panel generate a
+	// password on its first start.
 	User         string
 	PasswordHash string
 

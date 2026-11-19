@@ -2,12 +2,14 @@ package adminpw
 
 import (
 	"encoding/base64"
+	"errors"
 	"strings"
 	"testing"
 )
 
 // changemeLegacy is base64(SHA-256("changeme")), the hash of the password the
-// image used to ship, in the format WEB_UI_PASSWORD used to hold.
+// image used to ship, in the format WEB_UI_PASSWORD used to hold. The format
+// is no longer accepted, and this constant is what proves that.
 const changemeLegacy = "BXugPWxEEEhj3HNh/kV4ll0YhzYPkKCJWILlimJI/IY="
 
 // testPassword is what most tests log in with.
@@ -36,9 +38,6 @@ func TestHashPasswordRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Parse: %v", err)
 	}
-	if hash.Legacy() {
-		t.Error("a hash this package wrote is reported as the legacy format")
-	}
 	if !hash.Verify(testPassword) {
 		t.Error("the hash does not verify the password it was made from")
 	}
@@ -53,22 +52,18 @@ func TestHashPasswordRoundTrip(t *testing.T) {
 	}
 }
 
-func TestParseLegacy(t *testing.T) {
-	hash, err := Parse(changemeLegacy)
-	if err != nil {
-		t.Fatalf("Parse: %v", err)
+func TestParseRejectsTheLegacyFormat(t *testing.T) {
+	if _, err := Parse(changemeLegacy); !errors.Is(err, ErrLegacyFormat) {
+		t.Fatalf("Parse(legacy hash) = %v, want ErrLegacyFormat", err)
 	}
-	if !hash.Legacy() {
-		t.Error("a base64 SHA-256 digest is not reported as the legacy format")
-	}
-	if !hash.Verify("changeme") {
-		t.Error("the legacy hash does not verify its password")
-	}
-	if hash.Verify("changeme ") {
-		t.Error("the legacy hash verified another password")
-	}
-	if hash.String() != changemeLegacy {
-		t.Error("a legacy hash was rewritten on the way through Parse")
+
+	// The message is what an operator sees at startup, so it has to say both
+	// what was wrong and what to do.
+	err := ErrLegacyFormat
+	for _, want := range []string{"SHA-256", "argon2id", "hash-password"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("the legacy error does not mention %q: %v", want, err)
+		}
 	}
 }
 
@@ -83,7 +78,7 @@ func TestParseRejects(t *testing.T) {
 		"empty":                   "",
 		"blank":                   "   ",
 		"not base64":              "!!!not-a-hash!!!",
-		"short legacy digest":     base64.StdEncoding.EncodeToString(make([]byte, 16)),
+		"short base64 digest":     base64.StdEncoding.EncodeToString(make([]byte, 16)),
 		"unknown algorithm":       "$argon2i$v=19$m=19456,t=2,p=1$" + salt + "$" + key,
 		"wrong version":           "$argon2id$v=16$m=19456,t=2,p=1$" + salt + "$" + key,
 		"no version":              "$argon2id$m=19456,t=2,p=1$" + salt + "$" + key,

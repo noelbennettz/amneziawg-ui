@@ -76,9 +76,6 @@ func main() {
 	if generated != "" {
 		announceGeneratedPassword(os.Stdout, settings.User, generated)
 	}
-	if password.Legacy() {
-		warnLegacyHash(os.Stderr, settings.AdminHashFile, password.FromEnv())
-	}
 
 	mgr := manager.New(settings, store.New(settings.ConfigFile), awg.New(awg.Shell{}))
 	mgr.Start()
