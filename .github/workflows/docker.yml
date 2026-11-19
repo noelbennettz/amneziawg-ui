@@ -148,7 +148,11 @@ jobs:
           platforms: ${{ env.PLATFORMS }}
           push: true
           tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
+          # The Dockerfile owns the labels, because it is also what puts the
+          # same three values into the binary: metadata-action's set would
+          # replace them with its own (version=latest, title from the
+          # repository name), and then the image and /api/version would
+          # disagree about which build they are.
           build-args: |
             VERSION=${{ env.VERSION }}
             COMMIT=${{ env.COMMIT }}
