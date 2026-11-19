@@ -22,6 +22,7 @@ import (
 	"amneziawg-web-ui/internal/manager"
 	"amneziawg-web-ui/internal/security"
 	"amneziawg-web-ui/internal/store"
+	"amneziawg-web-ui/internal/totp"
 )
 
 // staticDir is where "make web-ui" leaves the packaged frontend, relative to
@@ -100,6 +101,18 @@ func main() {
 	// reached the panel, and keeping that record is the operator's call.
 	auditLog := audit.New(settings.AuditLog, config.AuditFile, settings.AuditRetention)
 
+	// The second factor, when one is configured: a base32 secret shared with
+	// an authenticator app. A secret that cannot be parsed stops the start,
+	// because a factor nobody can produce is a panel nobody can log in to.
+	var secondFactor *totp.Key
+	if settings.TOTPSecret != "" {
+		key, err := totp.Parse(settings.TOTPSecret)
+		if err != nil {
+			log.Fatalf("WEB_UI_TOTP_SECRET: %v", err)
+		}
+		secondFactor = &key
+	}
+
 	// Everything except the health check and the login page is behind the
 	// login: the browser is sent to /login, which hands out a session cookie
 	// once the form is posted with the credentials the container was started
@@ -110,6 +123,7 @@ func main() {
 		auth.WithAudit(auditLog),
 		auth.WithLoginRateLimit(settings.LoginRateLimit),
 		auth.WithTrustProxy(settings.TrustProxy),
+		auth.WithTOTP(secondFactor),
 		auth.WithFirstRunPassword(settings.FirstRunPasswordFile),
 	)
 	app.Use(guard.Middleware())

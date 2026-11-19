@@ -20,6 +20,7 @@ import (
 	"amneziawg-web-ui/internal/adminpw"
 	"amneziawg-web-ui/internal/audit"
 	"amneziawg-web-ui/internal/config"
+	"amneziawg-web-ui/internal/totp"
 )
 
 // The defaults the image ships and the e2e suite logs in with.
@@ -31,6 +32,10 @@ const (
 	// number and not a race with the wall.
 	testNow = 1_700_000_000
 )
+
+// testTOTPSecret is the shared secret the second-factor tests configure: RFC
+// 4226's appendix D secret, so the expected codes are published ones.
+const testTOTPSecret = "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ"
 
 // testHash is a hash of testPassword in the one format the panel accepts.
 // "changeme" is used as the password because it is also what CheckDefault
@@ -216,10 +221,141 @@ func TestSafeNext(t *testing.T) {
 	}
 }
 
-// newTestApp is the panel as main.go wires it, minus the manager and the
+// The second factor, in the login form. The field is only drawn when a secret
+// is configured, a wrong code is a failed login, and the right one is a session.
+func TestLoginWithTOTP(t *testing.T) {
+	key, err := totp.Parse(testTOTPSecret)
+	if err != nil {
+		t.Fatalf("totp.Parse: %v", err)
+	}
+	code := key.Code(time.Unix(testNow, 0))
+
+	app, _ := newTestAppAuth(t, WithTOTP(&key))
+
+	// The page offers the field only when the guard has a secret.
+	page := body(t, get(t, app, LoginPath, nil, nil))
+	if !strings.Contains(page, `id="totp"`) || !strings.Contains(page, "Authentication code") {
+		t.Errorf("the login page has no authentication-code field with TOTP configured:\n%s", page)
+	}
+
+	post := func(totpCode string) *http.Response {
+		token, cookie := csrfToken(t, app)
+		form := url.Values{"username": {testUser}, "password": {testPassword}, "next": {"/"}, "csrf": {token}}
+		if totpCode != "" {
+			form.Set("totp", totpCode)
+		}
+		return postForm(t, app, form, cookie)
+	}
+
+	// No code, a wrong code, and a code that is not six digits: all refused
+	// with the form again and a 401, and no session cookie.
+	for _, bad := range []string{"", "000000", "12345", "abcdef", code[:3]} {
+		resp := post(bad)
+		if resp.StatusCode != fiber.StatusUnauthorized {
+			t.Errorf("code %q: status = %d, want 401", bad, resp.StatusCode)
+		}
+		if sessionCookie(resp) != nil {
+			t.Errorf("code %q: a session was issued", bad)
+		}
+		if text := body(t, resp); !strings.Contains(text, "Incorrect username, password or authentication code.") {
+			t.Errorf("code %q: the page does not mention the code:\n%s", bad, text)
+		}
+	}
+
+	// The right password and the right code: the session the panel always
+	// handed out.
+	resp := post(code)
+	if cookie := sessionCookie(resp); cookie == nil {
+		t.Fatalf("the right code did not log in (status %d)", resp.StatusCode)
+	}
+
+	// A password without a code is still refused with TOTP configured: the
+	// factor is not optional per login.
+	if cookie := sessionCookie(post("")); cookie != nil {
+		t.Error("a password alone issued a session although TOTP is configured")
+	}
+}
+
+// The field is absent when there is no second factor, and a password alone
+// still logs in - the single-factor deployment is unchanged.
+func TestLoginWithoutTOTP(t *testing.T) {
+	app := newTestApp(t)
+
+	page := body(t, get(t, app, LoginPath, nil, nil))
+	if strings.Contains(page, `id="totp"`) {
+		t.Errorf("the login page has an authentication-code field although no secret is configured:\n%s", page)
+	}
+
+	if cookie := sessionCookie(login(t, app, testUser, testPassword, "/")); cookie == nil {
+		t.Fatal("the password alone no longer logs in")
+	}
+}
+
+// Basic auth carries the second factor in X-TOTP-Code, and refuses without it.
+func TestBasicAuthWithTOTP(t *testing.T) {
+	key, err := totp.Parse(testTOTPSecret)
+	if err != nil {
+		t.Fatalf("totp.Parse: %v", err)
+	}
+	code := key.Code(time.Unix(testNow, 0))
+	app, _ := newTestAppAuth(t, WithTOTP(&key))
+
+	basic := func(header string) map[string]string {
+		headers := map[string]string{
+			fiber.HeaderAuthorization: "Basic " + base64Std(testUser+":"+testPassword),
+		}
+		if header != "" {
+			headers[TOTPHeader] = header
+		}
+		return headers
+	}
+
+	for _, bad := range []string{"", "000000", "12345"} {
+		if resp := get(t, app, "/api/system/status", nil, basic(bad)); resp.StatusCode != fiber.StatusUnauthorized {
+			t.Errorf("X-TOTP-Code %q: status = %d, want 401", bad, resp.StatusCode)
+		}
+	}
+	if resp := get(t, app, "/api/system/status", nil, basic(code)); resp.StatusCode != fiber.StatusOK {
+		t.Errorf("the right code: status = %d, want 200", resp.StatusCode)
+	}
+
+	// With no secret configured the header is not needed at all.
+	plain := newTestApp(t)
+	if resp := get(t, plain, "/api/system/status", nil, basic("")); resp.StatusCode != fiber.StatusOK {
+		t.Errorf("without TOTP: status = %d, want 200", resp.StatusCode)
+	}
+}
+
+// A code stays valid for the step either side of its own and no longer, which
+// is the window an unsynchronised clock needs.
+func TestTOTPWindowOnTheLogin(t *testing.T) {
+	key, err := totp.Parse(testTOTPSecret)
+	if err != nil {
+		t.Fatalf("totp.Parse: %v", err)
+	}
+	// The code of the step before the guard's clock.
+	code := key.Code(time.Unix(testNow-30, 0))
+
+	app, _ := newTestAppAuth(t, WithTOTP(&key))
+	token, cookie := csrfToken(t, app)
+	form := url.Values{"username": {testUser}, "password": {testPassword}, "next": {"/"}, "csrf": {token}, "totp": {code}}
+	if sessionCookie(postForm(t, app, form, cookie)) == nil {
+		t.Error("a code one step old was refused")
+	}
+}
+
 // assets: the guard in front of one page, one API route and the health check.
 // The options are what a test varies - the cookie policy and the audit log.
 func newTestApp(t *testing.T, opts ...Option) *fiber.App {
+	t.Helper()
+
+	app, _ := newTestAppAuth(t, opts...)
+	return app
+}
+
+// newTestAppAuth is newTestApp plus the guard itself, for the tests that need
+// something only the guard knows - its clock above all.
+func newTestAppAuth(t *testing.T, opts ...Option) (*fiber.App, *Auth) {
 	t.Helper()
 
 	guard := New(testUser, testStore(testHash), opts...)
@@ -238,7 +374,7 @@ func newTestApp(t *testing.T, opts ...Option) *fiber.App {
 	})
 	guard.Register(app)
 
-	return app
+	return app, guard
 }
 
 // do runs one request against the app. app.Test does not follow redirects, so
@@ -298,6 +434,13 @@ func postLogin(t *testing.T, app *fiber.App, user, password, next, token string,
 	t.Helper()
 
 	form := url.Values{"username": {user}, "password": {password}, "next": {next}, "csrf": {token}}
+	return postForm(t, app, form, cookie)
+}
+
+// postForm posts a login form body, whatever fields it carries.
+func postForm(t *testing.T, app *fiber.App, form url.Values, cookie *http.Cookie) *http.Response {
+	t.Helper()
+
 	req := httptest.NewRequest(http.MethodPost, LoginPath, strings.NewReader(form.Encode()))
 	req.Header.Set(fiber.HeaderContentType, fiber.MIMEApplicationForm)
 	if cookie != nil {

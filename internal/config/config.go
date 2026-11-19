@@ -73,10 +73,19 @@ type Settings struct {
 	AuditRetention time.Duration
 
 	// LoginRateLimit blocks an address that has failed to log in five times
-	// in a quarter of an hour, for fifteen minutes and doubling. Off by
-	// default: behind a proxy that does not forward the client address it
-	// would lock the operator out together with whoever is guessing.
+	// in a quarter of an hour, for fifteen minutes and doubling. On by
+	// default: a login form on a port that answers the internet is worth
+	// five failures, and the backoff is what makes guessing expensive.
+	// WEB_UI_LOGIN_RATE_LIMIT=false turns it off for a deployment where every
+	// request arrives from one address (a proxy that does not forward the
+	// client address), where it would lock the operator out along with
+	// whoever is guessing.
 	LoginRateLimit bool
+
+	// TOTPSecret is the shared secret of an optional second factor: a base32
+	// string, the one an authenticator app is given. Empty means the panel
+	// asks for the password alone.
+	TOTPSecret string
 
 	// TrustProxy reads the client address from X-Forwarded-For instead of the
 	// connection. Off by default: a client that can reach the panel directly
@@ -136,8 +145,9 @@ func FromEnv() Settings {
 		SecureCookie:         secureMode(os.Getenv("WEB_UI_SECURE_COOKIE")),
 		AuditLog:             parseBool(os.Getenv("WEB_UI_AUDIT_LOG")),
 		AuditRetention:       auditRetention(os.Getenv("WEB_UI_AUDIT_RETENTION_HOURS")),
-		LoginRateLimit:       parseBool(os.Getenv("WEB_UI_LOGIN_RATE_LIMIT")),
+		LoginRateLimit:       loginRateLimit(os.Getenv("WEB_UI_LOGIN_RATE_LIMIT")),
 		TrustProxy:           parseBool(os.Getenv("WEB_UI_TRUST_PROXY")),
+		TOTPSecret:           strings.TrimSpace(os.Getenv("WEB_UI_TOTP_SECRET")),
 		AutoStart:            strings.EqualFold(getenv("AUTO_START_SERVERS", "true"), "true"),
 		DefaultMTU:           atoiDefault(getenv("DEFAULT_MTU", ""), 1280),
 		DefaultSubnet:        getenv("DEFAULT_SUBNET", "10.0.0.0/24"),
@@ -189,6 +199,19 @@ func atoiDefault(s string, def int) int {
 func parseBool(s string) bool {
 	enabled, err := strconv.ParseBool(s)
 	return err == nil && enabled
+}
+
+// loginRateLimit reads WEB_UI_LOGIN_RATE_LIMIT, whose default is on. Only an
+// explicit "off" - false, 0, no or off - turns the limiter off; an empty
+// variable or one nobody can parse keeps the protection, because the failure
+// mode of a typo here is a locked-out operator, and the failure mode of the
+// other default is an unlimited guessing oracle.
+func loginRateLimit(s string) bool {
+	switch strings.ToLower(strings.TrimSpace(s)) {
+	case "false", "0", "no", "off":
+		return false
+	}
+	return true
 }
 
 // secureMode reads WEB_UI_SECURE_COOKIE: an explicit true or false pins the

@@ -32,8 +32,9 @@ func TestFromEnvFallsBackOnGarbage(t *testing.T) {
 	}
 }
 
-// The three security settings are off unless asked for: the panel binds every
-// address, leaves the Secure flag to the request, and keeps no audit log.
+// The security settings are off unless asked for - except the login limiter:
+// the panel binds every address, leaves the Secure flag to the request, and
+// keeps no audit log, but an unlimited login form is worse than a lockout.
 func TestSecuritySettingsDefaultToOff(t *testing.T) {
 	s := FromEnv()
 
@@ -46,11 +47,45 @@ func TestSecuritySettingsDefaultToOff(t *testing.T) {
 	if s.AuditLog {
 		t.Error("AuditLog is on by default")
 	}
-	if s.LoginRateLimit {
-		t.Error("LoginRateLimit is on by default")
+	if !s.LoginRateLimit {
+		t.Error("LoginRateLimit is off by default")
 	}
 	if s.TrustProxy {
 		t.Error("TrustProxy is on by default")
+	}
+	if s.TOTPSecret != "" {
+		t.Errorf("TOTPSecret = %q, want empty (no second factor)", s.TOTPSecret)
+	}
+}
+
+// The limiter is the one security default that is on: only an explicit opt-out
+// turns it off, and a value nobody can parse keeps it on.
+func TestLoginRateLimitOptOut(t *testing.T) {
+	for value, want := range map[string]bool{
+		"":        true,
+		"true":    true,
+		"1":       true,
+		"yes":     true,
+		"on":      true,
+		"sure?":   true,
+		"false":   false,
+		"FALSE":   false,
+		"0":       false,
+		"no":      false,
+		"off":     false,
+		" off \n": false,
+	} {
+		t.Setenv("WEB_UI_LOGIN_RATE_LIMIT", value)
+		if got := FromEnv().LoginRateLimit; got != want {
+			t.Errorf("WEB_UI_LOGIN_RATE_LIMIT=%q: LoginRateLimit = %v, want %v", value, got, want)
+		}
+	}
+}
+
+func TestTOTPSecretFromTheEnvironment(t *testing.T) {
+	t.Setenv("WEB_UI_TOTP_SECRET", "  GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ \n")
+	if got := FromEnv().TOTPSecret; got != "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ" {
+		t.Errorf("TOTPSecret = %q, want the trimmed secret", got)
 	}
 }
 

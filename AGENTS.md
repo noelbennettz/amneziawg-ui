@@ -179,6 +179,14 @@ header. The cookie is `HttpOnly`, `SameSite=Strict`, `Secure` according to
 hours, and is signed with an HMAC keyed from the password hash: a restart keeps
 sessions, changing the password ends them all.
 
+Two optional pieces of hardening sit in front of that. The per-address limiter
+(`internal/auth/limiter.go`) is on by default and `WEB_UI_LOGIN_RATE_LIMIT=false`
+turns it off — five failures in fifteen minutes block an address, doubling per
+block up to a day. `WEB_UI_TOTP_SECRET` adds a second factor: a base32 secret,
+six digits from `internal/totp` (RFC 6238, HMAC-SHA1, ±1 step) in the login
+form's `totp` field, or in `X-TOTP-Code` for a Basic credential. With it set, a
+password alone is not a login.
+
 Every `POST`, `PUT` and `DELETE` also has to carry the CSRF token: the `awg_csrf`
 cookie (not `HttpOnly` — the page has to read it) echoed in `X-CSRF-Token`, or
 the hidden `csrf` field on the login form, which the server rotates when the
