@@ -412,7 +412,7 @@ sysctl -w net.ipv4.ip_forward=1 \
       </details>
       <details>
         <summary>怎麼改面板密碼？</summary>
-        <p>用 <code>printf 'your-password' | openssl dgst -binary -sha256 | base64</code> 算出新值，填進 <code>WEB_UI_PASSWORD</code>，重啟容器。改密碼會讓所有 session 立即失效。</p>
+        <p>執行 <code>printf '%s' 'your-password' | docker run --rm -i ghcr.io/noelbennettz/amneziawg-ui:latest api hash-password</code>，把 <code>$argon2id$…</code> 的結果填進 <code>WEB_UI_PASSWORD</code>，其中每個 <code>$</code> 都寫成 <code>$$</code>，再重啟容器；或直接執行 <code>docker compose exec app api reset-password</code> 就地產生一組。改密碼會讓所有 session 立即失效。</p>
       </details>
       <details>
         <summary>一定要 HTTPS 嗎？</summary>

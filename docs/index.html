@@ -415,7 +415,7 @@ sysctl -w net.ipv4.ip_forward=1 \
       </details>
       <details>
         <summary>How do I change the panel password?</summary>
-        <p>Compute a new value with <code>printf 'your-password' | openssl dgst -binary -sha256 | base64</code>, put it in <code>WEB_UI_PASSWORD</code>, and restart. Changing it ends all sessions at once.</p>
+        <p>Run <code>printf '%s' 'your-password' | docker run --rm -i ghcr.io/noelbennettz/amneziawg-ui:latest api hash-password</code>, put the <code>$argon2id$…</code> result in <code>WEB_UI_PASSWORD</code> with every <code>$</code> written as <code>$$</code>, and restart — or run <code>docker compose exec app api reset-password</code> to generate one in place. Changing it ends all sessions at once.</p>
       </details>
       <details>
         <summary>Do I need HTTPS?</summary>
