@@ -110,7 +110,7 @@ RUN --mount=type=cache,id=awg_mod,target=/go/pkg/mod \
 # musl sysroot, assembled with apk out of the very same Alpine release the
 # final image runs. gcc lands in the sysroot for its runtime bits alone -
 # crtbeginS.o and libgcc - which clang links against but never executes.
-FROM --platform=$BUILDPLATFORM alpine:3.24.1@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b AS awg-tools
+FROM --platform=$BUILDPLATFORM alpine:3.24.4@sha256:f59abe656b692d901e184be3445e084786602108599d2a51d229c0f5a48c71bf AS awg-tools
 RUN apk add --no-cache git make clang lld
 
 ARG TARGETARCH
@@ -137,7 +137,7 @@ RUN git clone --depth 1 --branch "$AWG_TOOLS_VERSION" https://github.com/amnezia
     && make WITH_WGQUICK=yes install
 
 # ── Final image ───────────────────────────────────────────────────────────────
-FROM alpine:3.24.1@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b
+FROM alpine:3.24.4@sha256:f59abe656b692d901e184be3445e084786602108599d2a51d229c0f5a48c71bf
 
 # The same identity the binary carries, as image labels: `docker inspect` on a
 # container, and the package page, answer "which build is this" without a
