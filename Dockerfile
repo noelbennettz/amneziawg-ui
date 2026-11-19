@@ -16,7 +16,7 @@ ARG AWG_TOOLS_VERSION=v3.1.20260812
 #
 # and put tag@digest in the FROM line - keep the tag, it is what a reader needs
 # to know which release the digest belongs to.
-FROM --platform=$BUILDPLATFORM golang:1.26-alpine@sha256:ecb67f987aa1a57794c91d19ade7ae0209f2f0f5496aaef9e6ae85ddf92d02ab AS base
+FROM --platform=$BUILDPLATFORM golang:1.27-alpine@sha256:70bd7ddea8b6cbe5d6943cde279d6b67feb10cc924fb9100d1d8757c1575b280 AS base
 RUN apk add --no-cache git make gcc musl-dev linux-headers
 
 WORKDIR /build
@@ -71,7 +71,7 @@ RUN --mount=type=cache,id=awg_mod,target=/go/pkg/mod \
 
 # ── AmneziaWG engine ──────────────────────────────────────────────
 # Pure Go, so it cross-compiles like the API binary does.
-FROM --platform=$BUILDPLATFORM golang:1.26-alpine@sha256:ecb67f987aa1a57794c91d19ade7ae0209f2f0f5496aaef9e6ae85ddf92d02ab AS awg
+FROM --platform=$BUILDPLATFORM golang:1.27-alpine@sha256:70bd7ddea8b6cbe5d6943cde279d6b67feb10cc924fb9100d1d8757c1575b280 AS awg
 RUN apk add --no-cache git make
 
 ARG TARGETARCH
