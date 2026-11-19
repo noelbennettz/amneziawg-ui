@@ -12,6 +12,7 @@ import (
 	"github.com/gofiber/fiber/v3/middleware/pprof"
 	"github.com/gofiber/fiber/v3/middleware/recover"
 
+	"amneziawg-web-ui/internal/adminpw"
 	"amneziawg-web-ui/internal/audit"
 	"amneziawg-web-ui/internal/auth"
 	"amneziawg-web-ui/internal/awg"
@@ -29,10 +30,55 @@ import (
 const staticDir = "./web-ui/wasm"
 
 func main() {
+	// Two subcommands handle the admin password and exit; everything else
+	// starts the server.
+	if len(os.Args) > 1 {
+		switch os.Args[1] {
+		case "hash-password":
+			if err := hashPassword(os.Stdin, os.Stdout); err != nil {
+				log.Fatalf("hash-password: %v", err)
+			}
+			return
+		case "reset-password":
+			// The path is read here and not through config.FromEnv: the
+			// subcommand must work in a container whose directories are
+			// already in place, and never starts the manager.
+			if err := resetPassword(config.AdminHashFile, os.Getenv("WEB_UI_PASSWORD") != "", os.Stdout); err != nil {
+				log.Fatalf("reset-password: %v", err)
+			}
+			return
+		case "help", "-h", "--help":
+			usage(os.Stdout)
+			return
+		default:
+			fmt.Fprintf(os.Stderr, "unknown command %q\n", os.Args[1])
+			usage(os.Stderr)
+			os.Exit(2)
+		}
+	}
+
 	fmt.Println("AmneziaWG Web UI (Go/Fiber) starting...")
 
 	settings := config.FromEnv()
 	settings.EnsureDirectories()
+
+	// The admin password: WEB_UI_PASSWORD when it is set, the stored hash
+	// otherwise, and a generated password when there is neither. Only that
+	// last case prints anything - and it prints it once.
+	password, generated, err := adminpw.Open(settings.AdminHashFile, settings.PasswordHash)
+	if err != nil {
+		log.Fatalf("admin password: %v", err)
+	}
+	if err := password.CheckDefault(); err != nil {
+		explainDefaultPassword(os.Stderr, settings.AdminHashFile)
+		os.Exit(1)
+	}
+	if generated != "" {
+		announceGeneratedPassword(os.Stdout, settings.User, generated)
+	}
+	if password.Legacy() {
+		warnLegacyHash(os.Stderr, settings.AdminHashFile, password.FromEnv())
+	}
 
 	mgr := manager.New(settings, store.New(settings.ConfigFile), awg.New(awg.Shell{}))
 	mgr.Start()
@@ -58,7 +104,7 @@ func main() {
 	// once the form is posted with the credentials the container was started
 	// with. An Authorization: Basic header is still accepted, so scripts keep
 	// working with "curl -u".
-	guard := auth.New(settings.User, settings.PasswordHash,
+	guard := auth.New(settings.User, password,
 		auth.WithSecureCookies(settings.SecureCookie),
 		auth.WithAudit(auditLog),
 		auth.WithLoginRateLimit(settings.LoginRateLimit),

@@ -33,7 +33,7 @@ const (
 //
 // Two kinds of request are exempt. One that proves itself with an
 // Authorization header is not ambient - no browser attaches one by itself -
-// which keeps "curl -u admin:changeme -X DELETE ..." working. The login form
+// which keeps "curl -u admin:<password> -X DELETE ..." working. The login form
 // is the other: it carries the token as a field, checked where the
 // credentials are, in submitLogin.
 func (a *Auth) CSRF() fiber.Handler {

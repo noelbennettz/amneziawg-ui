@@ -17,6 +17,7 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 
+	"amneziawg-web-ui/internal/adminpw"
 	"amneziawg-web-ui/internal/audit"
 	"amneziawg-web-ui/internal/config"
 )
@@ -39,9 +40,19 @@ func base64Std(s string) string { return base64.StdEncoding.EncodeToString([]byt
 func base64url(s string) string { return base64.RawURLEncoding.EncodeToString([]byte(s)) }
 
 func newTestAuth() *Auth {
-	a := New(testUser, testHash)
+	a := New(testUser, testStore(testHash))
 	a.now = func() time.Time { return time.Unix(testNow, 0) }
 	return a
+}
+
+// testStore is the password store of a test: WEB_UI_PASSWORD is what it holds,
+// so the file it is given - a temp path - is never read or written.
+func testStore(hash string) *adminpw.Store {
+	store, _, err := adminpw.Open(filepath.Join(os.TempDir(), "unused-admin.hash"), hash)
+	if err != nil {
+		panic(err)
+	}
+	return store
 }
 
 func TestCheck(t *testing.T) {
@@ -116,7 +127,7 @@ func TestSessionEndsWithThePassword(t *testing.T) {
 
 	// Another password is another signing key, so every session minted under
 	// the old one stops being accepted the moment it is changed.
-	other := New(testUser, "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=")
+	other := New(testUser, testStore("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="))
 	if other.sessionValid(token, now) {
 		t.Fatal("a token signed with the old password is still valid")
 	}
@@ -126,7 +137,7 @@ func TestSessionIsBoundToTheUser(t *testing.T) {
 	now := time.Unix(testNow, 0)
 	token := newTestAuth().issue(now)
 
-	renamed := New("someone-else", testHash)
+	renamed := New("someone-else", testStore(testHash))
 	if renamed.sessionValid(token, now) {
 		t.Fatal("the token of another user name is valid")
 	}
@@ -158,7 +169,7 @@ func TestSafeNext(t *testing.T) {
 func newTestApp(t *testing.T, opts ...Option) *fiber.App {
 	t.Helper()
 
-	guard := New(testUser, testHash, opts...)
+	guard := New(testUser, testStore(testHash), opts...)
 	guard.now = func() time.Time { return time.Unix(testNow, 0) }
 	app := fiber.New(fiber.Config{Immutable: true})
 	app.Use(guard.Middleware())

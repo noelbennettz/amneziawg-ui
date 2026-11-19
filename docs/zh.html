@@ -212,22 +212,22 @@ ls -l /dev/net/tun</code></pre>
       <p>一台裝好 Docker 與 Compose 的 Linux 主機。面板會開在 54845 埠。</p>
     </div>
     <p class="note">
-      <strong>image 預設是 <code>admin</code> / <code>changeme</code>。</strong>
-      在 <code>WEB_UI_PASSWORD</code> 換成你自己的 hash 之前，連得到這個埠的人都能登入。
-      先換掉——或先只綁在 <code>127.0.0.1</code>。
+      <strong>面板會在第一次啟動時自己產生管理密碼。</strong>
+      它只印一次，在 <code>docker compose logs app</code> 裡，而且只存 argon2id hash。
+      從那裡抄下來——或把 <code>WEB_UI_PASSWORD</code> 設成你自己的 hash。
     </p>
     <div class="steps">
       <div class="step">
-        <h3>先算面板密碼的 hash</h3>
-        <p>容器存的是 <code>base64(sha256(密碼))</code>，不是密碼本身。</p>
+        <h3>選用：自己指定密碼</h3>
+        <p>不動它的話，面板第一次啟動就自己產生一組並只印一次。要自己挑，就用 image 算 hash：密碼從 stdin 進來，輸出是 argon2id hash，不是密碼本身。</p>
         <div class="copy-wrap">
           <button class="copy" type="button" data-copy>複製</button>
-          <pre><code>printf 'your-password' | openssl dgst -binary -sha256 | base64</code></pre>
+          <pre><code>printf '%s' 'your-password' | docker run --rm -i ghcr.io/noelbennettz/amneziawg-ui:latest api hash-password</code></pre>
         </div>
       </div>
       <div class="step">
         <h3>存成 compose.yaml</h3>
-        <p>把上一步的結果填進 <code>WEB_UI_PASSWORD</code>。最常要改的是位址、port 與 volume：把面板綁在 <code>127.0.0.1</code>，就只有本機的 TLS 代理連得到，其他介面一律關著。每個 key 的意義寫在 DOCS.md，repo 裡另有一份逐行註解的 <code>docker-compose.example.yml</code>。</p>
+        <p>把上一步的結果填進 <code>WEB_UI_PASSWORD</code>，其中的 <code>$</code> 一律寫成 <code>$$</code>（或者整行留空，直接從 <code>docker compose logs app</code> 讀產生的密碼）。最常要改的是位址、port 與 volume：把面板綁在 <code>127.0.0.1</code>，就只有本機的 TLS 代理連得到，其他介面一律關著。每個 key 的意義寫在 DOCS.md，repo 裡另有一份逐行註解的 <code>docker-compose.example.yml</code>。</p>
         <div class="copy-wrap">
           <button class="copy" type="button" data-copy>複製</button>
           <pre><code>services:
@@ -243,7 +243,8 @@ ls -l /dev/net/tun</code></pre>
     environment:
       WEB_UI_PORT: "54845"
       WEB_UI_USER: "admin"
-      WEB_UI_PASSWORD: "REPLACE_WITH_HASH"
+      # 選用：hash 裡的每個 $ 都要寫成 $$
+      # WEB_UI_PASSWORD: "$$argon2id$$v=19$$m=19456,t=2,p=1$$<salt>$$<hash>"
     volumes:
       - data:/etc/amnezia
     cap_add:
@@ -354,8 +355,8 @@ sysctl -w net.ipv4.ip_forward=1 \
     <div class="grid">
       <article class="card">
         <div class="icon"><svg aria-hidden="true"><use href="#i-lock"/></svg></div>
-        <h3>先改密碼</h3>
-        <p>範例 hash 對應的是 <code>changeme</code>。在 port 對外之前換掉：面板只存 hash、簽 12 小時 cookie，改密碼會同時結束所有 session。</p>
+        <h3>搞清楚密碼在哪</h3>
+        <p>它在第一次啟動時產生、只在日誌印一次，而且從不以明文落地：<code>/etc/amnezia/admin.hash</code> 裡只有 argon2id hash。在 port 對外之前換成你自己的——<code>docker compose exec app api reset-password</code> 可以就地換掉——並記得面板簽的是 12 小時 cookie，改密碼會同時結束所有 session。</p>
       </article>
       <article class="card">
         <div class="icon"><svg aria-hidden="true"><use href="#i-shield"/></svg></div>

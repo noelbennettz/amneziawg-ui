@@ -40,9 +40,16 @@ services:
       # published port unreachable.
       # WEB_UI_BIND: "127.0.0.1"
       WEB_UI_USER: "admin"
-      # base64(sha256(password)), never the password:
-      #   printf 'your-password' | openssl dgst -binary -sha256 | base64
-      WEB_UI_PASSWORD: "REPLACE_WITH_HASH"
+      # Leave WEB_UI_PASSWORD out and the panel generates a password on its
+      # first start, prints it once (docker compose logs app) and stores only
+      # its argon2id hash in /etc/amnezia/admin.hash.
+      #
+      # To set your own, hash it with the image:
+      #   printf '%s' 'your-password' | docker run --rm -i \
+      #     ghcr.io/noelbennettz/amneziawg-ui:latest api hash-password
+      # The result is a $argon2id$... PHC string, and compose reads $ as the
+      # start of a variable: write every $ of the hash as $$ here.
+      # WEB_UI_PASSWORD: "$$argon2id$$v=19$$m=19456,t=2,p=1$$<salt>$$<hash>"
       # Behind a TLS proxy that does not send X-Forwarded-Proto, say so here or
       # the session cookie goes out without Secure.
       # WEB_UI_SECURE_COOKIE: "true"

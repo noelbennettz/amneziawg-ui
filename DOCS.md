@@ -282,11 +282,16 @@ server and every client therefore gets an IPv6 address automatically.
 *   `internal/config` — environment variables → `Settings`; the only place with
     `os.Getenv`
 *   `internal/auth` — the way into the panel: the credential check (constant
-    time, against `WEB_UI_USER` / `WEB_UI_PASSWORD`), the signed session cookie,
-    the per-address login limiter (`WEB_UI_LOGIN_RATE_LIMIT`), the login page
-    embedded from `internal/auth/login.html`, the double-submit CSRF token and
-    the middleware that lets `/status`, `/login` and `/logout` through and
-    answers everything else — see [Security](#security)
+    time, against `WEB_UI_USER` and the hash `internal/adminpw` holds), the
+    signed session cookie, the per-address login limiter
+    (`WEB_UI_LOGIN_RATE_LIMIT`), the login page embedded from
+    `internal/auth/login.html`, the double-submit CSRF token and the middleware
+    that lets `/status`, `/login` and `/logout` through and answers everything
+    else — see [Security](#security)
+*   `internal/adminpw` — the admin password: the argon2id hash format, the
+    SHA-256 format earlier releases used and this one still accepts, the
+    `admin.hash` file on the config volume, the password generated on first
+    start, and the `hash-password` / `reset-password` subcommands
 *   `internal/security` — the response headers: the CSP and the nonce the
     loading page carries, `X-Frame-Options`, `nosniff`, `Referrer-Policy`
 *   `internal/audit` — the opt-in security log (`WEB_UI_AUDIT_LOG`): logins,
@@ -420,7 +425,8 @@ overwrites the published one. Settings are optional: `.env.example` carries the
 variables a deployment normally sets, with their defaults (the
 [Environment variables](#environment-variables) table has the full list), and
 `.env` is read when it exists — a clone without one starts on `54845/tcp` for
-the web UI, `54844/udp` for the VPN and the password `changeme`. The production
+the web UI and `54844/udp` for the VPN, with an admin password generated on the
+first start and printed once in `docker compose logs app`. The production
 settings (their own ports and `WEB_UI_PASSWORD`) live separately in `deploy/.env`
 — git ignores it, so create it once on the machine you deploy from: `make deploy`
 builds the image, saves it as `proxy.tar`, copies it together with that file and
@@ -858,7 +864,7 @@ The settings are overridden with make variables:
 | `PPROF_HOST` | `localhost` | Host of the running instance |
 | `PPROF_PORT` | `54845` | Port (that instance's `WEB_UI_PORT`) |
 | `PPROF_USER` | `admin` | Login name, sent as `curl -u` |
-| `PPROF_PASSWORD` | `changeme` | The password **in plain text**, not the hash from `WEB_UI_PASSWORD` |
+| `PPROF_PASSWORD` | *unset* | The password **in plain text**, not the hash from `WEB_UI_PASSWORD`. It has no default: the targets refuse to run without it, because the panel's password is generated on its first start (`docker compose logs app`) |
 | `PPROF_SECONDS` | `30` | How long the CPU profile is collected |
 | `PPROF_DIR` | `profiles` | Where the downloaded profiles go |
 | `PPROF_KIND` | `heap` | What `profile-diff` compares: `heap`, `cpu` or `alloc` |
@@ -935,7 +941,7 @@ the two failures that happen before anything is logged by the panel itself.
 | `WEB_UI_PORT` | `54845` | Port the application listens on for the web UI. The same default is set in the image's `ENV`, in the binary and in `docker-compose.yml` (where it is also published on the host) |
 | `WEB_UI_BIND` | *every address* | Address the panel binds **inside the container**. Unset means `[::]` with `v6only` off, one listener for both stacks. With published ports this has to stay unset — Docker forwards to the container's address, not to its loopback — and the restriction belongs on the host side of the mapping (`"127.0.0.1:54845:54845/tcp"`). It exists for `network_mode: host`, where there is no mapping |
 | `WEB_UI_USER` | `admin` | Login name for the panel's login page and for `curl -u` |
-| `WEB_UI_PASSWORD` | `changeme` | Login password — SHA-256 in base64: `printf 'secret' \| openssl dgst -binary -sha256 \| base64`. The image default is the hash of `changeme`, which anyone can type: set this before the port is reachable, or the panel is an open door |
+| `WEB_UI_PASSWORD` | *unset* | Login password, as a hash and never as the password itself. Two formats are accepted: `$argon2id$…` (what `api hash-password` prints, and what the panel writes) and the older base64 of the SHA-256, which still works but logs a warning at startup. Unset — the default — means the panel generates a password on its first start, prints it once in the log and keeps only the hash in `/etc/amnezia/admin.hash`; set it to override the stored hash. `changeme` is refused at startup in either format |
 | `WEB_UI_SECURE_COOKIE` | *auto* | `true` marks every cookie `Secure`, `false` never does, unset follows the request and `X-Forwarded-Proto`. Behind a TLS proxy the container sees plain HTTP, so `true` (or a proxy that sends the header) is what makes the flag appear at all |
 | `WEB_UI_AUDIT_LOG` | `false` | Append logins, logouts and every change made through the API to `/etc/amnezia/audit.log`: time, address, user, route, status. Off by default — it records who reached the panel |
 | `WEB_UI_AUDIT_RETENTION_HOURS` | `24` | How long an entry stays in that file: a value below `1` is raised to `1`, one above `720` (30 days) is lowered to `720`, and anything that is not a number falls back to `24`. The file is swept at most once an hour, and rewritten atomically only when something has aged out |
@@ -959,7 +965,7 @@ spelled out and the optional ones commented. What each key does:
 | --- | --- |
 | `image` | The image to run. `${IMAGE:-ghcr.io/noelbennettz/amneziawg-ui:latest}` lets `make run` and `make deploy` substitute their own build; pin a dated tag (`…:2026.11.18`) to keep an upgrade a decision |
 | `ports` | `"host address:host port:container port"`. Naming the host address (`127.0.0.1:54845:54845/tcp`) binds that address only — the usual setup behind a local TLS proxy. A UDP range (`54844-54864:54844-54864/udp`) publishes several servers at once |
-| `environment` / `env_file` | The variables from the table above. `.env` is optional (`required: false`) because every one of them has a default — but the password default is `changeme`, so a deployment without `.env` is open to anyone who reaches the port |
+| `environment` / `env_file` | The variables from the table above. `.env` is optional (`required: false`) because every one of them has a default, and the password's default is to be generated on the first start and printed once in the log |
 | `volumes` | `/etc/amnezia` holds `web_config.json` and `audit.log`, plus the servers' `.conf` files under `amneziawg/`, `suspended/` included. A named volume or a host directory both work; this is the only state to back up |
 | `cap_add: NET_ADMIN` | Needed to write iptables rules, create the interface and manage routes inside the container's network namespace |
 | `devices: /dev/net/tun` | The TUN device the userspace engine attaches to. No kernel module, so no `SYS_MODULE` |
@@ -1000,9 +1006,13 @@ services:
       - "54844:54844/udp"   # VPN (a range works too)
     environment:
       - WEB_UI_USER=admin
-      # base64(sha256(password)); the value below is "changeme", replace it:
-      # printf 'your-password' | openssl dgst -binary -sha256 | base64
-      - WEB_UI_PASSWORD=BXugPWxEEEhj3HNh/kV4ll0YhzYPkKCJWILlimJI/IY=
+      # Leave this out and the panel generates a password on the first start and
+      # prints it once (docker compose logs app). To set your own:
+      #   printf '%s' 'your-password' | docker run --rm -i \
+      #     ghcr.io/noelbennettz/amneziawg-ui:latest api hash-password
+      # The hash is a $argon2id$... string, and compose reads $ as a variable:
+      # write every $ of it as $$.
+      # - WEB_UI_PASSWORD=$$argon2id$$v=19$$m=19456,t=2,p=1$$<salt>$$<hash>
     volumes:
       - data:/etc/amnezia
     cap_add:
@@ -1324,14 +1334,14 @@ Three details the table does not show:
 
 ### Check the server status
 
-`curl -u admin:changeme http://localhost:54845/api/system/status`
+`curl -u admin:<password> http://localhost:54845/api/system/status`
 
 `-u` works on any route: a basic-auth header is accepted everywhere, so scripts
 do not need the login page or a cookie.
 
 ### Check the iptables setup
 
-`curl -u admin:changeme "http://localhost:54845/api/system/iptables-test?server_id=wg_abc123"`
+`curl -u admin:<password> "http://localhost:54845/api/system/iptables-test?server_id=wg_abc123"`
 
 A start that could not apply the rules says so on stdout and still reports the
 server as running:
@@ -1382,12 +1392,15 @@ the controls the browser draws itself are otherwise light) and sizes itself with
 `100dvh` where it is known - the same three things the panel does for itself in
 `web-ui/internal/fixes/mobile_wasm.go`.
 
-The form posts the user and the password. The credentials are checked against
-`WEB_UI_USER` and `WEB_UI_PASSWORD` in constant time — nothing else is stored,
-there is no user table. A wrong pair re-renders the page with `401` and
-*Incorrect username or password.*; a right pair sets the cookie and redirects to
-`next`. A `next` that points at another host is ignored and the browser goes to
-`/` instead, so the form cannot be used as an open redirect.
+The form posts the user and the password. The pair is checked in constant time
+against `WEB_UI_USER` and the argon2id hash the panel holds — from
+`WEB_UI_PASSWORD` when that is set, from `/etc/amnezia/admin.hash` otherwise
+([The admin password](#the-admin-password) describes where that hash comes
+from). Nothing else is stored and there is no user table. A wrong pair re-renders
+the page with `401` and *Incorrect username or password.*; a right pair sets the
+cookie and redirects to `next`. A `next` that points at another host is ignored
+and the browser goes to `/` instead, so the form cannot be used as an open
+redirect.
 
 ## The session cookie
 
@@ -1399,8 +1412,9 @@ never, unset when the request itself arrived over TLS or a proxy said
 `X-Forwarded-Proto: https`. Behind a TLS-terminating proxy the container sees
 plain HTTP, which is why setting the variable is the normal deployment. Its
 value is the user and the expiry, signed with an HMAC whose key is derived from
-the credentials, so nothing is kept on the server: a container restart keeps you
-logged in, and changing `WEB_UI_PASSWORD` ends every session at once.
+the password hash, so nothing is kept on the server: a container restart keeps
+you logged in, and changing the password — in `WEB_UI_PASSWORD` or through
+`reset-password` — ends every session at once.
 
 ## The CSRF token
 
@@ -1411,7 +1425,7 @@ client reads that cookie and echoes it in `X-CSRF-Token`; the login form carries
 it in a hidden field and the server rotates it when the session starts. Two
 kinds of request are exempt: one that authenticates with an `Authorization`
 header (no browser attaches one by itself, which is what keeps
-`curl -u admin:changeme -X DELETE ...` working), and nothing else. A write
+`curl -u admin:<password> -X DELETE ...` working), and nothing else. A write
 without the token is `403`.
 
 `/logout` — GET or POST — deletes the cookie and redirects to `/login`. The
@@ -1449,10 +1463,62 @@ that sends `Accept: application/json`, gets `401` with
 body get something to parse. Every other request is a navigation, and a
 navigation is redirected to the login page.
 
+## The admin password
+
+The panel has one user (`WEB_UI_USER`, `admin` by default) and one password,
+resolved in this order at every start:
+
+1. `WEB_UI_PASSWORD`, when it is set. It holds a hash, never the password: an
+   argon2id PHC string (`$argon2id$v=19$m=19456,t=2,p=1$…`), or the older
+   base64 of the SHA-256 that earlier releases used. The old format still works
+   and logs a line at startup pointing at the migration below. An environment
+   variable beats anything on the volume, so a deployment that sets it does not
+   care what `admin.hash` holds.
+2. `/etc/amnezia/admin.hash` on the config volume, mode `0600`, when it exists.
+   This is what the panel writes, and nothing is printed for it.
+3. Neither: the first start generates a 24-character `[A-Za-z0-9]` password
+   with `crypto/rand`, stores only its argon2id hash in `admin.hash` and prints
+   the password once, in a banner in the container log. Nothing else ever holds
+   it in the clear, and the banner is the only copy — `docker compose logs app`
+   is how you read it back while that run is still in the log.
+
+The hash is what is compared, in constant time. argon2id is deliberately
+expensive (19 MiB per verification), so two things bound what a script can make
+the panel do: at most two verifications run at a time, and a Basic credential
+that verified is cached in memory for five minutes - keyed by an HMAC of the
+pair under a random per-process key, never the password itself, and never
+written to disk. A password change empties that cache, because the entry carries
+the generation it was written under.
+
+Changing the password:
+
+```bash
+# in place: writes a new hash, prints the password once, ends every session
+docker compose exec app api reset-password
+
+# your own: hash it with the image, then put it in .env or the compose file
+printf '%s' 'your-password' | docker run --rm -i \
+  ghcr.io/noelbennettz/amneziawg-ui:latest api hash-password
+```
+
+`hash-password` reads the password from stdin on purpose: an argument would be
+in the shell history and in the process list. The result is a `$argon2id$…`
+string, and compose reads `$` as the start of a variable, so in a compose file
+and in `.env` alike every `$` of the hash is written `$$`.
+`reset-password` writes `admin.hash`, and a panel that is already running
+notices the rewritten file within a second and adopts it — no restart. With
+`WEB_UI_PASSWORD` set the variable still wins, and the command says so.
+
+Two refusals at startup: a hash that does not parse exactly (including argon2id
+parameters above the ceilings the panel will run — 256 MiB, `t=10`, `p=8`, so a
+compose file cannot turn every login attempt into a memory bomb), and a hash
+that verifies `changeme`, which the image used to ship. Both exit non-zero with
+the way out spelled out.
+
 ## Basic auth for scripts
 
 An `Authorization: Basic` header is accepted on every route, checked against
-the same pair, which is what keeps `curl -u admin:changeme`, the
+the same pair, which is what keeps `curl -u admin:<password>`, the
 `make profile-*` targets and existing automation working. No
 `WWW-Authenticate` header is sent, so a browser never shows its native
 credential dialog and always gets the login page instead.
@@ -1464,9 +1530,10 @@ credential dialog and always gets the login page instead.
 > still worth brute-forcing — `WEB_UI_LOGIN_RATE_LIMIT=true` makes guessing
 > expensive per address, and it is off by default (see the table above for why).
 
-By default the image is built with the user `admin` and the password
-`changeme`. To change that, pass the Docker environment variables `WEB_UI_USER`
-and `WEB_UI_PASSWORD` (the password as SHA-256 in base64, see the table above).
+The user is `admin` unless `WEB_UI_USER` says otherwise, and the password is
+the one generated on the first start until you replace it - with
+`reset-password`, or with a hash of your own in `WEB_UI_PASSWORD`. Both are in
+[The admin password](#the-admin-password) above.
 ## FAQ
 
 ### How is AmneziaWG different from WireGuard?
@@ -1487,16 +1554,28 @@ clear `RandomTrailers` and `DisableCookies` in the server form; the rest of the
 
 ### How do I change the panel password?
 
-`WEB_UI_PASSWORD` holds base64 of the password's SHA-256, never the password:
-
 ```bash
-printf 'your-password' | openssl dgst -binary -sha256 | base64
+docker compose exec app api reset-password
 ```
 
-Put the result into `.env` (or `docker-compose.yml`) and restart the container.
-The session cookie is signed with a key derived from the credentials, so a
-restart keeps everyone logged in while a password change ends every session at
-once.
+It writes a new hash to `/etc/amnezia/admin.hash`, prints the password once and
+ends every session. The running panel adopts the new hash within a second, so
+nothing has to be restarted - unless `WEB_UI_PASSWORD` is set, in which case the
+variable still wins and has to be removed first (the command says so too).
+
+To use a password of your own instead, hash it and put the result in
+`WEB_UI_PASSWORD`:
+
+```bash
+printf '%s' 'your-password' | docker run --rm -i \
+  ghcr.io/noelbennettz/amneziawg-ui:latest api hash-password
+```
+
+The output is a `$argon2id$…` string, and every `$` of it is written `$$` —
+compose interpolates `$` in `.env` and in the compose file alike. The password is
+never stored in the clear.
+The session cookie is signed with a key derived from the hash, so a restart
+keeps everyone logged in while a password change ends every session at once.
 
 ### How do I back up and move the VPN to another server?
 
@@ -1515,6 +1594,16 @@ servers it finds back up on its own; VPN clients reconnect by themselves. A
 browser tab left open from the previous version can still read, but its writes
 are refused until it is reloaded, because the old bundle never sends the CSRF
 token the new one expects.
+
+> [!IMPORTANT]
+> **Breaking change: `changeme` no longer starts.** A deployment that still ships
+the old example hash (base64 of the SHA-256 of `changeme`, in `WEB_UI_PASSWORD`)
+> now refuses to start instead of accepting a password everybody knows. The log
+> says so and lists the ways out. Either remove `WEB_UI_PASSWORD` and let the
+> new version generate a password on the next start — it prints it once, in
+> `docker compose logs app` — or set your own hash from `api hash-password`. A
+> deployment whose own password is not `changeme` upgrades without a change; its
+> old SHA-256 hash keeps working, with a warning at startup.
 
 ### Do I need HTTPS, and how do I enable it?
 

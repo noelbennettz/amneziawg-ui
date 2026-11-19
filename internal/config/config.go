@@ -17,6 +17,10 @@ const (
 	ConfigDir          = "/etc/amnezia"
 	WireguardConfigDir = "/etc/amnezia/amneziawg"
 	ConfigFile         = "/etc/amnezia/web_config.json"
+	// AdminHashFile is the stored admin password hash, on the same volume as
+	// the rest of the state so that it survives a container restart - and so
+	// that "reset-password" can rewrite it from outside the process.
+	AdminHashFile = "/etc/amnezia/admin.hash"
 	// AuditFile is where the security log is appended when it is switched on.
 	// It lives on the same volume as the config, so it survives a restart of
 	// the container and is the operator's to read.
@@ -92,11 +96,17 @@ type Settings struct {
 	// Pprof mounts /debug/pprof behind the same credentials as the API.
 	Pprof bool
 
-	// User and PasswordHash are the credentials the login page checks; the
-	// hash is the base64 of the SHA-256 of the password, the format the basic
-	// auth header still being accepted for scripts uses too.
+	// User and PasswordHash are the login credentials. PasswordHash is
+	// WEB_UI_PASSWORD as configured - an argon2id PHC string, or the old
+	// base64-of-SHA-256 format - and empty when the variable is unset, which
+	// is what makes the panel generate a password on its first start.
 	User         string
 	PasswordHash string
+
+	// AdminHashFile is where the generated (or reset) password hash is
+	// stored, on the same volume as the rest of the state. Tests point it at
+	// a temp file so they never touch /etc.
+	AdminHashFile string
 
 	// ConfigFile is where web_config.json lives. Tests point it at a temp
 	// file so they never touch /etc.
@@ -126,8 +136,11 @@ func FromEnv() Settings {
 		SuspendCheckInterval: time.Minute,
 		Pprof:                parseBool(os.Getenv("WEB_UI_PPROF")),
 		User:                 getenv("WEB_UI_USER", "admin"),
-		// SHA-256 hash of "changeme" in base64
-		PasswordHash:       getenv("WEB_UI_PASSWORD", "BXugPWxEEEhj3HNh/kV4ll0YhzYPkKCJWILlimJI/IY="),
+		// Unset by default: with no hash configured the panel generates a
+		// password on its first start and prints it once. A default here
+		// would be a password everybody knows.
+		PasswordHash:       os.Getenv("WEB_UI_PASSWORD"),
+		AdminHashFile:      AdminHashFile,
 		ConfigFile:         ConfigFile,
 		WireguardConfigDir: WireguardConfigDir,
 	}

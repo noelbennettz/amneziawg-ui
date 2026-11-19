@@ -104,8 +104,10 @@ E2E_NAME_NOAUTO   ?= awgui-test-noautostart
 E2E_VOLUME_NOAUTO ?= awgui-test-noautostart-data
 E2E_PORT_NOAUTO   ?= 51837
 E2E_URL_NOAUTO    ?= http://localhost:$(E2E_PORT_NOAUTO)
-# base64 of the SHA-256 of "changeme" - the password the tests log in with.
-E2E_PASSWORD ?= BXugPWxEEEhj3HNh/kV4ll0YhzYPkKCJWILlimJI/IY=
+# base64 of the SHA-256 of "not-the-default-password" - the password the tests
+# log in with. Not "changeme": the panel refuses that one at startup, so a test
+# instance configured with it would never come up.
+E2E_PASSWORD ?= fMxvKVr4YtZNuRnQZ4ayA5jzCjr6yeZZrBvbMGFcSP4=
 # How long to wait for the fresh container to answer, in seconds.
 E2E_TIMEOUT ?= 120
 # The ceiling for the whole suite, as go test -timeout takes it.
@@ -166,8 +168,10 @@ e2e-down: ## Remove the test instances and their volumes
 PPROF_HOST ?= localhost
 PPROF_PORT ?= 54845
 PPROF_USER ?= admin
-# The plaintext password, not the hash that goes into WEB_UI_PASSWORD.
-PPROF_PASSWORD ?= changeme
+# The plaintext password of the running panel, not the hash that goes into
+# WEB_UI_PASSWORD. There is no default: the panel generates its password on the
+# first start (docker compose logs app prints it), and "changeme" is refused.
+PPROF_PASSWORD ?=
 # How long the CPU profile is collected for, in seconds.
 PPROF_SECONDS ?= 30
 # Where the downloaded profiles are kept; gitignored.
@@ -185,6 +189,7 @@ PPROF_KIND ?= heap
 .PHONY: profile-mem
 profile-mem: check-go ## Fetch the heap profile and open it in "go tool pprof"
 	@mkdir -p $(PPROF_DIR)
+	@test -n "$(PPROF_PASSWORD)" || { echo "set PPROF_PASSWORD to the panel's password - the first start prints it, docker compose logs app"; exit 1; }
 	@out="$(PPROF_DIR)/heap-$$(date +%Y%m%d-%H%M%S).pprof"; \
 	curl -fsS -u "$(PPROF_USER):$(PPROF_PASSWORD)" -o "$$out" "$(PPROF_URL)/heap?gc=1"; \
 	echo "saved $$out"; \
@@ -193,6 +198,7 @@ profile-mem: check-go ## Fetch the heap profile and open it in "go tool pprof"
 .PHONY: profile-cpu
 profile-cpu: check-go ## Collect a CPU profile (PPROF_SECONDS, default 30s) and open it in "go tool pprof"
 	@mkdir -p $(PPROF_DIR)
+	@test -n "$(PPROF_PASSWORD)" || { echo "set PPROF_PASSWORD to the panel's password - the first start prints it, docker compose logs app"; exit 1; }
 	@echo "Collecting $(PPROF_SECONDS)s of CPU profile from $(PPROF_URL) - put the server under load now"
 	@out="$(PPROF_DIR)/cpu-$$(date +%Y%m%d-%H%M%S).pprof"; \
 	curl -fsS --max-time $$(($(PPROF_SECONDS) + 30)) -u "$(PPROF_USER):$(PPROF_PASSWORD)" \
@@ -203,6 +209,7 @@ profile-cpu: check-go ## Collect a CPU profile (PPROF_SECONDS, default 30s) and 
 .PHONY: profile-alloc
 profile-alloc: check-go ## Fetch the allocation profile (everything allocated since start, freed included)
 	@mkdir -p $(PPROF_DIR)
+	@test -n "$(PPROF_PASSWORD)" || { echo "set PPROF_PASSWORD to the panel's password - the first start prints it, docker compose logs app"; exit 1; }
 	@out="$(PPROF_DIR)/alloc-$$(date +%Y%m%d-%H%M%S).pprof"; \
 	curl -fsS -u "$(PPROF_USER):$(PPROF_PASSWORD)" -o "$$out" "$(PPROF_URL)/allocs"; \
 	echo "saved $$out"; \

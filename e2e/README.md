@@ -72,7 +72,7 @@ instance is separate for the same reason: its whole point is a setting the
 other one does not have.
 
 The instances stay up after the run, so a failed test can be inspected in the
-browser at <http://localhost:51836> (admin / changeme) or, for the defaults
+browser at <http://localhost:51836> (admin / not-the-default-password) or, for the defaults
 test, <http://localhost:51837>. `make e2e-down` removes the containers and the
 volumes.
 
@@ -89,9 +89,10 @@ AWG_URL=http://localhost:54845 go test -count=1 -v .
 ```
 
 `AWG_URL` defaults to `http://localhost:51836`. Whatever it points at needs
-`WEB_UI_USER=admin` and `WEB_UI_PASSWORD=BXugPWxEEEhj3HNh/kV4ll0YhzYPkKCJWILlimJI/IY=`
-- the base64 SHA-256 of `changeme`, which is what the tests type into the login
-form. `10_defaults_test.go` reads `AWG_URL_NOAUTOSTART` instead, and skips when
+`WEB_UI_USER=admin` and `WEB_UI_PASSWORD=fMxvKVr4YtZNuRnQZ4ayA5jzCjr6yeZZrBvbMGFcSP4=`
+- the base64 SHA-256 of `not-the-default-password`, which is what the tests type
+into the login form. It is deliberately not `changeme`: the panel refuses the
+old default password at startup. `10_defaults_test.go` reads `AWG_URL_NOAUTOSTART` instead, and skips when
 it is not set.
 
 No Node.js is needed: on the first run `TestMain` downloads the Playwright
