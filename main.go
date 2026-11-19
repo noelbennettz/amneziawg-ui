@@ -23,6 +23,7 @@ import (
 	"amneziawg-web-ui/internal/security"
 	"amneziawg-web-ui/internal/store"
 	"amneziawg-web-ui/internal/totp"
+	"amneziawg-web-ui/internal/version"
 )
 
 // staticDir is where "make web-ui" leaves the packaged frontend, relative to
@@ -59,6 +60,8 @@ func main() {
 	}
 
 	fmt.Println("AmneziaWG Web UI (Go/Fiber) starting...")
+	build := version.Current()
+	fmt.Printf("Version %s (commit %s, built %s, %s)\n", build.Version, build.Commit, build.BuildTime, build.Go)
 
 	settings := config.FromEnv()
 	settings.EnsureDirectories()

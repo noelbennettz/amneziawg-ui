@@ -348,3 +348,38 @@ func TestSystemEndpointsAnswerWithoutTheHost(t *testing.T) {
 		t.Errorf("/status = %d %s", status, body)
 	}
 }
+
+// /version answers the build's identity, and it answers with real fields even
+// in a test binary nobody passed ldflags to: a bug report needs an answer, not
+// an empty object.
+func TestVersionEndpoint(t *testing.T) {
+	app, _, _ := newTestAPI(t)
+
+	status, body := call(t, app, http.MethodGet, "/api/version", "")
+	if status != http.StatusOK {
+		t.Fatalf("/api/version = %d %s", status, body)
+	}
+
+	var info struct {
+		Version   string `json:"version"`
+		Commit    string `json:"commit"`
+		BuildTime string `json:"build_time"`
+		Go        string `json:"go"`
+	}
+	if err := json.Unmarshal(body, &info); err != nil {
+		t.Fatalf("/api/version payload = %s (%v)", body, err)
+	}
+	for name, value := range map[string]string{
+		"version": info.Version,
+		"commit":  info.Commit,
+		"built":   info.BuildTime,
+		"go":      info.Go,
+	} {
+		if value == "" {
+			t.Errorf("%s is empty in %s", name, body)
+		}
+	}
+	if !strings.HasPrefix(info.Go, "go") {
+		t.Errorf("go = %q, want the toolchain version", info.Go)
+	}
+}

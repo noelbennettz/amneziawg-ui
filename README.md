@@ -113,6 +113,7 @@ matter behind a proxy.
 | [DOCS.md](DOCS.md) | Features, AmneziaWG 3.1 parameters, IPv6 and NAT6, REST API, environment variables, compose variants, building from source, profiling, logs, backup and restore, security details, FAQ |
 | [SECURITY.md](SECURITY.md) | What the panel assumes, what it does not protect against |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Development environment, commit messages, the DCO sign-off every commit needs |
+| [docs/versions/](docs/versions/README.md) | What a version means here: there are no numbered releases, and which commit a build came from is in `/api/version` and the image labels |
 | [Project site](https://noelbennettz.github.io/amneziawg-ui/) | English and Traditional Chinese pages, hosted in the [`noelbennettz.github.io`](https://github.com/noelbennettz/noelbennettz.github.io) repository under `docs/amneziawg-ui/` |
 | [`.env.example`](.env.example) | Every environment variable with its default |
 | [`docker-compose.example.yml`](docker-compose.example.yml) | The same service with every compose key and variable commented |

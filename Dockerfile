@@ -62,12 +62,25 @@ RUN --mount=type=cache,id=awg_mod,target=/go/pkg/mod \
     && gzip -9 wasm/bundle.wasm
 
 # ── Backend ───────────────────────────────────────────────────────
+# VERSION, COMMIT and BUILD_TIME are the build's identity: they go into the
+# binary through the linker (so /api/version answers with them) and onto the
+# final image as labels. The defaults are what a plain `docker build` knows,
+# which is nothing - a build that cannot say where it came from says so.
+ARG VERSION=dev
+ARG COMMIT=unknown
+ARG BUILD_TIME=unknown
+
 FROM base AS builder
 ARG TARGETARCH
+ARG VERSION
+ARG COMMIT
+ARG BUILD_TIME
 RUN --mount=type=cache,id=awg_mod,target=/go/pkg/mod \
     --mount=type=cache,id=awg_build_$TARGETARCH,target=/root/.cache/go-build \
     CGO_ENABLED=0 GOOS=linux GOARCH=$TARGETARCH \
-    go build -trimpath -ldflags="-s -w" -o /app/api .
+    go build -trimpath \
+    -ldflags="-s -w -X amneziawg-web-ui/internal/version.Version=$VERSION -X amneziawg-web-ui/internal/version.Commit=$COMMIT -X amneziawg-web-ui/internal/version.BuildTime=$BUILD_TIME" \
+    -o /app/api .
 
 # ── AmneziaWG engine ──────────────────────────────────────────────
 # Pure Go, so it cross-compiles like the API binary does.
@@ -125,6 +138,22 @@ RUN git clone --depth 1 --branch "$AWG_TOOLS_VERSION" https://github.com/amnezia
 
 # ── Final image ───────────────────────────────────────────────────────────────
 FROM alpine:3.24.1@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b
+
+# The same identity the binary carries, as image labels: `docker inspect` on a
+# container, and the package page, answer "which build is this" without a
+# login. The CI build passes them from git and the metadata action repeats
+# revision and created with the same values.
+ARG VERSION=dev
+ARG COMMIT=unknown
+ARG BUILD_TIME=unknown
+LABEL org.opencontainers.image.title="AmneziaWG Web UI" \
+      org.opencontainers.image.description="A self-hosted AmneziaWG panel: one Go binary, one container, servers and clients from a web UI" \
+      org.opencontainers.image.version="${VERSION}" \
+      org.opencontainers.image.revision="${COMMIT}" \
+      org.opencontainers.image.created="${BUILD_TIME}" \
+      org.opencontainers.image.source="https://github.com/noelbennettz/amneziawg-ui" \
+      org.opencontainers.image.url="https://noelbennettz.github.io/amneziawg-ui/" \
+      org.opencontainers.image.licenses="AGPL-3.0-only"
 
 # awg-quick is a bash script and shells out to ip, iptables and resolvconf;
 # "iproute2-minimal" is the ip binary alone - tc, ss and friends from the full
