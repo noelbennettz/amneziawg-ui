@@ -4,7 +4,7 @@ go 1.26.4
 
 require (
 	amneziawg-web-ui/web-ui v0.0.0
-	github.com/mxschmitt/playwright-go v0.6201.1
+	github.com/mxschmitt/playwright-go v0.6401.0
 )
 
 require (
