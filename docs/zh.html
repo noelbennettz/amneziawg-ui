@@ -244,7 +244,7 @@ ls -l /dev/net/tun</code></pre>
       WEB_UI_PORT: "54845"
       WEB_UI_USER: "admin"
       # 選用：hash 裡的每個 $ 都要寫成 $$
-      # WEB_UI_PASSWORD: "$$argon2id$$v=19$$m=19456,t=2,p=1$$<salt>$$<hash>"
+      # WEB_UI_PASSWORD: "$$argon2id$$v=19$$m=19456,t=2,p=1$$&lt;salt&gt;$$&lt;hash&gt;"
     volumes:
       - data:/etc/amnezia
     cap_add:
