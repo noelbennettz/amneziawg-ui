@@ -5,16 +5,25 @@
 # about a panel that is about to start. Without this, arguments handed to the
 # container would be silently dropped and the entrypoint would start the panel.
 #
-# Both spellings work, because both are in the documentation:
+# Both spellings of the binary work, because both are in the documentation:
 #   docker run --rm -i <image> hash-password
 #   docker run --rm -i <image> api hash-password   (the binary's own name)
+# Any other argument is a command in the image - "docker run --rm <image> ls
+# /usr/share/doc/amneziawg-ui" has to list files, not start the panel.
 case "${1:-}" in
-    api | /usr/bin/api) shift ;;
+    "")
+        ;;
+    api | /usr/bin/api)
+        shift
+        exec /usr/bin/api "$@"
+        ;;
+    hash-password | reset-password | help | -h | --help)
+        exec /usr/bin/api "$@"
+        ;;
+    *)
+        exec "$@"
+        ;;
 esac
-
-if [ "$#" -gt 0 ]; then
-    exec /usr/bin/api "$@"
-fi
 
 mkdir -p /var/log/amnezia
 chmod 755 /var/log/amnezia
