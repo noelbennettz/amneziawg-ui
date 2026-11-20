@@ -38,8 +38,8 @@ func (m *Manager) TrafficSnapshot() api.TrafficSnapshot {
 const quietTTL = 20 * time.Second
 
 // collectTraffic walks every server and asks awg for its peers. Servers that
-// are down contribute nothing; the page keeps their last counters as they
-// were.
+// are down contribute no entry at all; the page keeps the last counters it
+// showed for their clients and only clears their presence lights.
 func (m *Manager) collectTraffic() api.TrafficSnapshot {
 	servers := m.copyServers()
 

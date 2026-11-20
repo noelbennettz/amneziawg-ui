@@ -18,6 +18,10 @@ func newLog(t *testing.T, retention time.Duration) (*Log, string, *time.Time) {
 	log := New(true, path, retention)
 	now := time.Date(2026, 11, 11, 12, 0, 0, 0, time.UTC)
 	log.now = func() time.Time { return now }
+	// New swept on the real clock before the test took it over, and the fake
+	// clock starts in the past: reset the hourly gate so the Record calls
+	// below are the ones that sweep, which is what the tests are about.
+	log.lastSweep = time.Time{}
 	return log, path, &now
 }
 
@@ -151,5 +155,27 @@ func TestZeroRetentionMeansADay(t *testing.T) {
 	log := New(true, filepath.Join(t.TempDir(), "audit.log"), 0)
 	if log.retention != DefaultRetention {
 		t.Errorf("retention = %v, want %v", log.retention, DefaultRetention)
+	}
+}
+
+// New sweeps on its own. A panel restarted after a quiet stretch used to keep
+// every entry older than the window until the first event of the new process
+// came along to sweep it - and a panel with no logins and no changes has no
+// such event.
+func TestNewSweepsWhatAgedOut(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "audit.log")
+	stale, err := json.Marshal(Event{Time: time.Now().Add(-48 * time.Hour), Event: EventLogin})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, append(stale, '\n'), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	if New(true, path, 24*time.Hour) == nil {
+		t.Fatal("New returned no log")
+	}
+	if events := read(t, path); len(events) != 0 {
+		t.Errorf("an entry older than the window survived the start: %+v", events)
 	}
 }

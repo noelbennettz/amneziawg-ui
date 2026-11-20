@@ -88,17 +88,62 @@ func (d *Dialog) SetActions(buttons ...fyne.CanvasObject) {
 }
 
 // Show puts the card on the canvas and lets Escape close it.
+//
+// The dialogs are stacked rather than each owning the canvas's key handler:
+// one dialog is opened from another (the raw .conf behind the server overview,
+// a confirmation behind a form), and the second Show used to overwrite the
+// first's handler while the second Hide cleared it for good - leaving the
+// dialog underneath open with no way out but the mouse. Escape always closes
+// the topmost card; the one below keeps its turn.
 func (d *Dialog) Show() {
 	d.popup.Show()
-	d.canvas.SetOnTypedKey(func(event *fyne.KeyEvent) {
-		if event.Name == fyne.KeyEscape {
-			d.Hide()
-		}
-	})
+	openDialogs = append(openDialogs, d)
+	dialogCanvas = d.canvas
+	d.canvas.SetOnTypedKey(closeTopDialog)
 }
 
 // Hide takes the card away again.
 func (d *Dialog) Hide() {
-	d.canvas.SetOnTypedKey(nil)
 	d.popup.Hide()
+	for i, open := range openDialogs {
+		if open == d {
+			openDialogs = append(openDialogs[:i], openDialogs[i+1:]...)
+			break
+		}
+	}
+	if len(openDialogs) == 0 && dialogCanvas != nil {
+		dialogCanvas.SetOnTypedKey(nil)
+		dialogCanvas = nil
+	}
+}
+
+// openDialogs is the stack of visible cards, newest last, and dialogCanvas is
+// the canvas whose key handler closes them. Dialogs are only opened and closed
+// from the UI goroutine, so neither needs a lock.
+var (
+	openDialogs  []*Dialog
+	dialogCanvas fyne.Canvas
+)
+
+// closeTopDialog is the canvas handler while any dialog is open.
+//
+// A card dismissed by a click outside never reaches Hide - the popup hides
+// itself - so the stack is pruned of invisible cards as it is walked; the
+// next visible one is the top.
+func closeTopDialog(event *fyne.KeyEvent) {
+	if event.Name != fyne.KeyEscape {
+		return
+	}
+	for len(openDialogs) > 0 {
+		top := openDialogs[len(openDialogs)-1]
+		if top.popup.Visible() {
+			top.Hide()
+			return
+		}
+		openDialogs = openDialogs[:len(openDialogs)-1]
+	}
+	if dialogCanvas != nil {
+		dialogCanvas.SetOnTypedKey(nil)
+		dialogCanvas = nil
+	}
 }

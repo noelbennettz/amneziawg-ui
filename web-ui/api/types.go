@@ -342,7 +342,7 @@ type AmneziaLink struct {
 	VPNURL string `json:"vpn_url"`
 }
 
-// PublicIP is the payload of GET /api/system/refresh-ip.
+// PublicIP is the payload of POST /api/system/refresh-ip.
 type PublicIP struct {
 	Address string `json:"public_ip"`
 }

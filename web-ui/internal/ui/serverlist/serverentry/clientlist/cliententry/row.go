@@ -164,6 +164,18 @@ func (r *Row) SetNarrow(narrow bool) {
 	r.object.Refresh()
 }
 
+// ApplyOffline clears the presence light without touching the counters: the
+// interface the peer lived on is gone, so nothing is connected, but the last
+// numbers a client used are not erased by a stopped server.
+func (r *Row) ApplyOffline() bool {
+	if r.online.FillColor == style.Muted {
+		return false
+	}
+	r.online.FillColor = style.Muted
+	r.online.Refresh()
+	return true
+}
+
 // Apply pushes one traffic snapshot into the labels. Must run on the UI
 // goroutine.
 func (r *Row) Apply(data api.ClientTraffic) bool {

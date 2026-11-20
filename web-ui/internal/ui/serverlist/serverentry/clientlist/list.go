@@ -57,11 +57,26 @@ func (l *List) SetNarrow(narrow bool) {
 // snapshot does not mention has simply never connected. Must run on the UI
 // goroutine.
 func (l *List) ApplyTraffic(traffic map[string]api.ClientTraffic) bool {
+	if traffic == nil {
+		// The server is down or quiet - it contributed no snapshot at all.
+		// Its peers are gone from the kernel, so nothing is online, but the
+		// last counters are still the truth about each client: clearing the
+		// presence lights is all this pass should do, or stopping a server
+		// would look like every peer had been reset.
+		changed := false
+		for _, row := range l.rows {
+			if row.ApplyOffline() {
+				changed = true
+			}
+		}
+		return changed
+	}
+
 	changed := false
 	for id, row := range l.rows {
 		data, ok := traffic[id]
 		if !ok {
-			data = api.ClientTraffic{Received: "0 B", Sent: "0 B", LastHandshake: lang.L("Never")}
+			continue
 		}
 		if row.Apply(data) {
 			changed = true

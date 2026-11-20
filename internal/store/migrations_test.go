@@ -141,3 +141,30 @@ func TestMigrateDoesNotStampAPartialIPv6Pass(t *testing.T) {
 		t.Errorf("client got %q out of a subnet with no room", addr)
 	}
 }
+
+// A config written before the status field existed stores "" for every client.
+// The start-up reconcile treated anything but "active" as parked, so the first
+// boot after the upgrade moved a working peer's block out of the live .conf
+// while the client list kept showing it as active. Revision 7 fills it in.
+func TestMigrationDefaultsAClientStatus(t *testing.T) {
+	cfg := &AppConfig{SchemaVersion: 6, Servers: []api.Server{{
+		ID: "s1",
+		Clients: []api.Client{
+			{ID: "old"},
+			{ID: "suspended", Status: "suspended"},
+		},
+	}}}
+
+	if !Migrate(cfg) {
+		t.Fatal("a config one revision behind must be reported as changed")
+	}
+	if got := cfg.Servers[0].Clients[0].Status; got != "active" {
+		t.Errorf("an old client kept the empty status %q, want active", got)
+	}
+	if got := cfg.Servers[0].Clients[1].Status; got != "suspended" {
+		t.Errorf("a suspended client became %q", got)
+	}
+	if cfg.SchemaVersion != SchemaVersion {
+		t.Errorf("schema version = %d, want %d", cfg.SchemaVersion, SchemaVersion)
+	}
+}

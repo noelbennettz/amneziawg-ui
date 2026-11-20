@@ -114,10 +114,14 @@ func Reconcile(path string, clients []api.Client) (ReconcileResult, error) {
 			}
 			result.Orphans = append(result.Orphans, name+" ("+id+")")
 			changed = true
-		case byID[id].Status != "active":
+		case byID[id].Status == "suspended":
 			// The model says suspended: the block belongs in the parked
 			// directory under the client's own name, which is where
-			// ActivateClient reads it from.
+			// ActivateClient reads it from. Only an explicit "suspended"
+			// parks: a config from before the status field existed, or one
+			// somebody edited by hand, means "active" - the migration fills
+			// the empty value in, and this is the second door for a file it
+			// never sees.
 			if err := ParkLines(path, id, block); err != nil {
 				return result, err
 			}
@@ -131,10 +135,12 @@ func Reconcile(path string, clients []api.Client) (ReconcileResult, error) {
 	}
 
 	// Clients the model has as active that the file lost: rebuild the block
-	// from the model, which is where their keys and addresses live.
+	// from the model, which is where their keys and addresses live. Anything
+	// that does not say "suspended" counts as active, for the same reason the
+	// parking case above does.
 	for i := range clients {
 		c := &clients[i]
-		if c.Status != "active" || seen[c.ID] {
+		if c.Status == "suspended" || seen[c.ID] {
 			continue
 		}
 		kept = append(kept, strings.Split(strings.TrimRight(PeerBlock(c, PeerAllowedIPs(c)), "\n"), "\n")...)

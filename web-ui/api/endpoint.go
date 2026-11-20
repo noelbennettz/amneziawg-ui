@@ -27,6 +27,10 @@ const MaxHostnameLength = 253
 //
 // An empty string is not an endpoint: callers decide what an empty field
 // means (the backend substitutes the detected public address).
+//
+// A zone on an IPv6 literal is refused: the zone names an interface on the
+// machine that dials, which is the client, so a config carrying it would ask
+// every user to have that interface by that name.
 func ParseEndpoint(raw string) (string, error) {
 	host := strings.TrimSpace(raw)
 	if host == "" {
@@ -67,6 +71,13 @@ func ipv6Host(raw, host string) (string, error) {
 	addr, err := netip.ParseAddr(host)
 	if err != nil || !addr.Is6() {
 		return "", fmt.Errorf("endpoint %q is not an IPv6 address: leave the port out (the server appends its own) and bracket an IPv6 literal as [2001:db8::1]", raw)
+	}
+	// A zone names an interface on the machine that dials, which is the
+	// client - not this host. Carrying one into every client config would
+	// produce an address that resolves, if at all, to whatever interface
+	// happens to have that name on the user's machine.
+	if addr.Zone() != "" {
+		return "", fmt.Errorf("endpoint %q carries the zone %q: a zone belongs to the machine that dials, not to a config handed to every client", raw, addr.Zone())
 	}
 	return addr.String(), nil
 }

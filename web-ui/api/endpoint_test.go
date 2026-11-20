@@ -61,6 +61,17 @@ func TestParseEndpointRejectsWhatIsNotAHost(t *testing.T) {
 
 // The Endpoint line is where the brackets have to be, and only for IPv6: an
 // unbracketed "2001:db8::1:51820" is a different (and empty) address.
+// A zone names an interface on the machine that dials. On the server it picks
+// out the host's own link-local address, and a config carrying it would ask
+// every client to use an interface by that name on its own machine.
+func TestParseEndpointRejectsAZone(t *testing.T) {
+	for _, in := range []string{"fe80::1%eth0", "[fe80::1%eth0]"} {
+		if got, err := ParseEndpoint(in); err == nil {
+			t.Errorf("ParseEndpoint(%q) = %q, want a zone to be refused", in, got)
+		}
+	}
+}
+
 func TestEndpointAddressBracketsOnlyIPv6(t *testing.T) {
 	cases := []struct {
 		host string

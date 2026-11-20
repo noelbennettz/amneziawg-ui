@@ -203,3 +203,22 @@ func TestStoredValuesCannotStartADirective(t *testing.T) {
 		}
 	}
 }
+
+// A server whose resolver list parsed to nothing must not write a bare DNS
+// key: importers disagree on whether that means "system resolver" or a broken
+// line. With resolvers the line is written as before.
+func TestClientConfOmitsAnEmptyDNSLine(t *testing.T) {
+	srv, client := fixture(nil)
+	srv.DNS = nil
+
+	conf := ClientConf(srv, client, "203.0.113.5", false)
+	if strings.Contains(conf, "DNS") {
+		t.Errorf("a server with no resolvers wrote a DNS line:\n%s", conf)
+	}
+
+	srv.DNS = []string{"1.1.1.1"}
+	conf = ClientConf(srv, client, "203.0.113.5", false)
+	if !strings.Contains(conf, "DNS = 1.1.1.1") {
+		t.Errorf("the resolver line is missing:\n%s", conf)
+	}
+}

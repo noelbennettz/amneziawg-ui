@@ -160,7 +160,9 @@ func (m *Manager) autoSuspendLocked(serverID, clientID string, now float64) (ifa
 	defer m.mu.Unlock()
 
 	srv, client := m.findClient(serverID, clientID)
-	if srv == nil || client == nil || client.Status != "active" || client.SuspendAt == nil || now < *client.SuspendAt {
+	// A missing status means an old config; the migration fills it in, and
+	// until it runs anything that does not say "suspended" is active.
+	if srv == nil || client == nil || client.Status == "suspended" || client.SuspendAt == nil || now < *client.SuspendAt {
 		return "", nil
 	}
 
@@ -182,7 +184,7 @@ func (m *Manager) findClientsPastSuspendTime(now float64) []pendingSuspension {
 	var items []pendingSuspension
 	for _, srv := range m.cfg.Servers {
 		for _, c := range srv.Clients {
-			if c.SuspendAt != nil && c.Status == "active" && now >= *c.SuspendAt {
+			if c.SuspendAt != nil && c.Status != "suspended" && now >= *c.SuspendAt {
 				items = append(items, pendingSuspension{srv.ID, c.ID})
 			}
 		}

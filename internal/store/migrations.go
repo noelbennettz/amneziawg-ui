@@ -31,13 +31,16 @@ import (
 //	6 - a server whose endpoint was never the operator's own choice stores no
 //	    endpoint at all, so a detected public IP change reaches its client
 //	    configs; see unfreezeServerEndpoints.
+//	7 - every client has an explicit status; a config written before the field
+//	    existed stored none, and the start-up reconcile parked such a client's
+//	    peer as if it were suspended; see defaultClientStatus.
 //
 // It starts at 3 rather than 1 because pre-release builds already stamped 1
 // and 2 into deployed configs. Numbering the first release below what is
 // already on disk would make those files look newer than the code, and the
 // next migration - guarded by "the config is older than this revision" -
 // would never run on them.
-const SchemaVersion = 6
+const SchemaVersion = 7
 
 // Migrate applies every migration cfg still needs and stamps the result, so
 // none of them run twice. It reports whether cfg changed and therefore needs
@@ -51,6 +54,7 @@ func Migrate(cfg *AppConfig) (changed bool) {
 	repairClientServerIDs(cfg)
 	complete := addIPv6Addressing(cfg)
 	unfreezeServerEndpoints(cfg)
+	defaultClientStatus(cfg)
 
 	if complete {
 		cfg.SchemaVersion = SchemaVersion
@@ -182,6 +186,29 @@ func unfreezeServerEndpoints(cfg *AppConfig) {
 		srv := &cfg.Servers[i]
 		if srv.Endpoint == srv.PublicIP || srv.Endpoint == publicip.Unknown {
 			srv.Endpoint = ""
+		}
+	}
+}
+
+const schemaClientStatus = 7
+
+// defaultClientStatus gives every client the status the panel now assumes.
+//
+// A config written before the field existed unmarshals it as "", and the
+// start-up reconcile treated anything but "active" as parked: the client's
+// peer block was moved out of the live .conf on the first start after the
+// upgrade, dropping a working peer, while the panel's client list - which
+// defaults the empty status for display - kept showing it as active.
+// Everything is active unless it says it was suspended.
+func defaultClientStatus(cfg *AppConfig) {
+	if cfg.SchemaVersion >= schemaClientStatus {
+		return
+	}
+	for i := range cfg.Servers {
+		for j := range cfg.Servers[i].Clients {
+			if cfg.Servers[i].Clients[j].Status == "" {
+				cfg.Servers[i].Clients[j].Status = "active"
+			}
 		}
 	}
 }

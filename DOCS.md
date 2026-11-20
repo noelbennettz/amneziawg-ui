@@ -536,8 +536,10 @@ Content-Type: application/json
 array of strings, on either stack (`2606:4700:4700::1111` is a resolver like
 any other). `endpoint` is a host on its own — a name, an IPv4 address, or an
 IPv6 literal with or without brackets — and a value carrying a port
-(`vpn.example.com:54844`) or a scheme answers `400`: the port is the server's
-own and is appended to every client config. The same goes for `port`, `subnet`
+(`vpn.example.com:54844`), a scheme or an IPv6 zone (`fe80::1%eth0`) answers
+`400`: the port is the server's own and is appended to every client config, and
+a zone names an interface on the machine that dials, which is the client. The
+same goes for `port`, `subnet`
 and `mtu`: an omitted field falls back to `DEFAULT_PORT`, `DEFAULT_SUBNET` and
 `DEFAULT_MTU` respectively, and the panel's form defaults to those same three
 plus `DEFAULT_DNS`, which is why they are worth setting even when every server

@@ -16,7 +16,7 @@ What does identify a build:
   ```
 
   ```json
-  {"version":"c7fc127","commit":"c7fc1277","build_time":"2026-11-19T16:49:46Z","go":"go1.26.4"}
+  {"version":"2026.11.20","commit":"70ce4a3","build_time":"2026-11-20T10:08:00Z","go":"go1.26.4"}
   ```
 
 - **The image labels**, for a container that is not running or whose login you

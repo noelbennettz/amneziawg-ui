@@ -159,3 +159,15 @@ func TestReadPassword(t *testing.T) {
 		t.Error("ReadPassword accepted an empty password")
 	}
 }
+
+// A line past the read limit is refused rather than cut short: a truncated
+// password hashes to something the operator never typed, and nothing would say
+// why the login it produced does not work.
+func TestReadPasswordRefusesAnOversizedLine(t *testing.T) {
+	if _, err := ReadPassword(strings.NewReader(strings.Repeat("a", 4097))); err == nil {
+		t.Error("ReadPassword accepted a line past its limit")
+	}
+	if password, err := ReadPassword(strings.NewReader(strings.Repeat("a", 4096))); err != nil || len(password) != 4096 {
+		t.Errorf("the limit itself was refused: %d bytes, %v", len(password), err)
+	}
+}

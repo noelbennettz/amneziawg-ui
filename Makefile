@@ -259,7 +259,10 @@ profile-clean: ## Remove the downloaded profiles
 
 .PHONY: check-go
 check-go: ## Check Go version
-	@go version | grep -q 'go1\.26' || (echo "Please use Go 1.26.X"; exit 1)
+	@v=$$(go env GOVERSION); case "$$v" in \
+		go1.2[6-9]*|go1.[3-9][0-9]*) ;; \
+		*) echo "Please use Go 1.26 or newer (the image builds with the version in the Dockerfile)"; exit 1 ;; \
+	esac
 
 .PHONY: vet
 vet: check-go ## Run go vet over every module

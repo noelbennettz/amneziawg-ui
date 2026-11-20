@@ -239,3 +239,37 @@ func TestForgetPeer(t *testing.T) {
 		t.Errorf("forgetting an absent block = %v, want nil", err)
 	}
 }
+
+// A client stored before the status field existed has no status. It is active,
+// not suspended: its peer stays in the live config rather than being parked on
+// the first start after an upgrade - and a block the file lost is restored.
+func TestReconcileKeepsAnOldClientWithoutAStatus(t *testing.T) {
+	path := writePeerConf(t,
+		"\n# Client: old [id:aaa]\n[Peer]\nPublicKey = pub-aaa\nPresharedKey = psk-aaa\nAllowedIPs = 10.0.0.2/32, fd42:1::2/128\n")
+	client := testClient("aaa", "old", "")
+
+	result, err := Reconcile(path, []api.Client{client})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Changed() {
+		t.Errorf("a status-less client changed the config: %+v", result)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), "PublicKey = pub-aaa") {
+		t.Errorf("the peer was parked out of the live config:\n%s", data)
+	}
+
+	// And the other direction: a block the file lost comes back.
+	empty := writePeerConf(t)
+	restored, err := Reconcile(empty, []api.Client{client})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(restored.Added) != 1 {
+		t.Errorf("a status-less client with no block was not restored: %+v", restored)
+	}
+}

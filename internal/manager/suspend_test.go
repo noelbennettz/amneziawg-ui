@@ -63,3 +63,29 @@ func TestSuspendDueFiresOnce(t *testing.T) {
 		t.Errorf("after activating by hand: status = %q, want active", c.Status)
 	}
 }
+
+// A client written by a release that had no status field is active, so a
+// scheduled suspension it already carries still fires; the migration fills the
+// field in at load, and this covers a config the schema has already stamped
+// but somebody edited by hand.
+func TestSuspendDueTreatsAMissingStatusAsActive(t *testing.T) {
+	m, _ := newTestManager(t)
+	past := float64(time.Now().Add(-time.Minute).Unix())
+
+	client, _, err := m.AddClient("s1", api.AddClientRequest{Name: "old"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	m.mu.Lock()
+	m.cfg.Servers[0].Clients[0].Status = ""
+	m.mu.Unlock()
+
+	if _, _, err := m.UpdateClientSuspendTime("s1", client.ID, &past); err != nil {
+		t.Fatal(err)
+	}
+	m.suspendDue(time.Now())
+
+	if got, _ := m.Client("s1", client.ID); got.Status != "suspended" {
+		t.Errorf("status = %q, want the overdue client suspended", got.Status)
+	}
+}

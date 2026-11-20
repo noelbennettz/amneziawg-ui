@@ -82,14 +82,23 @@ func ClientConf(srv *api.Server, client *api.Client, endpoint string, includeCom
 		fmt.Fprintf(&sb, "# AmneziaWG Client Configuration\n")
 		fmt.Fprintf(&sb, "# Server: %s\n", singleLine(srv.Name))
 		fmt.Fprintf(&sb, "# Client: %s\n", singleLine(client.Name))
-		fmt.Fprintf(&sb, "# Generated: %s\n", time.Unix(int64(client.CreatedAt), 0).UTC().String())
+		// A client stored before the field existed has no creation time; a
+		// "Generated: 1970" line would be worse than none.
+		if client.CreatedAt > 0 {
+			fmt.Fprintf(&sb, "# Generated: %s\n", time.Unix(int64(client.CreatedAt), 0).UTC().String())
+		}
 		fmt.Fprintf(&sb, "# Server Endpoint: %s\n", api.EndpointAddress(endpoint, srv.Port))
 	}
 
 	fmt.Fprintf(&sb, "[Interface]\n")
 	fmt.Fprintf(&sb, "PrivateKey = %s\n", singleLine(client.ClientPrivateKey))
 	fmt.Fprintf(&sb, "Address = %s\n", AddressList(client.ClientIP+"/32", clientAddressV6(client)))
-	fmt.Fprintf(&sb, "DNS = %s\n", singleLine(strings.Join(srv.DNS, ", ")))
+	// A server with no resolvers at all - DEFAULT_DNS pointed at a list that
+	// parsed to nothing - writes no DNS line rather than an empty one, which
+	// some importers read as "no resolver" and others as a broken key.
+	if len(srv.DNS) > 0 {
+		fmt.Fprintf(&sb, "DNS = %s\n", singleLine(strings.Join(srv.DNS, ", ")))
+	}
 	fmt.Fprintf(&sb, "MTU = %d\n", srv.MTU)
 
 	if client.ObfuscationEnabled {

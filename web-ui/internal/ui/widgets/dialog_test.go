@@ -13,6 +13,11 @@ import (
 func newDialogCanvas(t *testing.T, width, height float32) fyne.Window {
 	t.Helper()
 
+	// The open-dialog stack is package state; a test starts with none rather
+	// than with the cards an earlier test left on its own window.
+	openDialogs = nil
+	dialogCanvas = nil
+
 	test.NewApp()
 	win := test.NewWindow(container.NewVBox())
 	win.Resize(fyne.NewSize(width, height))
@@ -138,5 +143,46 @@ func TestDialogActionsSitBottomRight(t *testing.T) {
 	d.SetActions(confirm)
 	if got := len(d.actions.Objects); got != 1 {
 		t.Errorf("after SetActions one button the row holds %d", got)
+	}
+}
+
+// Escape closes the topmost card, and the one below it stays open until its
+// own turn. Opening a dialog from a dialog used to overwrite the canvas key
+// handler, and closing the inner one cleared it for good: the outer card was
+// then reachable only with the mouse.
+func TestEscapeClosesOnlyTheTopDialog(t *testing.T) {
+	win := newDialogCanvas(t, 1200, 800)
+	c := win.Canvas()
+
+	first := NewDialog(c, "Overview", widget.NewLabel("first"), fyne.NewSize(500, 300))
+	second := NewDialog(c, "Raw config", widget.NewLabel("second"), fyne.NewSize(500, 300))
+	first.Show()
+	second.Show()
+
+	closeTopDialog(&fyne.KeyEvent{Name: fyne.KeyEscape})
+	if second.popup.Visible() {
+		t.Error("Escape left the top dialog open")
+	}
+	if !first.popup.Visible() {
+		t.Error("Escape closed the dialog underneath as well")
+	}
+
+	closeTopDialog(&fyne.KeyEvent{Name: fyne.KeyEscape})
+	if first.popup.Visible() {
+		t.Error("the second Escape left the remaining dialog open")
+	}
+
+	// A card dismissed with a click outside hides itself without going
+	// through Hide; the stack drops it instead of spending the next Escape on
+	// a card that is already gone.
+	third := NewDialog(c, "Third", widget.NewLabel("third"), fyne.NewSize(500, 300))
+	fourth := NewDialog(c, "Fourth", widget.NewLabel("fourth"), fyne.NewSize(500, 300))
+	third.Show()
+	fourth.Show()
+	fourth.popup.Hide() // what the popup's own dismiss overlay does
+
+	closeTopDialog(&fyne.KeyEvent{Name: fyne.KeyEscape})
+	if third.popup.Visible() {
+		t.Error("Escape did not close the visible card after one was dismissed outside it")
 	}
 }

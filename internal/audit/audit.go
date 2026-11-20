@@ -79,7 +79,15 @@ func New(enabled bool, path string, retention time.Duration) *Log {
 	if retention <= 0 {
 		retention = DefaultRetention
 	}
-	return &Log{path: path, retention: retention, now: time.Now}
+	l := &Log{path: path, retention: retention, now: time.Now}
+
+	// A panel restarted after a quiet stretch must not keep every entry older
+	// than the window until the first event of the new process sweeps it.
+	l.mu.Lock()
+	l.sweep(l.now())
+	l.mu.Unlock()
+
+	return l
 }
 
 // Start sweeps the file on a timer for as long as the process runs, so the

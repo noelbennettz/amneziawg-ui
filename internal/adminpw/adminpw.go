@@ -253,9 +253,16 @@ func Generate() (string, error) {
 // password: never from the command line, where it would end up in the shell
 // history and in the process list.
 func ReadPassword(r io.Reader) (string, error) {
-	data, err := io.ReadAll(io.LimitReader(r, 4096))
+	// The limit is a guard against a pipe that never ends, not a password
+	// rule: a longer line is refused rather than silently cut short, because
+	// a truncated password hashes to something the operator never typed.
+	const maxPasswordBytes = 4096
+	data, err := io.ReadAll(io.LimitReader(r, maxPasswordBytes+1))
 	if err != nil {
 		return "", fmt.Errorf("read password: %w", err)
+	}
+	if len(data) > maxPasswordBytes {
+		return "", fmt.Errorf("password is longer than %d bytes", maxPasswordBytes)
 	}
 	password := strings.TrimRight(string(data), "\r\n")
 	if password == "" {

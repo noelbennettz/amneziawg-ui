@@ -422,7 +422,10 @@ func (m *Manager) UpdateServer(serverID string, req api.UpdateServerRequest) (*a
 
 	m.saveOrLog("server update")
 
-	updated, _ := m.Server(serverID)
+	updated, ok := m.Server(serverID)
+	if !ok {
+		return nil, serverNotFound(serverID)
+	}
 	return &updated, nil
 }
 
