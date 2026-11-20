@@ -1013,6 +1013,15 @@ The browser workflow caches its test image in the Actions cache
 and retries the suite once before failing the run — a flaky browser is worth one
 second attempt, not a red pull request.
 
+Every workflow also keeps its own run list short: a `prune-runs-before` job at
+the top of `jobs:` and a `prune-runs-after` job after the main jobs (`if:
+always()`) call `scripts/prune-runs.sh 3`, which deletes every run of that
+workflow older than the newest three, together with its logs and artifacts. Both
+use the automatic `github.token` with `actions: write` — no repository secret or
+cache key is involved. A pull request from a fork receives a read-only token, so
+the script only warns there and the job still passes; the checks are not
+affected either way.
+
 The package is public, so `docker pull ghcr.io/noelbennettz/amneziawg-ui:latest`
 needs no login. To run your own build instead, `make run` or
 `docker compose build` produce the image locally.

@@ -152,6 +152,21 @@ working on. `make e2e-down` removes it.
 
 For manual testing, you can use `playwright-cli`.
 
+## CI
+
+Five workflows: `docker.yml` (backend and wasm tests, image build and push to
+GHCR, cosign signing, SBOM), `e2e.yml` (the browser suite against a built
+image), `licences.yml`, `lint.yml` (actionlint) and `dco.yml`. Every workflow
+prunes its own history: `prune-runs-before` at the top of `jobs:` and
+`prune-runs-after` after the main jobs (`if: always()`) both run
+`scripts/prune-runs.sh 3`, which keeps only that workflow's three newest runs.
+The jobs authenticate with `github.token` and a job-level `permissions:
+actions: write` + `contents: read`; do not introduce a PAT, a repository secret
+or a cache key for them — a fork PR gets a read-only token, and the script is
+written to warn and exit successfully in that case. Pruning is per workflow:
+`prune-runs.sh` resolves the called workflow from `GITHUB_WORKFLOW_REF`, so it
+never touches another workflow's runs.
+
 ## Authentication
 
 `internal/auth` guards the panel; `internal/adminpw` owns the password itself.

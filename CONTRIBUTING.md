@@ -72,6 +72,22 @@ git rebase --signoff HEAD~3    # the last three, keeping their contents
 git push --force-with-lease
 ```
 
+## Continuous integration
+
+Five workflows: `docker.yml` (a push to `main` or a manual run: backend and
+WebAssembly tests, image build and push, signing, SBOM), `e2e.yml` (pushes and
+pull requests: the browser suite), `licences.yml` (the same), `lint.yml` (changes
+under `.github/` only: actionlint) and `dco.yml` (pull requests only). Every
+one of them keeps only its own three newest runs — a `prune-runs-before` job at
+the top of `jobs:` and a `prune-runs-after` job after the main jobs (`if:
+always()`) call `scripts/prune-runs.sh 3`, which also deletes the logs and
+artifacts of the removed runs. Both authenticate with the automatic
+`github.token` under a job-level `permissions: actions: write` +
+`contents: read`; keep it that way. A pull request from a fork gets a read-only
+token, and the script is written to warn and exit successfully there rather than
+turn the check red. Keep the action pins: every `uses:` is a full commit SHA,
+maintained by `.github/dependabot.yml`.
+
 ## Pull requests
 
 - Branch from `main` and keep the branch rebased on it; the project squash-merges,
