@@ -28,6 +28,26 @@ env:
   GO_LICENSES_VERSION: v2.0.1
 
 jobs:
+  # Keep the three newest runs of *this* workflow, at the start and at the end
+  # of every run. Built-in token only: no PAT, no secret and no cache key is
+  # referenced. 'actions: write' is what deleting a run needs; a pull request
+  # from a fork gets a read-only token, in which case scripts/prune-runs.sh
+  # only warns and the job stays green.
+  prune-runs-before:
+    name: Keep the three newest runs (before)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: write
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Keep the newest three runs of this workflow
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash scripts/prune-runs.sh 3
+
   go-licenses:
     name: Every Go dependency is on the allowlist
     runs-on: ubuntu-latest
@@ -49,3 +69,22 @@ jobs:
       # strict allowlist, the Unlicense exception and the inventory.
       - name: Check every module
         run: scripts/check-licences.sh
+
+  # The end of the run: 'always()' runs this after the job above whatever its
+  # outcome, so the three-newest rule holds for a red pull request as well.
+  prune-runs-after:
+    name: Keep the three newest runs (after)
+    needs: [go-licenses]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: write
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Keep the newest three runs of this workflow
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash scripts/prune-runs.sh 3

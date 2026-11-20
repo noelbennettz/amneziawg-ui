@@ -12,10 +12,10 @@
 set -euo pipefail
 
 keep="${1:-3}"
-[[ "$keep" =~ ^[0-9]+$ ]] && [ "$keep" -ge 1 ] || {
+if ! [[ "$keep" =~ ^[0-9]+$ ]] || [ "$keep" -lt 1 ]; then
   echo "::error::keep must be a positive integer (got '$keep')"
   exit 1
-}
+fi
 
 if ! command -v gh >/dev/null 2>&1; then
   echo "::warning::gh is not available; skipping the run cleanup"

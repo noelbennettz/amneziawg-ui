@@ -25,6 +25,26 @@ env:
   PLATFORMS: linux/amd64,linux/arm64
 
 jobs:
+  # Keep the three newest runs of *this* workflow, at the start and at the end
+  # of every run. Built-in token only: no PAT, no secret and no cache key is
+  # referenced. 'actions: write' is what deleting a run needs; a pull request
+  # from a fork gets a read-only token, in which case scripts/prune-runs.sh
+  # only warns and the job stays green.
+  prune-runs-before:
+    name: Keep the three newest runs (before)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: write
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Keep the newest three runs of this workflow
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash scripts/prune-runs.sh 3
+
   # Nothing is published that has not passed the tests. The panel is a network
   # service and `latest` is what people pull: a commit that fails `go test` must
   # not become the newest image.
@@ -130,7 +150,7 @@ jobs:
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          password: ${{ github.token }}
 
       - name: Extract metadata for Docker
         id: meta
@@ -258,21 +278,22 @@ jobs:
           echo
           echo "The package is public; no docker login is needed to pull it."
 
-  # Housekeeping: delete this workflow's older runs, keeping the newest three.
-  # It runs whether the jobs above passed or failed: a red run is worth keeping
-  # until it ages out, and a failed build is exactly when its logs matter.
-  prune:
+  # The end of the run: 'always()' keeps this last in every outcome (failed
+  # tests, a failed build, a cancelled release), so the three-newest rule is
+  # enforced on the way out too.
+  prune-runs-after:
+    name: Keep the three newest runs (after)
     needs: [test, build-and-push]
     if: always()
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     permissions:
-      contents: read
-      # Deleting runs is an actions write, not a contents one.
       actions: write
+      contents: read
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Delete every run but the three newest
-        continue-on-error: true
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Keep the newest three runs of this workflow
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
         run: bash scripts/prune-runs.sh 3
