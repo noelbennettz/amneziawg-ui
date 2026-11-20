@@ -77,6 +77,7 @@ func New(e *env.Env, srv api.Server) *Card {
 
 	menu := widgets.MenuButton("server."+srv.ID+".menu", []widgets.MenuItem{
 		{ID: "config", Label: lang.L("Show config"), Do: func() { serverdialogs.ShowConfig(e, srv.ID) }},
+		{ID: "edit", Label: lang.L("Edit server…"), Do: func() { serverdialogs.ShowEdit(e, srv) }},
 		{ID: "addClient", Label: lang.L("Add client"), Do: func() { clientdialogs.ShowEditor(e, srv, nil) }},
 		{ID: "toggle", Label: serverToggleLabel(srv), Do: func() { c.setRunning(srv.Status != "running") }},
 		{ID: "delete", Label: lang.L("Delete server…"), Do: c.confirmDelete},

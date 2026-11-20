@@ -16,7 +16,9 @@ func (m *Manager) SuspendClient(serverID, clientID string) (string, error) {
 	}
 
 	m.saveOrLog("client suspend")
-	m.syncLiveConfig(ifaceName)
+	if err := m.syncLiveConfig(ifaceName); err != nil {
+		return "", notApplied(err)
+	}
 	return "client suspended", nil
 }
 
@@ -51,7 +53,9 @@ func (m *Manager) ActivateClient(serverID, clientID string) (string, error) {
 	}
 
 	m.saveOrLog("client activation")
-	m.syncLiveConfig(ifaceName)
+	if err := m.syncLiveConfig(ifaceName); err != nil {
+		return "", notApplied(err)
+	}
 	return "client activated", nil
 }
 
@@ -136,7 +140,12 @@ func (m *Manager) suspendDue(now time.Time) {
 	}
 	m.saveOrLog("client auto-suspend")
 	for iface := range ifaces {
-		m.syncLiveConfig(iface)
+		if err := m.syncLiveConfig(iface); err != nil {
+			// Nobody asked for this pass and there is no response to put
+			// the failure in: the config is saved, and the log line is what
+			// tells the operator the running interface still has the peer.
+			fmt.Printf("Auto-suspend on %s: %v\n", iface, err)
+		}
 	}
 }
 

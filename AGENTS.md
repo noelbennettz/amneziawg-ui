@@ -7,7 +7,9 @@ one-way dependency graph `httpapi → manager → {store, awg, wgconf,
 amnezialink, publicip, config, sysinfo}`:
 
 - `httpapi` — REST handlers; no `os`/`exec`, everything goes through the
-  exported `manager` API and errors map to status codes in `fail`
+  exported `manager` API and errors map to status codes in `fail`. Every list,
+  status and edit response blanks the private-key fields (`redact.go`); only
+  the config endpoints hand a key out
 - `auth` — the way into the panel: the credential check against
   `WEB_UI_USER`/`WEB_UI_PASSWORD` (constant time), the signed `awg_session`
   cookie, the double-submit token, the login page embedded from
@@ -40,7 +42,8 @@ is `dashboard` (charts), `newserver` (create form), `serverlist` (cards)
 
 `web-ui/api` is what the two sides share, pulled into the root module via a
 `replace` directive: the wire structs, and the AmneziaWG rules that go with
-them - limits, `Validate`, `ValidateCPS`, `GenerateObfuscation`. Anything both
+them - the subnet bounds, `Validate`, `ValidateCPS`, `ValidateAllowedIPs`,
+`GenerateObfuscation`. Anything both
 the create form and the backend need goes there, never twice; a rule stated in
 two places is a rule that drifts, and the user sees it as "the form let me,
 the server did not". The backend's `validateObfuscationParams` and

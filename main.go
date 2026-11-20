@@ -106,6 +106,7 @@ func main() {
 	// Off unless WEB_UI_AUDIT_LOG is set: the log names the addresses that
 	// reached the panel, and keeping that record is the operator's call.
 	auditLog := audit.New(settings.AuditLog, config.AuditFile, settings.AuditRetention)
+	auditLog.Start()
 
 	// The second factor, when one is configured: a base32 secret shared with
 	// an authenticator app. A secret that cannot be parsed stops the start,

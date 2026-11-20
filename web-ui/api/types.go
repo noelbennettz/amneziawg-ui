@@ -4,6 +4,12 @@
 // slowly drifting) in two places.
 package api
 
+// UnknownPublicIP is the endpoint a generated config carries when the backend
+// could not detect the host's public address. It is a placeholder, not an
+// address: a client that imports a config with it cannot connect, so the UI
+// warns about it and Refresh IP fills it in once detection works.
+const UnknownPublicIP = "YOUR_SERVER_IP"
+
 // ObfuscationParams holds AmneziaWG obfuscation parameters.
 type ObfuscationParams struct {
 	Jc   int `json:"Jc"`
@@ -152,6 +158,39 @@ type UpdateISettingsRequest struct {
 // UpdateSuspendTimeRequest is the payload to set auto-suspend time.
 type UpdateSuspendTimeRequest struct {
 	SuspendAt *string `json:"suspend_at"` // ISO 8601 or null
+}
+
+// UpdateServerRequest is the payload of PUT /api/servers/{id}: the settings of
+// an existing server that can change without recreating it. Every field is
+// optional, and nil leaves it alone.
+//
+// The subnet, the port and the keys are not here on purpose: changing any of
+// them invalidates every config already handed out, which is what deleting and
+// recreating the server is for. The endpoint is here because it is the one
+// that changes by itself - a new VPS address or a name the operator only got
+// round to pointing at the panel after the server existed.
+type UpdateServerRequest struct {
+	// Endpoint is the host clients dial; "" clears it, so the server follows
+	// the detected public address again.
+	Endpoint *string `json:"endpoint"`
+	// DNS is the resolver list written into new client configs.
+	DNS *[]string `json:"dns"`
+	// MTU may only change while the interface is down.
+	MTU       *int  `json:"mtu"`
+	AutoStart *bool `json:"auto_start"`
+}
+
+// UpdateClientRequest is the payload of PUT /api/servers/{id}/clients/{id}:
+// everything about a client the editor can change, in one write. The three
+// separate endpoints still exist, but the dialog uses this one so a rejected
+// value cannot leave half of the edit applied.
+type UpdateClientRequest struct {
+	AllowedIPs     *string           `json:"allowed_ips"`
+	ApplyISettings *bool             `json:"apply_i_settings"`
+	ISettings      map[string]string `json:"i_settings"`
+	// SuspendAt is an RFC 3339 time, "" clears the schedule, and an omitted
+	// field leaves it as it is.
+	SuspendAt *string `json:"suspend_at"`
 }
 
 // ClientTraffic holds traffic statistics for a single client. Online is a

@@ -437,3 +437,69 @@ func TestVersionEndpoint(t *testing.T) {
 		t.Errorf("go = %q, want the toolchain version", info.Go)
 	}
 }
+
+// The endpoint of a server that already exists can be changed now: a VPS whose
+// address moved, or a name the operator only pointed here after the fact.
+func TestUpdateServerEndpoint(t *testing.T) {
+	app, _, _ := newTestAPI(t)
+
+	status, body := call(t, app, http.MethodPut, "/api/servers/s1", `{"endpoint":"vpn.example.com"}`)
+	if status != http.StatusOK {
+		t.Fatalf("PUT server: status = %d (%s)", status, body)
+	}
+	_, servers := call(t, app, http.MethodGet, "/api/servers", "")
+	if !strings.Contains(string(servers), `"endpoint":"vpn.example.com"`) {
+		t.Errorf("the endpoint did not stick: %s", servers)
+	}
+
+	status, _ = call(t, app, http.MethodPut, "/api/servers/s1", `{"endpoint":"vpn.example.com:54844"}`)
+	if status != http.StatusBadRequest {
+		t.Errorf("an endpoint carrying a port: status = %d, want 400", status)
+	}
+	status, _ = call(t, app, http.MethodPut, "/api/servers/nope", `{"endpoint":"vpn.example.com"}`)
+	if status != http.StatusNotFound {
+		t.Errorf("unknown server: status = %d, want 404", status)
+	}
+}
+
+// The client editor sends one request; a refused value has to leave every
+// field as it was, not apply the rest of the edit.
+func TestUpdateClientInOneRequest(t *testing.T) {
+	app, m, _ := newTestAPI(t)
+	client := addClient(t, m, "alice", false)
+
+	status, body := call(t, app, http.MethodPut, "/api/servers/s1/clients/"+client.ID,
+		`{"allowed_ips":"10.0.0.0/8","apply_i_settings":false,"suspend_at":""}`)
+	if status != http.StatusOK {
+		t.Fatalf("PUT client: status = %d (%s)", status, body)
+	}
+	if !strings.Contains(string(body), `"allowed_ips":"10.0.0.0/8"`) {
+		t.Errorf("the update result does not carry the new routes: %s", body)
+	}
+
+	status, _ = call(t, app, http.MethodPut, "/api/servers/s1/clients/"+client.ID,
+		`{"allowed_ips":"10.1.0.0/16","suspend_at":"not-a-time"}`)
+	if status != http.StatusBadRequest {
+		t.Fatalf("bad timestamp: status = %d, want 400", status)
+	}
+	stored, ok := m.Client("s1", client.ID)
+	if !ok || stored.AllowedIPs != "10.0.0.0/8" {
+		t.Errorf("a refused update changed AllowedIPs to %q", stored.AllowedIPs)
+	}
+
+	status, _ = call(t, app, http.MethodPut, "/api/servers/s1/clients/"+client.ID, `{"allowed_ips":"nope"}`)
+	if status != http.StatusBadRequest {
+		t.Errorf("garbage AllowedIPs: status = %d, want 400", status)
+	}
+}
+
+// Detection goes out to the network and can rewrite the config, so it is not
+// something a link prefetch or a scanner can set off with a GET.
+func TestRefreshIPIsAPost(t *testing.T) {
+	app, _, _ := newTestAPI(t)
+
+	status, _ := call(t, app, http.MethodGet, "/api/system/refresh-ip", "")
+	if status != http.StatusMethodNotAllowed {
+		t.Errorf("GET /api/system/refresh-ip = %d, want 405", status)
+	}
+}

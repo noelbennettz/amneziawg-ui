@@ -32,7 +32,9 @@ func (m *Manager) reconcilePeers() {
 		// A server that is already up outside this process (a host-network
 		// deployment whose panel restarted) is still running the old peer
 		// list; syncconf is what makes the change take effect.
-		m.syncLiveConfig(srv.Interface)
+		if err := m.syncLiveConfig(srv.Interface); err != nil {
+			fmt.Printf("Reconcile %s: %v\n", srv.Name, err)
+		}
 	}
 }
 

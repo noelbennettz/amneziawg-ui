@@ -14,7 +14,9 @@ import (
 // leaves alone, because only the backend can fill them: the MTU it was asked
 // for, and a key from a cryptographic source.
 func TestGeneratedObfuscationParamsCarryTheMTUAndAKey(t *testing.T) {
-	for _, mtu := range []int{api.MinMTU, 1420, api.MaxMTU} {
+	// 1425 is the last MTU with room for the 12-byte minimum padding under a
+	// 1500-byte path; MaxMTU is covered below.
+	for _, mtu := range []int{api.MinMTU, 1420, 1425} {
 		p := generateObfuscationParams(mtu)
 
 		if p.MTU != mtu {
@@ -43,6 +45,16 @@ func TestGeneratedHeaderProtectionKeysDiffer(t *testing.T) {
 	second := generateObfuscationParams(api.MinMTU).HeaderProtectionKey
 	if first == second {
 		t.Fatalf("both servers got the same key %q", first)
+	}
+}
+
+// A tunnel MTU with no room left for the 12-byte minimum padding cannot carry
+// obfuscation: every full-size packet would go past 1500. The generator's
+// window collapses onto its floor there, and validation is what refuses it.
+func TestMaxMTUHasNoRoomForObfuscation(t *testing.T) {
+	p := generateObfuscationParams(api.MaxMTU)
+	if err := validateObfuscationParams(&p, api.MaxMTU); err == nil {
+		t.Fatalf("obfuscation at MTU %d was accepted", api.MaxMTU)
 	}
 }
 

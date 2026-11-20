@@ -9,11 +9,13 @@ import (
 	"time"
 
 	"amneziawg-web-ui/internal/netutil"
+	"amneziawg-web-ui/web-ui/api"
 )
 
 // Unknown is what every generated config shows when nothing could tell us
-// the address; the operator sees it and sets an endpoint by hand.
-const Unknown = "YOUR_SERVER_IP"
+// the address; the operator sees it and sets an endpoint by hand. The value
+// itself is shared with the frontend, which warns about it.
+const Unknown = api.UnknownPublicIP
 
 // Services answer a plain GET with the caller's IPv4 address; Services6 with
 // its IPv6 address. The v6 list is only asked when no v4 service answered,

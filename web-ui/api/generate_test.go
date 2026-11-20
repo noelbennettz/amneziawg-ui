@@ -8,11 +8,13 @@ import (
 // Both sides generate through this: the create form's simple mode sends what
 // it produces without ever showing the user a field to fix, and the backend
 // falls back to it for an API caller that sends no parameters. So whatever it
-// rolls has to already satisfy Validate, at any MTU a server may have and on
-// every roll - a set that is invalid one time in a thousand surfaces as a
-// create that fails for no visible reason.
+// rolls has to already satisfy Validate, at every MTU where obfuscation can
+// fit and on every roll - a set that is invalid one time in a thousand
+// surfaces as a create that fails for no visible reason.
 func TestGenerateObfuscationAlwaysValidates(t *testing.T) {
-	for _, mtu := range []int{MinMTU, 1330, 1420, MaxMTU} {
+	// 1425 is the last MTU with room for the 12-byte minimum padding under a
+	// 1500-byte path.
+	for _, mtu := range []int{MinMTU, 1330, 1420, 1425} {
 		for _, distinct := range []bool{false, true} {
 			for range 500 {
 				p := GenerateObfuscation(mtu, distinct)
@@ -82,5 +84,19 @@ func TestPaddingsCollapseOnACrampedMTU(t *testing.T) {
 	if s1 != MinRecommendedPadding || s2 != MinRecommendedPadding ||
 		s3 != MinRecommendedPadding || s4 != MinRecommendedPadding {
 		t.Fatalf("want all four at the floor %d, got %d/%d/%d/%d", MinRecommendedPadding, s1, s2, s3, s4)
+	}
+}
+
+// Above the MTU where the padding window closes there is no set that both
+// keeps the 12-byte minimum and fits a 1500-byte path. The generator still
+// produces its floor, and Validate - which the backend and the form both run -
+// is what refuses to hand it out.
+func TestGenerateObfuscationIsRefusedPastThePathMTU(t *testing.T) {
+	for _, mtu := range []int{1426, MaxMTU} {
+		for _, distinct := range []bool{false, true} {
+			if problems := GenerateObfuscation(mtu, distinct).Validate(mtu); len(problems) == 0 {
+				t.Errorf("MTU %d, distinct %v: generated a set validation accepts", mtu, distinct)
+			}
+		}
 	}
 }

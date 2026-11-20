@@ -93,6 +93,7 @@ func (h *Handlers) RegisterRoutes(app *fiber.App) {
 	// Servers
 	r.Get("/servers", h.getServers)
 	r.Post("/servers", h.createServer)
+	r.Put("/servers/:id", h.updateServer)
 	r.Delete("/servers/:id", h.deleteServer)
 	r.Post("/servers/:id/start", h.startServer)
 	r.Post("/servers/:id/stop", h.stopServer)
@@ -109,6 +110,7 @@ func (h *Handlers) RegisterRoutes(app *fiber.App) {
 	r.Get("/servers/:id/clients/:clientId/config", h.downloadClientConfig)
 	r.Get("/servers/:id/clients/:clientId/config-both", h.getClientConfigBoth)
 	r.Get("/servers/:id/clients/:clientId/link", h.getClientAmneziaLink)
+	r.Put("/servers/:id/clients/:clientId", h.updateClient)
 	r.Post("/servers/:id/clients/:clientId/suspend", h.suspendClient)
 	r.Post("/servers/:id/clients/:clientId/activate", h.activateClient)
 	r.Put("/servers/:id/clients/:clientId/suspend-time", h.updateClientSuspendTime)
@@ -118,7 +120,9 @@ func (h *Handlers) RegisterRoutes(app *fiber.App) {
 	r.Get("/default-i-settings", h.getDefaultISettings)
 	r.Get("/system/status", h.systemStatus)
 	r.Get("/version", h.buildInfo)
-	r.Get("/system/refresh-ip", h.refreshIP)
+	// Detection is an outbound request and can rewrite the config, so it is
+	// a POST: a link prefetch or a scanner's GET must not set it off.
+	r.Post("/system/refresh-ip", h.refreshIP)
 	r.Get("/system/iptables-test", h.iptablesTest)
 }
 
@@ -134,6 +138,8 @@ func fail(c fiber.Ctx, err error) error {
 		return respond(c, fiber.StatusBadRequest, api.ErrorResponse{Error: err.Error()})
 	case errors.Is(err, manager.ErrConflict):
 		return respond(c, fiber.StatusConflict, api.ErrorResponse{Error: err.Error()})
+	case errors.Is(err, manager.ErrUnavailable):
+		return respond(c, fiber.StatusServiceUnavailable, api.ErrorResponse{Error: err.Error()})
 	default:
 		return respond(c, fiber.StatusInternalServerError, api.ErrorResponse{Error: err.Error()})
 	}

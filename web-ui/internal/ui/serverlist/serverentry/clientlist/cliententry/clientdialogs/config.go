@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
@@ -106,11 +107,15 @@ func presentConfig(e *env.Env, server api.Server, client api.Client, configs api
 
 	created := lang.L("unknown")
 	if configs.CreatedAt > 0 {
-		created = configs.CreatedAtReadable
+		// The backend sends the epoch; the browser's own zone is the one the
+		// person reading the page lives in. Formatting the backend's UTC
+		// string here made this dialog and the editor show two different
+		// times for the same moment.
+		created = time.Unix(int64(configs.CreatedAt), 0).Local().Format("2006-01-02 15:04")
 	}
 	suspend := lang.L("not set")
 	if configs.SuspendAt != nil {
-		suspend = configs.SuspendAtReadable
+		suspend = time.Unix(int64(*configs.SuspendAt), 0).Local().Format(SuspendLayout)
 	}
 
 	meta := container.NewHBox(

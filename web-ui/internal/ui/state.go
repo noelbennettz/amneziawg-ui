@@ -281,6 +281,7 @@ func (u *UI) loadSystemStatus() {
 		" · " + lang.N("{{.Count}} clients", status.TotalClients, map[string]any{"Count": status.TotalClients}) +
 		" · " + lang.L("up {{.Uptime}}", map[string]any{"Uptime": widgets.Uptime(status.UptimeSeconds)}))
 	u.setPublicIP(status.PublicIP)
+	u.setNotices(status)
 	fyne.Do(func() { u.charts.SetUptime(status.UptimeSeconds) })
 }
 
@@ -325,6 +326,10 @@ func (u *UI) reloadServers() {
 	u.servers = servers
 	u.serversHash = hash
 	u.mu.Unlock()
+
+	// The banner depends on both the status and the list; this is the moment
+	// the list becomes current.
+	u.refreshNotice()
 
 	if unchanged {
 		return

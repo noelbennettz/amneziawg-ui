@@ -1,6 +1,8 @@
 package awg_test
 
 import (
+	"bytes"
+	"crypto/ecdh"
 	"encoding/base64"
 	"errors"
 	"os"
@@ -244,5 +246,37 @@ func TestFormatHandshakeAge(t *testing.T) {
 		if got := awg.FormatHandshakeAge(age); got != want {
 			t.Errorf("FormatHandshakeAge(%v) = %q, want %q", age, got, want)
 		}
+	}
+}
+
+// The fallback pair has to be usable: a public key drawn independently of the
+// private one makes a config that reads back cleanly and can never handshake.
+func TestKeyGenerationFallbackPairsTheKeys(t *testing.T) {
+	// No awg at all.
+	assertPairMatches(t, awg.New(awgtest.New()).GenerateKeyPair())
+
+	// genkey works, pubkey does not: the private key still has no public half
+	// to hand out, so the whole pair is redrawn rather than half of it kept.
+	partial := awg.New(awgtest.New().Stub("awg genkey", "PRIVKEYFROMTOOL"))
+	assertPairMatches(t, partial.GenerateKeyPair())
+}
+
+func assertPairMatches(t *testing.T, pair awg.KeyPair) {
+	t.Helper()
+
+	priv, err := base64.StdEncoding.DecodeString(pair.Private)
+	if err != nil || len(priv) != 32 {
+		t.Fatalf("private key %q is not 32 base64 bytes: %v", pair.Private, err)
+	}
+	pub, err := base64.StdEncoding.DecodeString(pair.Public)
+	if err != nil || len(pub) != 32 {
+		t.Fatalf("public key %q is not 32 base64 bytes: %v", pair.Public, err)
+	}
+	key, err := ecdh.X25519().NewPrivateKey(priv)
+	if err != nil {
+		t.Fatalf("private key is not a Curve25519 key: %v", err)
+	}
+	if !bytes.Equal(key.PublicKey().Bytes(), pub) {
+		t.Errorf("public key %q does not belong to private key %q", pair.Public, pair.Private)
 	}
 }

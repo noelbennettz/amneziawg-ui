@@ -132,7 +132,7 @@ func (b *Client) SystemStatus() (api.SystemStatus, error) {
 
 func (b *Client) RefreshIP() (string, error) {
 	var out api.PublicIP
-	err := b.get(apiBase+"/system/refresh-ip", &out)
+	err := b.post(apiBase+"/system/refresh-ip", nil, &out)
 	return out.Address, err
 }
 
@@ -144,6 +144,11 @@ func (b *Client) Servers() ([]api.Server, error) {
 func (b *Client) CreateServer(req api.CreateServerRequest) (api.Server, error) {
 	var out api.Server
 	return out, b.post(apiBase+"/servers", req, &out)
+}
+
+func (b *Client) UpdateServer(id string, req api.UpdateServerRequest) (api.Server, error) {
+	var out api.Server
+	return out, b.put(apiBase+"/servers/"+id, req, &out)
 }
 
 func (b *Client) DeleteServer(id string) error { return b.del(apiBase + "/servers/" + id) }
@@ -180,28 +185,8 @@ func (b *Client) DeleteClient(serverID, clientID string) error {
 	return b.del(apiBase + "/servers/" + serverID + "/clients/" + clientID)
 }
 
-func (b *Client) UpdateAllowedIPs(serverID, clientID, allowedIPs string) error {
-	return b.put(apiBase+"/servers/"+serverID+"/clients/"+clientID+"/allowed-ips",
-		api.UpdateAllowedIPsRequest{AllowedIPs: allowedIPs}, nil)
-}
-
-func (b *Client) UpdateISettings(serverID, clientID string, apply bool, settings api.ISettings) error {
-	if settings == nil {
-		settings = api.ISettings{}
-	}
-	return b.put(apiBase+"/servers/"+serverID+"/clients/"+clientID+"/i-settings",
-		api.UpdateISettingsRequest{ApplyISettings: &apply, ISettings: settings}, nil)
-}
-
-// UpdateSuspendTime sends an RFC 3339 timestamp, or null to clear it.
-func (b *Client) UpdateSuspendTime(serverID, clientID string, at *time.Time) error {
-	var stamp *string
-	if at != nil {
-		value := at.Format(time.RFC3339)
-		stamp = &value
-	}
-	return b.put(apiBase+"/servers/"+serverID+"/clients/"+clientID+"/suspend-time",
-		api.UpdateSuspendTimeRequest{SuspendAt: stamp}, nil)
+func (b *Client) UpdateClient(serverID, clientID string, req api.UpdateClientRequest) error {
+	return b.put(apiBase+"/servers/"+serverID+"/clients/"+clientID, req, nil)
 }
 
 func (b *Client) SuspendClient(serverID, clientID string) error {

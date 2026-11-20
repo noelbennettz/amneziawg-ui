@@ -316,3 +316,23 @@ func TestLoaderETagFollowsTheNonce(t *testing.T) {
 		t.Errorf("the current tag = %d, want 304", resp.StatusCode)
 	}
 }
+
+// The packed bundle only exists gzipped; a HEAD request has to find it the
+// same way a GET does, because a client that asks what it would get is not
+// asking for a 404.
+func TestPackedAssetAnswersHead(t *testing.T) {
+	app := newApp(t)
+	req := httptest.NewRequest(http.MethodHead, "/bundle.wasm", nil)
+	req.Header.Set("Accept-Encoding", "gzip")
+	resp, err := app.Test(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("HEAD /bundle.wasm = %d, want 200", resp.StatusCode)
+	}
+	if got := resp.Header.Get("Content-Type"); !strings.Contains(got, "wasm") {
+		t.Errorf("Content-Type = %q, want the wasm type", got)
+	}
+}

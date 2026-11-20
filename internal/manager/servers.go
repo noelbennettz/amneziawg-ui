@@ -320,6 +320,112 @@ func (m *Manager) CreateServer(req api.CreateServerRequest) (*api.Server, error)
 	return &srv, nil
 }
 
+// UpdateServer applies the editable settings of a server that already exists.
+// The subnet, the port and the keys are not in the request: changing any of
+// them invalidates every config already handed out, which is what deleting and
+// recreating the server is for.
+func (m *Manager) UpdateServer(serverID string, req api.UpdateServerRequest) (*api.Server, error) {
+	srv, ok := m.Server(serverID)
+	if !ok {
+		return nil, serverNotFound(serverID)
+	}
+
+	var endpoint *string
+	if req.Endpoint != nil {
+		value := strings.TrimSpace(*req.Endpoint)
+		if value != "" {
+			host, err := api.ParseEndpoint(value)
+			if err != nil {
+				return nil, fmt.Errorf("%w: %w", ErrInvalid, err)
+			}
+			value = host
+		}
+		endpoint = &value
+	}
+
+	var dns []string
+	if req.DNS != nil {
+		normalized, err := normalizeDNS(*req.DNS)
+		if err != nil {
+			return nil, fmt.Errorf("%w: %w", ErrInvalid, err)
+		}
+		if len(normalized) == 0 {
+			return nil, fmt.Errorf("%w: at least one DNS server is required", ErrInvalid)
+		}
+		dns = normalized
+	}
+
+	mtu := srv.MTU
+	if req.MTU != nil {
+		mtu = *req.MTU
+		if mtu < api.MinMTU || mtu > api.MaxMTU {
+			return nil, fmt.Errorf("%w: MTU must be between %d and %d, got %d", ErrInvalid, api.MinMTU, api.MaxMTU, mtu)
+		}
+		if mtu != srv.MTU && srv.ObfuscationEnabled && srv.ObfuscationParams != nil {
+			if err := validateObfuscationParams(srv.ObfuscationParams, mtu); err != nil {
+				return nil, fmt.Errorf("%w: %w", ErrInvalid, err)
+			}
+		}
+	}
+
+	// The MTU is the one field that changes the interface itself, and a
+	// running interface cannot be re-created without going down. The answer
+	// comes from the kernel, so it is asked outside the lock.
+	if mtu != srv.MTU && m.serverStatus(srv.Interface) == "running" {
+		return nil, fmt.Errorf("stop server %s before changing its MTU: %w", srv.Name, ErrConflict)
+	}
+
+	m.mu.Lock()
+	current := m.findServer(serverID)
+	if current == nil {
+		m.mu.Unlock()
+		return nil, serverNotFound(serverID)
+	}
+
+	if mtu != current.MTU {
+		_, prefix := netutil.SplitCIDR(current.Subnet)
+		iface := wgconf.ServerInterface{
+			PrivateKey: current.ServerPrivateKey,
+			Address:    current.ServerIP + "/" + prefix,
+			ListenPort: current.Port,
+			MTU:        mtu,
+		}
+		if current.SubnetV6 != "" && current.ServerIPV6 != "" {
+			_, prefixV6 := netutil.SplitCIDR(current.SubnetV6)
+			iface.AddressV6 = current.ServerIPV6 + "/" + prefixV6
+		}
+		if current.ObfuscationEnabled {
+			iface.Obfuscation = current.ObfuscationParams
+		}
+		// The peers are the part of the file the model does not describe;
+		// RewriteInterface replaces the [Interface] section and keeps them.
+		if err := wgconf.RewriteInterface(current.ConfigPath, iface); err != nil {
+			m.mu.Unlock()
+			return nil, err
+		}
+		current.MTU = mtu
+		if current.ObfuscationParams != nil {
+			current.ObfuscationParams.MTU = mtu
+		}
+	}
+
+	if endpoint != nil {
+		current.Endpoint = *endpoint
+	}
+	if dns != nil {
+		current.DNS = dns
+	}
+	if req.AutoStart != nil {
+		current.AutoStart = *req.AutoStart
+	}
+	m.mu.Unlock()
+
+	m.saveOrLog("server update")
+
+	updated, _ := m.Server(serverID)
+	return &updated, nil
+}
+
 // parseDNS reads the DNS field of a create request, which the form sends as
 // a comma separated string and an API caller may send as a list.
 func parseDNS(raw any) []string {

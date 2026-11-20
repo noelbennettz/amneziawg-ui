@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"fmt"
+	"net"
 	"regexp"
 	"strconv"
 	"strings"
@@ -89,6 +90,18 @@ func (p *ObfuscationParams) Validate(mtu int) []string {
 	if p.S2 > mtu-92 {
 		problems = append(problems, fmt.Sprintf("S2 (%d) must fit MTU-92 (%d)", p.S2, mtu-92))
 	}
+	// S4 rides on every transport packet, so the whole packet has to fit the
+	// path the tunnel runs over: tunnel MTU + transport overhead + S4 must
+	// stay under the 1500 a normal path carries. Without this the generator
+	// happily emitted S4=15 for a 1440 MTU - 1515 bytes on the wire, which is
+	// fragmented on every full-size packet, the exact signature AmneziaWG
+	// exists to avoid. Above about 1425 there is no room left for the 12-byte
+	// minimum padding, so obfuscation and that MTU cannot both hold.
+	if p.S4 > AssumedPathMTU-TransportPacketBytes-mtu {
+		problems = append(problems, fmt.Sprintf(
+			"S4 (%d) does not fit a %d-byte path: tunnel MTU %d + %d bytes of transport overhead + S4 must stay under %d",
+			p.S4, AssumedPathMTU, mtu, TransportPacketBytes, AssumedPathMTU))
+	}
 	// The one combination the engine cannot tell apart: S2+92 would land on
 	// S1+148.
 	if p.S1+56 == p.S2 {
@@ -160,6 +173,41 @@ func ValidateKey(name, value string) string {
 	return ""
 }
 
+// MaxAllowedIPs bounds the routes one client config may carry. A client needs
+// a handful - the full tunnel is two - and a list nobody can read is one the
+// .conf, the QR code and the vpn:// link all repeat.
+const MaxAllowedIPs = 64
+
+// ValidateAllowedIPs reports the first problem in a client's AllowedIPs field,
+// or "" when it is fine. The field is a comma separated list of IPv4 or IPv6
+// CIDRs and is written into the client's .conf verbatim: an entry the engine
+// cannot parse is a tunnel that will not start on the user's machine, which is
+// not something the panel should hand out and call "updated". An empty value
+// is the full-tunnel default and is accepted.
+func ValidateAllowedIPs(value string) string {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return ""
+	}
+
+	entries := 0
+	for entry := range strings.SplitSeq(trimmed, ",") {
+		entry = strings.TrimSpace(entry)
+		if entry == "" {
+			return "AllowedIPs has an empty entry - remove the stray comma"
+		}
+		ip, _, err := net.ParseCIDR(entry)
+		if err != nil || ip == nil {
+			return fmt.Sprintf("AllowedIPs entry %q is not a CIDR such as 10.0.0.0/24 or ::/0", entry)
+		}
+		entries++
+		if entries > MaxAllowedIPs {
+			return fmt.Sprintf("AllowedIPs has more than %d entries", MaxAllowedIPs)
+		}
+	}
+	return ""
+}
+
 var uintRangePattern = regexp.MustCompile(`^(\d+)(?:-(\d+))?$`)
 
 // ValidateUintRange checks one of the optional timing knobs against what
@@ -206,6 +254,16 @@ var cpsTags = map[string]bool{
 // means "skip this packet", which is how I2-I5 ship by default.
 func ValidateISettings(settings ISettings) []string {
 	var problems []string
+	for key := range settings {
+		switch key {
+		case "i1", "i2", "i3", "i4", "i5":
+		default:
+			// The renderer writes i1-i5 and nothing else, so a key spelled
+			// any other way would be stored and silently dropped - a typo
+			// the operator would only notice as a packet that never goes out.
+			problems = append(problems, fmt.Sprintf("%q is not one of i1-i5", key))
+		}
+	}
 	for i := 1; i <= 5; i++ {
 		key := fmt.Sprintf("i%d", i)
 		if spec := strings.TrimSpace(settings[key]); spec != "" {

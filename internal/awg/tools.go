@@ -268,8 +268,13 @@ func (t *Tools) CheckIPTables(iface, subnet, subnetV6 string) (map[string]string
 // RouteSourceIP is the address the host would use to reach the internet,
 // from its routing table. It is the fallback when no external service could
 // say what the public address is.
+//
+// The field is looked up by name, like RouteSourceIP6: $7 is the source only
+// when the default route goes through a gateway. A `default dev ppp0` line
+// prints "dev ... src <ip> uid <n>", where the seventh word is the uid - a
+// number that used to be handed back as if it were an address.
 func (t *Tools) RouteSourceIP() (string, error) {
-	return t.run.Run("ip route get 1 | awk '{print $7}' | head -1")
+	return t.run.Run("ip route get 1 | awk '{for (i = 1; i < NF; i++) if ($i == \"src\") { print $(i + 1); exit }}'")
 }
 
 // RouteSourceIP6 is RouteSourceIP for IPv6. The field is looked up by name

@@ -1,6 +1,7 @@
 package manager
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -219,5 +220,86 @@ func TestConcurrentClientChurnIsRaceFree(t *testing.T) {
 		if _, ok := m.Client("s1", id); !ok {
 			t.Errorf("client %s was lost", id)
 		}
+	}
+}
+
+// A client whose AllowedIPs the engine cannot parse is one whose config will
+// not start; the panel must not store it and call the add a success.
+func TestAddClientRejectsAnAllowedIPsListTheEngineCannotParse(t *testing.T) {
+	m, _ := newTestManager(t)
+	before := m.ClientCount()
+
+	if _, _, err := m.AddClient("s1", api.AddClientRequest{Name: "bad", AllowedIPs: "not-a-cidr"}); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("AddClient error = %v, want ErrInvalid", err)
+	}
+	if got := m.ClientCount(); got != before {
+		t.Errorf("a rejected client was stored: count = %d", got)
+	}
+}
+
+// The editor sends the whole client in one request now: a value it refuses
+// must leave every field as it was, never half of the edit.
+func TestUpdateClientAppliesEverythingOrNothing(t *testing.T) {
+	m, _ := newTestManager(t)
+	client, _, err := m.AddClient("s1", api.AddClientRequest{Name: "alice"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	routes := "10.0.0.0/8"
+	apply := true
+	settings := api.ISettings{"i2": "<b 0xcafe><r 20>"}
+	when := "2030-01-02T03:04:05Z"
+
+	updated, cfg, err := m.UpdateClient("s1", client.ID, api.UpdateClientRequest{
+		AllowedIPs: &routes, ApplyISettings: &apply, ISettings: settings, SuspendAt: &when,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if updated.AllowedIPs != routes || !updated.ApplyISettings || updated.ISettings["i2"] == "" || updated.SuspendAt == nil {
+		t.Errorf("updated client = %+v", updated)
+	}
+	if !strings.Contains(cfg, "AllowedIPs = 10.0.0.0/8") {
+		t.Errorf("the regenerated config does not carry the new routes:\n%s", cfg)
+	}
+
+	// A bad timestamp next to a new route: nothing is applied.
+	bad := "not-a-time"
+	other := "10.1.0.0/16"
+	if _, _, err := m.UpdateClient("s1", client.ID, api.UpdateClientRequest{AllowedIPs: &other, SuspendAt: &bad}); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("UpdateClient error = %v, want ErrInvalid", err)
+	}
+	stored, _ := m.Client("s1", client.ID)
+	if stored.AllowedIPs != routes {
+		t.Errorf("a refused update changed AllowedIPs to %q", stored.AllowedIPs)
+	}
+
+	// An empty string clears the schedule.
+	empty := ""
+	updated, _, err = m.UpdateClient("s1", client.ID, api.UpdateClientRequest{SuspendAt: &empty})
+	if err != nil || updated.SuspendAt != nil {
+		t.Fatalf("clearing the schedule = %+v, %v", updated.SuspendAt, err)
+	}
+
+	// Garbage routes are refused by the same rule creation uses.
+	garbage := "10.0.0.0/8,"
+	if _, _, err := m.UpdateClient("s1", client.ID, api.UpdateClientRequest{AllowedIPs: &garbage}); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("garbage AllowedIPs error = %v, want ErrInvalid", err)
+	}
+}
+
+// A change that cannot be pushed onto the running interface is not a success:
+// the config is saved, but the tunnel still has the old peer list.
+func TestAddClientReportsASyncFailure(t *testing.T) {
+	m, run := newTestManager(t)
+	run.Stub("ip link show wg-test-absent", "wg-test-absent: state UNKNOWN")
+
+	_, _, err := m.AddClient("s1", api.AddClientRequest{Name: "alice"})
+	if err == nil || !strings.Contains(err.Error(), "saved") {
+		t.Fatalf("AddClient error = %v, want the stored-but-not-applied failure", err)
+	}
+	if got := m.ClientCount(); got != 1 {
+		t.Errorf("the client was not stored: count = %d", got)
 	}
 }

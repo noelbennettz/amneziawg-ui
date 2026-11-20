@@ -176,3 +176,65 @@ func TestISettingsRejectControlCharacters(t *testing.T) {
 		t.Errorf("a normal spec was rejected: %s", problem)
 	}
 }
+
+// AllowedIPs is written into the client's .conf verbatim, so anything the
+// engine cannot parse is a tunnel that will not start on somebody's phone.
+func TestValidateAllowedIPs(t *testing.T) {
+	for _, value := range []string{
+		"", "0.0.0.0/0, ::/0", "10.0.0.0/8", "fd42:1::/64",
+		"203.0.113.0/24, 2001:db8::/32", " 10.0.0.0/8 , ::/0 ",
+	} {
+		if problem := ValidateAllowedIPs(value); problem != "" {
+			t.Errorf("ValidateAllowedIPs(%q) = %q, want it accepted", value, problem)
+		}
+	}
+
+	for _, value := range []string{
+		"not-a-cidr", "10.0.0.0/0,", ",10.0.0.0/8", "10.0.0.1",
+		"10.0.0.0/33", "10.0.0.0/8\nPostUp = touch /tmp/pwned",
+	} {
+		if problem := ValidateAllowedIPs(value); problem == "" {
+			t.Errorf("ValidateAllowedIPs(%q) accepted it", value)
+		}
+	}
+}
+
+func TestValidateAllowedIPsBoundsTheList(t *testing.T) {
+	var entries []string
+	for range MaxAllowedIPs + 1 {
+		entries = append(entries, "10.0.0.0/24")
+	}
+	if problem := ValidateAllowedIPs(strings.Join(entries, ", ")); problem == "" {
+		t.Error("a list past MaxAllowedIPs was accepted")
+	}
+}
+
+// The renderer writes i1-i5 and ignores anything else, so a key spelled any
+// other way would be stored and silently dropped.
+func TestValidateISettingsRejectsUnknownKeys(t *testing.T) {
+	problems := ValidateISettings(ISettings{
+		"i1": "<b 0x00>",
+		"i9": "<b 0x00>",
+		"I1": "<b 0x00>",
+	})
+	joined := strings.Join(problems, "\n")
+	for _, key := range []string{`"i9"`, `"I1"`} {
+		if !strings.Contains(joined, key) {
+			t.Errorf("problems do not name %s:\n%s", key, joined)
+		}
+	}
+}
+
+// S4 rides on every transport packet; the last MTU with room for the 12-byte
+// floor under a 1500-byte path is 1425.
+func TestValidateChecksTheTransportPaddingAgainstThePath(t *testing.T) {
+	p := validParams()
+	p.S1, p.S2, p.S4 = 15, 15, 15
+
+	if problems := p.Validate(1425); len(problems) > 0 {
+		t.Fatalf("S4 = 15 at MTU 1425 rejected:\n%s", strings.Join(problems, "\n"))
+	}
+	if problems := p.Validate(1426); len(problems) == 0 {
+		t.Fatal("S4 = 15 at MTU 1426 was accepted")
+	}
+}

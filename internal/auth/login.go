@@ -47,10 +47,19 @@ type pageData struct {
 }
 
 // showLogin renders the form. Someone who is already logged in is sent on
-// rather than offered a second login.
+// rather than offered a second login, and a blocked address is told to wait:
+// the form would only invite another guess that costs the server a hash.
 func (a *Auth) showLogin(c fiber.Ctx) error {
 	if a.authenticated(c) {
 		return c.Redirect().To(safeNext(c.Query("next")))
+	}
+	if wait := a.limiter.retryAfter(a.clientIP(c)); wait > 0 {
+		c.Set(fiber.HeaderRetryAfter, strconv.Itoa(int(wait.Seconds())+1))
+		return a.render(c, fiber.StatusTooManyRequests, pageData{
+			Next:        safeNext(c.Query("next")),
+			CSRF:        a.csrfToken(c),
+			RateLimited: true,
+		})
 	}
 	return a.render(c, fiber.StatusOK, pageData{
 		Next: safeNext(c.Query("next")),

@@ -82,6 +82,25 @@ func New(enabled bool, path string, retention time.Duration) *Log {
 	return &Log{path: path, retention: retention, now: time.Now}
 }
 
+// Start sweeps the file on a timer for as long as the process runs, so the
+// retention window holds on a panel that sits idle - no login, no change - as
+// well as on a busy one. Record already sweeps between events; this is the
+// half that covers the silence. A nil log (auditing off) does nothing.
+func (l *Log) Start() {
+	if l == nil {
+		return
+	}
+	go func() {
+		ticker := time.NewTicker(sweepInterval)
+		defer ticker.Stop()
+		for range ticker.C {
+			l.mu.Lock()
+			l.sweep(l.now())
+			l.mu.Unlock()
+		}
+	}()
+}
+
 // Retention bounds. The default is a day of events - enough to answer "who
 // changed this last night" - and a month is the ceiling, because a log of
 // addresses that never ends is a liability rather than a record.

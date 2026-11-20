@@ -86,3 +86,41 @@ func TestNextFreeSubnetV6DropsLeadingZerosInTheGroup(t *testing.T) {
 		t.Errorf("NextFreeSubnetV6 = %q, want fd42:0::/64", got)
 	}
 }
+
+// A subnet a server cannot safely route is refused before it can put a route
+// on the host: 0.0.0.0/0 replaces the default route and cuts the machine off,
+// and the reserved blocks belong to the kernel rather than to a tunnel.
+func TestParseSubnetRefusesUnsafeBlocks(t *testing.T) {
+	for _, subnet := range []string{
+		"0.0.0.0/0", "0.0.0.0/8", "127.0.0.0/8", "127.10.0.0/16",
+		"169.254.0.0/16", "224.0.0.0/4", "240.0.0.0/4", "10.0.0.0/7",
+	} {
+		if _, err := ParseSubnet(subnet); err == nil {
+			t.Errorf("ParseSubnet(%q) accepted it", subnet)
+		}
+	}
+
+	// The blocks a deployment actually uses - a /8 included - still pass.
+	for _, subnet := range []string{
+		"10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "100.64.0.0/10", "10.9.0.128/25",
+	} {
+		if _, err := ParseSubnet(subnet); err != nil {
+			t.Errorf("ParseSubnet(%q) = %v, want it accepted", subnet, err)
+		}
+	}
+}
+
+// A ULA wider than a site is not one tunnel: it puts an enormous route on the
+// interface and overlaps the /64 every server after it is given.
+func TestParseSubnetV6RefusesAWiderBlockThanASite(t *testing.T) {
+	for _, subnet := range []string{"fd00::/8", "fc00::/7", "fd42::/47"} {
+		if _, err := ParseSubnetV6(subnet); err == nil {
+			t.Errorf("ParseSubnetV6(%q) accepted it", subnet)
+		}
+	}
+	for _, subnet := range []string{"fd42::/48", "fd42:ab12::/64", "fd42:ab12::/120"} {
+		if _, err := ParseSubnetV6(subnet); err != nil {
+			t.Errorf("ParseSubnetV6(%q) = %v, want it accepted", subnet, err)
+		}
+	}
+}

@@ -227,16 +227,21 @@ func (a *Auth) cookieSecure(c fiber.Ctx) bool {
 	}
 }
 
-// key is the signing key for the session cookie, derived from the hash in
-// force: nothing random is generated and no extra environment variable is
-// needed, so a restart keeps the sessions and a password change ends every one
-// of them.
+// key is the signing key for the session cookie, derived from the credentials
+// in force: the password hash and the second factor's secret. Nothing random is
+// generated and no extra environment variable is needed, so a restart keeps the
+// sessions, and changing the password - or the TOTP secret, with the password
+// unchanged - ends every one of them.
 func (a *Auth) key() [sha256.Size]byte {
 	hash, _ := a.store.Hash()
 
 	mac := hmac.New(sha256.New, []byte(hash.String()))
 	mac.Write([]byte(keyContext))
 	mac.Write([]byte(a.user))
+	if a.totp != nil {
+		tag := a.totp.Tag()
+		mac.Write(tag[:])
+	}
 
 	var key [sha256.Size]byte
 	copy(key[:], mac.Sum(nil))
@@ -362,6 +367,14 @@ func (a *Auth) Register(app *fiber.App) {
 func (a *Auth) authenticated(c fiber.Ctx) bool {
 	if a.sessionValid(c.Cookies(CookieName), a.now()) {
 		return true
+	}
+	// A blocked address is not verified at all. The limiter exists to make
+	// guessing expensive, and hashing argon2id for an address that is already
+	// blocked would hand it exactly the CPU the block was meant to deny -
+	// two concurrent derivations peg the semaphore and stall the operator's
+	// own login behind the guesser.
+	if a.limiter.retryAfter(a.clientIP(c)) > 0 {
+		return false
 	}
 	if a.basicValid(c) {
 		return true

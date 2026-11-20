@@ -164,6 +164,12 @@ func ShowEditor(e *env.Env, server api.Server, client *api.Client) {
 		if routes == "" {
 			routes = "0.0.0.0/0, ::/0"
 		}
+		// The backend checks this too; doing it here turns a rejected edit
+		// into a sentence in the dialog instead of a failed request.
+		if problem := api.ValidateAllowedIPs(routes); problem != "" {
+			e.Notify.Fail(errors.New(lang.L("Allowed IPs: {{.Problem}}", map[string]any{"Problem": problem})))
+			return false
+		}
 
 		if editing {
 			save(e, server.ID, *client, routes, applyI.Checked(), settings, strings.TrimSpace(suspendAt.Text))
@@ -254,29 +260,36 @@ func add(e *env.Env, server api.Server, name, allowedIPs string, applyI bool, se
 	}()
 }
 
-// save applies the three independent updates the backend exposes for an
-// existing peer: routing, I-settings and the auto-suspend timestamp.
+// save sends the whole editable state of a client in one request.
+//
+// It used to call the three narrower endpoints one after the other: the first
+// was already applied when the second was refused, and the dialog still said
+// the update had failed. The combined PUT either applies or it does not.
 func save(e *env.Env, serverID string, client api.Client, allowedIPs string, applyI bool, settings api.ISettings, suspendAt string) {
-	var when *time.Time
+	when := ""
 	if suspendAt != "" {
 		parsed, err := time.ParseInLocation(SuspendLayout, suspendAt, time.Local)
 		if err != nil {
 			e.Notify.Fail(errors.New(lang.L("auto-suspend time must look like {{.Layout}}", map[string]any{"Layout": SuspendLayout})))
 			return
 		}
-		when = &parsed
+		when = parsed.Format(time.RFC3339)
+	}
+	if settings == nil {
+		settings = api.ISettings{}
+	}
+
+	req := api.UpdateClientRequest{
+		AllowedIPs:     &allowedIPs,
+		ApplyISettings: &applyI,
+		ISettings:      settings,
+		// A non-nil pointer with an empty value clears the schedule; the
+		// dialog always sends the field, so what it shows is what is stored.
+		SuspendAt: &when,
 	}
 
 	go func() {
-		if err := e.Backend.UpdateAllowedIPs(serverID, client.ID, allowedIPs); err != nil {
-			e.Notify.Fail(err)
-			return
-		}
-		if err := e.Backend.UpdateISettings(serverID, client.ID, applyI, settings); err != nil {
-			e.Notify.Fail(err)
-			return
-		}
-		if err := e.Backend.UpdateSuspendTime(serverID, client.ID, when); err != nil {
+		if err := e.Backend.UpdateClient(serverID, client.ID, req); err != nil {
 			e.Notify.Fail(err)
 			return
 		}

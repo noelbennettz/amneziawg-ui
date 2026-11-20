@@ -22,6 +22,7 @@ package ui
 import (
 	"fmt"
 	"image/color"
+	"strings"
 	"time"
 
 	"fyne.io/fyne/v2"
@@ -32,6 +33,7 @@ import (
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 
+	"amneziawg-web-ui/web-ui/api"
 	"amneziawg-web-ui/web-ui/internal/ui/backend"
 	"amneziawg-web-ui/web-ui/internal/ui/browser"
 	"amneziawg-web-ui/web-ui/internal/ui/dashboard"
@@ -62,6 +64,16 @@ type UI struct {
 	publicIP   *canvas.Text
 	statusSlot *fyne.Container
 	summary    *canvas.Text
+
+	// notice is the banner above the dashboard: what the page can see is
+	// wrong with the deployment as a whole (no awg binary, no public
+	// address). It is hidden while there is nothing to say.
+	notice     *fyne.Container
+	noticeText *widget.Label
+	// lastStatus and haveStatus are the last /api/system/status answer, kept
+	// so the banner can be rebuilt when the server list arrives.
+	lastStatus api.SystemStatus
+	haveStatus bool
 
 	// The app bar's pieces, kept so the breakpoint can restack them: the
 	// title (and its size), the block holding it with the version under it,
@@ -116,6 +128,7 @@ func (u *UI) Build() fyne.CanvasObject {
 	u.list = serverlist.New(u.env)
 
 	body := container.NewVBox(
+		u.noticeBanner(),
 		u.charts.CanvasObject(),
 		u.form.CanvasObject(),
 		u.list.CanvasObject(),
@@ -131,6 +144,72 @@ func (u *UI) Build() fyne.CanvasObject {
 		container.NewGridWrap(fyne.NewSize(1, style.Space5)),
 	)
 	return newPage(container.NewStack(page, snackLayer), u.reflow)
+}
+
+// noticeBanner builds the (initially hidden) banner above the dashboard. It
+// holds the two deployment-wide warnings: no awg binary, and no public address
+// while at least one server depends on it.
+func (u *UI) noticeBanner() fyne.CanvasObject {
+	u.noticeText = widget.NewLabel("")
+	u.noticeText.Wrapping = fyne.TextWrapWord
+	u.noticeText.Importance = widget.WarningImportance
+
+	icon := container.NewCenter(widgets.Icon(theme.WarningIcon(), 18))
+	card := widgets.Card(container.NewBorder(nil, nil, icon, nil, u.noticeText))
+	u.notice = container.NewVBox(card)
+	u.notice.Hide()
+	return u.notice
+}
+
+// setNotices is kept as the single entry point the status poll calls; the
+// notice text itself needs both the last status and the current server list,
+// and the list arrives on its own schedule.
+func (u *UI) setNotices(status api.SystemStatus) {
+	u.mu.Lock()
+	u.lastStatus, u.haveStatus = status, true
+	u.mu.Unlock()
+	u.refreshNotice()
+}
+
+// refreshNotice rebuilds the banner from the last status and the current
+// servers. Both inputs matter: a missing public address only breaks anything
+// when a server has no endpoint of its own.
+func (u *UI) refreshNotice() {
+	u.mu.Lock()
+	status, have := u.lastStatus, u.haveStatus
+	needsAddress := false
+	for _, srv := range u.servers {
+		if srv.Endpoint == "" || srv.Endpoint == api.UnknownPublicIP {
+			needsAddress = true
+			break
+		}
+	}
+	u.mu.Unlock()
+	if !have {
+		return
+	}
+
+	var lines []string
+	if !status.AWGAvailable {
+		lines = append(lines, lang.L("amneziawg-tools (awg) is missing from the container: servers can be configured, but starting one and applying peers will fail."))
+	}
+	if (status.PublicIP == "" || status.PublicIP == api.UnknownPublicIP) && needsAddress {
+		lines = append(lines, lang.L("No public IP could be detected, so client configs carry the {{.Placeholder}} placeholder. Set an endpoint on the server, or use Refresh IP once detection works.", map[string]any{"Placeholder": api.UnknownPublicIP}))
+	}
+	text := strings.Join(lines, "\n\n")
+
+	fyne.Do(func() {
+		if u.noticeText.Text == text {
+			return
+		}
+		u.noticeText.SetText(text)
+		if text == "" {
+			u.notice.Hide()
+		} else {
+			u.notice.Show()
+		}
+		u.clampScroll()
+	})
 }
 
 func (u *UI) header() fyne.CanvasObject {

@@ -146,6 +146,20 @@ func (h *Handlers) getClientConfigBoth(c fiber.Ctx) error {
 	})
 }
 
+func (h *Handlers) updateClient(c fiber.Ctx) error {
+	id := c.Params("id")
+	clientID := c.Params("clientId")
+	var req api.UpdateClientRequest
+	if err := decode(c, &req); err != nil {
+		return fail(c, err)
+	}
+	client, cfg, err := h.mgr.UpdateClient(id, clientID, req)
+	if err != nil {
+		return fail(c, err)
+	}
+	return c.JSON(api.ClientResult{Client: redactClientPtr(client), Config: cfg})
+}
+
 func (h *Handlers) suspendClient(c fiber.Ctx) error {
 	id := c.Params("id")
 	clientID := c.Params("clientId")
@@ -177,17 +191,11 @@ func (h *Handlers) updateClientSuspendTime(c fiber.Ctx) error {
 
 	var ts *float64
 	if req.SuspendAt != nil && *req.SuspendAt != "" {
-		t, err := time.Parse(time.RFC3339, *req.SuspendAt)
+		when, err := manager.ParseSuspendAt(*req.SuspendAt)
 		if err != nil {
-			// Try without timezone
-			t, err = time.Parse("2006-01-02T15:04:05", *req.SuspendAt)
-			if err != nil {
-				return respond(c, fiber.StatusBadRequest,
-					api.ErrorResponse{Error: "invalid datetime format"})
-			}
+			return fail(c, err)
 		}
-		v := float64(t.Unix())
-		ts = &v
+		ts = &when
 	}
 
 	client, msg, err := h.mgr.UpdateClientSuspendTime(id, clientID, ts)

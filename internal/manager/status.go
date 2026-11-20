@@ -106,13 +106,25 @@ func (m *Manager) forgetServerStatus(iface string) {
 // the lock, rather than from the stored Status: a peer added while the stored
 // value says "stopped" but the interface is up would silently not take effect
 // until the next restart.
-func (m *Manager) syncLiveConfig(iface string) {
+//
+// The error matters to the caller: the config change is already on disk, but
+// the running tunnel still has the old one. Reporting success there would tell
+// the operator a client was added (or suspended) while the kernel kept the old
+// peer list until a restart.
+func (m *Manager) syncLiveConfig(iface string) error {
 	if m.serverStatus(iface) != "running" {
-		return
+		return nil
 	}
 	if err := m.tools.SyncConf(iface); err != nil {
 		fmt.Printf("Failed to apply live config to %s: %v\n", iface, err)
-		return
+		return fmt.Errorf("applying the config to %s: %w", iface, err)
 	}
 	fmt.Printf("Live config applied to %s\n", iface)
+	return nil
+}
+
+// notApplied wraps a live-sync failure for an API caller. The change is
+// stored; what failed is pushing it onto the interface that is already up.
+func notApplied(err error) error {
+	return fmt.Errorf("the change was saved, but it could not be applied to the running interface (restart the server to pick it up): %w", err)
 }

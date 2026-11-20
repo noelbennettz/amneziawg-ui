@@ -11,6 +11,7 @@ package totp
 import (
 	"crypto/hmac"
 	"crypto/sha1"
+	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/base32"
 	"encoding/binary"
@@ -116,6 +117,13 @@ func (k Key) Match(code string, t time.Time) (uint64, bool) {
 	}
 
 	return matched, found
+}
+
+// Tag is a stable fingerprint of the shared secret. Callers that derive
+// something from "which secret is in force" mix it in, so replacing the secret
+// retires whatever the old one produced.
+func (k Key) Tag() [sha256.Size]byte {
+	return sha256.Sum256(k.secret)
 }
 
 // codeAt is the HOTP of RFC 4226 section 5.3 for one counter value, with the

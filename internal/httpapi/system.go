@@ -44,7 +44,11 @@ func (h *Handlers) buildInfo(c fiber.Ctx) error {
 }
 
 func (h *Handlers) refreshIP(c fiber.Ctx) error {
-	return c.JSON(api.PublicIP{Address: h.mgr.RefreshPublicIP()})
+	address, err := h.mgr.RefreshPublicIP()
+	if err != nil {
+		return fail(c, err)
+	}
+	return c.JSON(api.PublicIP{Address: address})
 }
 
 func (h *Handlers) iptablesTest(c fiber.Ctx) error {

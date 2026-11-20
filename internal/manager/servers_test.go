@@ -10,6 +10,7 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"amneziawg-web-ui/internal/publicip"
 	"amneziawg-web-ui/web-ui/api"
 )
 
@@ -363,5 +364,155 @@ func TestConcurrentCreatesCannotShareAPortOrSubnet(t *testing.T) {
 		if got := succeeded.Load(); got != 1 {
 			t.Fatalf("round %d: %d creates succeeded on one port and subnet, want exactly 1", round, got)
 		}
+	}
+}
+
+// A detection that fails must not replace a working address with the
+// placeholder: every config generated afterwards would be useless.
+func TestRefreshPublicIPKeepsTheLastGoodAddress(t *testing.T) {
+	m, _ := newTestManager(t)
+	m.setPublicIP("203.0.113.5")
+	m.mu.Lock()
+	m.cfg.Servers[0].PublicIP = "203.0.113.5"
+	m.mu.Unlock()
+
+	m.detect = func() string { return publicip.Unknown }
+	ip, err := m.RefreshPublicIP()
+	if !errors.Is(err, ErrUnavailable) {
+		t.Fatalf("RefreshPublicIP error = %v, want ErrUnavailable", err)
+	}
+	if ip != "203.0.113.5" {
+		t.Errorf("returned %q, want the address already in force", ip)
+	}
+	if srv, _ := m.Server("s1"); srv.PublicIP != "203.0.113.5" {
+		t.Errorf("the server address was overwritten with %q", srv.PublicIP)
+	}
+
+	m.detect = func() string { return "203.0.113.9" }
+	ip, err = m.RefreshPublicIP()
+	if err != nil || ip != "203.0.113.9" {
+		t.Fatalf("RefreshPublicIP = %q, %v", ip, err)
+	}
+	if srv, _ := m.Server("s1"); srv.PublicIP != "203.0.113.9" {
+		t.Errorf("the new address did not reach the server: %q", srv.PublicIP)
+	}
+}
+
+// The settings that can change after creation: the endpoint clients dial, the
+// resolvers new configs get, and whether the server comes up with the panel.
+func TestUpdateServerChangesEndpointDNSAndAutoStart(t *testing.T) {
+	m, _ := newTestManager(t)
+
+	endpoint := "vpn.example.com"
+	resolvers := []string{"1.1.1.1", "2606:4700:4700::1111"}
+	start := true
+	srv, err := m.UpdateServer("s1", api.UpdateServerRequest{
+		Endpoint: &endpoint, DNS: &resolvers, AutoStart: &start,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if srv.Endpoint != endpoint || !slices.Equal(srv.DNS, resolvers) || !srv.AutoStart {
+		t.Errorf("updated server = %+v", srv)
+	}
+
+	client, _, err := m.AddClient("s1", api.AddClientRequest{Name: "alice"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	conf, err := m.ClientConfig("s1", client.ID, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(conf, "Endpoint = vpn.example.com:54844") {
+		t.Errorf("the new endpoint did not reach the client config:\n%s", conf)
+	}
+
+	// Clearing the endpoint hands the choice back to the detected address.
+	empty := ""
+	srv, err = m.UpdateServer("s1", api.UpdateServerRequest{Endpoint: &empty})
+	if err != nil || srv.Endpoint != "" {
+		t.Fatalf("clearing the endpoint = %q, %v", srv.Endpoint, err)
+	}
+
+	badEndpoint := "vpn.example.com:54844"
+	if _, err := m.UpdateServer("s1", api.UpdateServerRequest{Endpoint: &badEndpoint}); !errors.Is(err, ErrInvalid) {
+		t.Errorf("an endpoint carrying a port = %v, want ErrInvalid", err)
+	}
+	badDNS := []string{"dns.google"}
+	if _, err := m.UpdateServer("s1", api.UpdateServerRequest{DNS: &badDNS}); !errors.Is(err, ErrInvalid) {
+		t.Errorf("a host name as a resolver = %v, want ErrInvalid", err)
+	}
+	if _, err := m.UpdateServer("nope", api.UpdateServerRequest{Endpoint: &endpoint}); !errors.Is(err, ErrNotFound) {
+		t.Errorf("unknown server = %v, want ErrNotFound", err)
+	}
+}
+
+// Changing the MTU rewrites the [Interface] section and keeps every peer: the
+// peers are the part of the file the model does not describe.
+func TestUpdateServerRewritesTheInterfaceAndKeepsPeers(t *testing.T) {
+	m, _ := newTestManager(t)
+	m.mu.Lock()
+	m.cfg.Servers[0].ServerPrivateKey = "SERVPRIV"
+	m.cfg.Servers[0].ObfuscationParams = &api.ObfuscationParams{
+		Jc: 8, Jmin: 8, Jmax: 80, S1: 15, S2: 15, S3: 15, S4: 15,
+		H1: 1, H2: 2, H3: 3, H4: 4, MTU: 1280,
+	}
+	m.mu.Unlock()
+
+	client, _, err := m.AddClient("s1", api.AddClientRequest{Name: "alice"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	confPath := m.cfg.Servers[0].ConfigPath
+
+	mtu := 1400
+	if _, err := m.UpdateServer("s1", api.UpdateServerRequest{MTU: &mtu}); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(confPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"MTU = 1400", "PrivateKey = SERVPRIV", "# Client: alice [id:" + client.ID + "]"} {
+		if !strings.Contains(string(data), want) {
+			t.Errorf("rewritten conf missing %q:\n%s", want, data)
+		}
+	}
+	if strings.Contains(string(data), "MTU = 1280") {
+		t.Errorf("the old MTU is still in the conf:\n%s", data)
+	}
+
+	// A padding that no longer fits under a wider MTU is refused before any
+	// write, so a failed update leaves the file exactly as it was.
+	before := string(data)
+	wide := api.MaxMTU
+	if _, err := m.UpdateServer("s1", api.UpdateServerRequest{MTU: &wide}); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("MTU %d with S4 15 = %v, want ErrInvalid", wide, err)
+	}
+	after, err := os.ReadFile(confPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(after) != before {
+		t.Errorf("a refused MTU update rewrote the conf:\n%s", after)
+	}
+}
+
+// A running interface cannot be re-created under a different MTU without
+// going down first, and saying so is better than a broken tunnel.
+func TestUpdateServerRefusesAnMTUChangeWhileRunning(t *testing.T) {
+	m, run := newTestManager(t)
+	m.mu.Lock()
+	m.cfg.Servers[0].ObfuscationParams = &api.ObfuscationParams{
+		Jc: 8, Jmin: 8, Jmax: 80, S1: 15, S2: 15, S3: 15, S4: 15,
+		H1: 1, H2: 2, H3: 3, H4: 4, MTU: 1280,
+	}
+	m.mu.Unlock()
+	run.Stub("ip link show wg-test-absent", "wg-test-absent: state UNKNOWN")
+
+	mtu := 1400
+	if _, err := m.UpdateServer("s1", api.UpdateServerRequest{MTU: &mtu}); !errors.Is(err, ErrConflict) {
+		t.Fatalf("running MTU change = %v, want ErrConflict", err)
 	}
 }

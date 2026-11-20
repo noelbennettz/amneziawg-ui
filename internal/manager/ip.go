@@ -1,6 +1,8 @@
 package manager
 
 import (
+	"fmt"
+
 	"amneziawg-web-ui/internal/publicip"
 	"amneziawg-web-ui/web-ui/api"
 )
@@ -18,12 +20,30 @@ func (m *Manager) setPublicIP(ip string) {
 	m.publicIP = ip
 }
 
+// detectPublicIP runs the detector. A Manager built by New always has one;
+// the fallback keeps a test that builds the struct by hand from calling a nil
+// function.
+func (m *Manager) detectPublicIP() string {
+	if m.detect != nil {
+		return m.detect()
+	}
+	return publicip.Detect(m.tools.RouteSourceIP, m.tools.RouteSourceIP6)
+}
+
 // RefreshPublicIP re-detects the public IP and stamps it on every server.
 // Nothing is written when the answer is the one already stored: this is
-// reachable as a GET, and a read should not rewrite the config file - nor
-// should a prefetch, a scanner or a browser's speculative request.
-func (m *Manager) RefreshPublicIP() string {
-	ip := publicip.Detect(m.tools.RouteSourceIP, m.tools.RouteSourceIP6)
+// reachable from the page, and a read should not rewrite the config file - nor
+// should a prefetch or a speculative request.
+//
+// A detection that fails keeps the address already in force and reports
+// ErrUnavailable. Overwriting it with the YOUR_SERVER_IP placeholder would
+// quietly break every config generated afterwards, including the one an
+// operator is in the middle of handing out.
+func (m *Manager) RefreshPublicIP() (string, error) {
+	ip := m.detectPublicIP()
+	if ip == publicip.Unknown {
+		return m.PublicIP(), fmt.Errorf("no public address detected: the address already in force is kept: %w", ErrUnavailable)
+	}
 
 	m.mu.Lock()
 	changed := ip != m.publicIP
@@ -39,7 +59,7 @@ func (m *Manager) RefreshPublicIP() string {
 	if changed {
 		m.saveOrLog("public IP")
 	}
-	return ip
+	return ip, nil
 }
 
 // endpointFor is the host a client of srv connects to: the endpoint the

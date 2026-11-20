@@ -1189,3 +1189,67 @@ func TestForwardedAddressIsIgnoredWithoutTrustProxy(t *testing.T) {
 		t.Errorf("a new header per attempt walked past the limiter: %d, want 429", resp.StatusCode)
 	}
 }
+
+// The session key is derived from the credentials in force, and the TOTP
+// secret is one of them: replacing the secret has to retire the sessions
+// signed under the old one, or an old cookie outlives the factor it was
+// issued next to for up to twelve hours.
+func TestChangingTheTOTPSecretEndsEverySession(t *testing.T) {
+	first, err := totp.Parse(testTOTPSecret)
+	if err != nil {
+		t.Fatalf("totp.Parse: %v", err)
+	}
+	second, err := totp.Parse("JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP")
+	if err != nil {
+		t.Fatalf("totp.Parse(second): %v", err)
+	}
+	now := time.Unix(testNow, 0)
+
+	issuer := New(testUser, testStore(testHash), WithTOTP(&first))
+	issuer.now = func() time.Time { return now }
+	token := issuer.issue(now)
+
+	same := New(testUser, testStore(testHash), WithTOTP(&first))
+	same.now = func() time.Time { return now }
+	if !same.sessionValid(token, now) {
+		t.Error("the same secret rejected its own session")
+	}
+
+	changed := New(testUser, testStore(testHash), WithTOTP(&second))
+	changed.now = func() time.Time { return now }
+	if changed.sessionValid(token, now) {
+		t.Error("a session signed with the old TOTP secret is still accepted")
+	}
+}
+
+// A blocked address is told to wait on the login page itself: the form would
+// only invite another guess, and every guess costs the server a hash.
+func TestBlockedAddressIsToldToWaitOnTheLoginPage(t *testing.T) {
+	app := newTestApp(t, WithLoginRateLimit(true))
+
+	for i := range 5 {
+		if resp := login(t, app, testUser, "wrong"+strconv.Itoa(i), "/"); resp.StatusCode != fiber.StatusUnauthorized {
+			t.Fatalf("attempt %d = %d, want 401", i+1, resp.StatusCode)
+		}
+	}
+
+	resp := get(t, app, LoginPath, nil, nil)
+	if resp.StatusCode != fiber.StatusTooManyRequests {
+		t.Errorf("GET /login from a blocked address = %d, want 429", resp.StatusCode)
+	}
+	if resp.Header.Get(fiber.HeaderRetryAfter) == "" {
+		t.Error("the blocked login page carries no Retry-After")
+	}
+
+	// A session that already exists keeps working: the limiter is consulted
+	// only after the cookie, so an attacker sharing the address cannot lock
+	// the operator out of the panel they are already in.
+	_, guard := newTestAppAuth(t, WithLoginRateLimit(true))
+	for range 5 {
+		guard.limiter.fail("0.0.0.0")
+	}
+	cookie := &http.Cookie{Name: CookieName, Value: guard.issue(time.Unix(testNow, 0))}
+	if resp := get(t, app, "/api/system/status", cookie, nil); resp.StatusCode != fiber.StatusOK {
+		t.Errorf("an existing session from a blocked address = %d, want 200", resp.StatusCode)
+	}
+}

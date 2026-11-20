@@ -28,6 +28,20 @@ func (h *Handlers) createServer(c fiber.Ctx) error {
 	return c.JSON(redactServer(*srv))
 }
 
+// updateServer changes the settings an existing server can change without
+// being recreated: its endpoint, its resolvers, its MTU and its auto-start.
+func (h *Handlers) updateServer(c fiber.Ctx) error {
+	var req api.UpdateServerRequest
+	if err := decode(c, &req); err != nil {
+		return fail(c, err)
+	}
+	srv, err := h.mgr.UpdateServer(c.Params("id"), req)
+	if err != nil {
+		return fail(c, err)
+	}
+	return c.JSON(redactServer(*srv))
+}
+
 func (h *Handlers) deleteServer(c fiber.Ctx) error {
 	id := c.Params("id")
 	if err := h.mgr.DeleteServer(id); err != nil {

@@ -240,7 +240,7 @@ func packedAssets(files fs.FS, root string) map[string]string {
 func (a *Assets) sendPacked() fiber.Handler {
 	return func(c fiber.Ctx) error {
 		name, ok := a.packed[c.Path()]
-		if !ok || c.Method() != fiber.MethodGet {
+		if !ok || (c.Method() != fiber.MethodGet && c.Method() != fiber.MethodHead) {
 			return c.Next()
 		}
 

@@ -22,6 +22,11 @@ var (
 	// current state, such as activating a client that is not suspended.
 	// Answered with 409.
 	ErrConflict = errors.New("conflicting state")
+
+	// ErrUnavailable means the host or the network cannot do what was asked
+	// right now - above all, that no public address could be detected, so the
+	// address already in force has to stay. Answered with 503.
+	ErrUnavailable = errors.New("not available")
 )
 
 // serverNotFound and clientNotFound name what was missing while staying

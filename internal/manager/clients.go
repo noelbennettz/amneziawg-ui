@@ -2,6 +2,7 @@ package manager
 
 import (
 	"fmt"
+	"slices"
 	"time"
 
 	"github.com/google/uuid"
@@ -96,9 +97,12 @@ func (m *Manager) AddClient(serverID string, req api.AddClientRequest) (*api.Cli
 	// it - not at each of those points.
 	name := wgconf.SanitizeName(req.Name, "client")
 
-	// Checked before any key is generated: a malformed signature packet would
-	// otherwise reach the client's .conf and only surface there, as a tunnel
-	// that will not start.
+	// Checked before any key is generated: a malformed signature packet or
+	// AllowedIPs list would otherwise reach the client's .conf and only
+	// surface there, as a tunnel that will not start.
+	if problem := api.ValidateAllowedIPs(req.AllowedIPs); problem != "" {
+		return nil, "", fmt.Errorf("%w: %s", ErrInvalid, problem)
+	}
 	if req.ApplyISettings {
 		if err := validateISettings(req.ISettings); err != nil {
 			return nil, "", fmt.Errorf("%w: %w", ErrInvalid, err)
@@ -117,7 +121,9 @@ func (m *Manager) AddClient(serverID string, req api.AddClientRequest) (*api.Cli
 	}
 
 	m.saveOrLog("new client")
-	m.syncLiveConfig(ifaceName)
+	if err := m.syncLiveConfig(ifaceName); err != nil {
+		return nil, "", notApplied(err)
+	}
 
 	fmt.Printf("Client %s added with AllowedIPs: %s\n", name, client.AllowedIPs)
 	return client, m.clientConfigOf(serverID, client), nil
@@ -149,7 +155,7 @@ func (m *Manager) addClientLocked(serverID, name string, req api.AddClientReques
 	}
 
 	newClient := api.Client{
-		ID:                 uuid.New().String()[:6],
+		ID:                 m.nextClientID(),
 		Name:               name,
 		ServerID:           serverID,
 		ServerName:         srv.Name,
@@ -181,12 +187,16 @@ func (m *Manager) addClientLocked(serverID, name string, req api.AddClientReques
 }
 
 // nextClientIP hands out an address in the server's subnet, reusing one a
-// deleted client gave back before allocating a fresh one. Caller holds mu.
+// deleted client gave back before allocating a fresh one. An entry that is no
+// longer inside the subnet - a config hand-edited after a subnet change - is
+// dropped rather than handed out. Caller holds mu.
 func (m *Manager) nextClientIP(srv *api.Server) string {
-	if len(srv.UnboundNATIPs) > 0 {
+	for len(srv.UnboundNATIPs) > 0 {
 		ip := srv.UnboundNATIPs[0]
 		srv.UnboundNATIPs = srv.UnboundNATIPs[1:]
-		return ip
+		if netutil.IPInSubnet(ip, srv.Subnet) {
+			return ip
+		}
 	}
 
 	used := map[string]bool{srv.ServerIP: true}
@@ -203,10 +213,12 @@ func (m *Manager) nextClientIPV6(srv *api.Server) string {
 	if srv.SubnetV6 == "" {
 		return ""
 	}
-	if len(srv.UnboundNATIPsV6) > 0 {
+	for len(srv.UnboundNATIPsV6) > 0 {
 		ip := srv.UnboundNATIPsV6[0]
 		srv.UnboundNATIPsV6 = srv.UnboundNATIPsV6[1:]
-		return ip
+		if netutil.IPInSubnet(ip, srv.SubnetV6) {
+			return ip
+		}
 	}
 
 	used := map[string]bool{srv.ServerIPV6: true}
@@ -214,6 +226,32 @@ func (m *Manager) nextClientIPV6(srv *api.Server) string {
 		used[c.ClientIPV6] = true
 	}
 	return netutil.NextFreeIPv6(srv.SubnetV6, used)
+}
+
+// nextClientID draws a client ID no client of any server holds. The six hex
+// characters are what the peer marker and the parked file are keyed on, and
+// the parked directory is shared by every server, so a collision is not just
+// two rows opened by the same ID - it can have one server's parked peer
+// deleted with another's client. Caller holds mu.
+func (m *Manager) nextClientID() string {
+	for {
+		id := uuid.New().String()[:6]
+		if !m.clientIDTaken(id) {
+			return id
+		}
+	}
+}
+
+// clientIDTaken reports whether any server's client list already uses id.
+func (m *Manager) clientIDTaken(id string) bool {
+	for i := range m.cfg.Servers {
+		for j := range m.cfg.Servers[i].Clients {
+			if m.cfg.Servers[i].Clients[j].ID == id {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // DeleteClient removes a peer from a server.
@@ -224,7 +262,9 @@ func (m *Manager) DeleteClient(serverID, clientID string) error {
 	}
 
 	m.saveOrLog("client removal")
-	m.syncLiveConfig(ifaceName)
+	if err := m.syncLiveConfig(ifaceName); err != nil {
+		return notApplied(err)
+	}
 
 	fmt.Printf("Client %s:%s removed\n", serverName, clientCopy.Name)
 	return nil
@@ -266,9 +306,11 @@ func (m *Manager) deleteClientLocked(serverID, clientID string) (serverName stri
 		}
 	}
 	srv.Clients = newClients
-	srv.UnboundNATIPs = append(srv.UnboundNATIPs, clientCopy.ClientIP)
-	if clientCopy.ClientIPV6 != "" {
-		srv.UnboundNATIPsV6 = append(srv.UnboundNATIPsV6, clientCopy.ClientIPV6)
+	if ip := clientCopy.ClientIP; ip != "" && !slices.Contains(srv.UnboundNATIPs, ip) {
+		srv.UnboundNATIPs = append(srv.UnboundNATIPs, ip)
+	}
+	if ip := clientCopy.ClientIPV6; ip != "" && !slices.Contains(srv.UnboundNATIPsV6, ip) {
+		srv.UnboundNATIPsV6 = append(srv.UnboundNATIPsV6, ip)
 	}
 
 	return srv.Name, clientCopy, srv.Interface, nil
@@ -276,8 +318,77 @@ func (m *Manager) deleteClientLocked(serverID, clientID string) (serverName stri
 
 // UpdateClientAllowedIPs changes the AllowedIPs field for a client.
 func (m *Manager) UpdateClientAllowedIPs(serverID, clientID, allowedIPs string) (*api.Client, string, error) {
+	if problem := api.ValidateAllowedIPs(allowedIPs); problem != "" {
+		return nil, "", fmt.Errorf("%w: %s", ErrInvalid, problem)
+	}
 	clientCopy, err := m.updateClientLocked(serverID, clientID, func(client *api.Client) {
 		client.AllowedIPs = wgconf.AllowedIPsOrDefault(allowedIPs)
+	})
+	if err != nil {
+		return nil, "", err
+	}
+
+	m.saveOrLog("client update")
+	return clientCopy, m.clientConfigOf(serverID, clientCopy), nil
+}
+
+// ParseSuspendAt reads the timestamp the editor and the API send: RFC 3339.
+// A value without a zone is read as UTC, which is what the old API accepted.
+// The result is the epoch seconds the config stores.
+func ParseSuspendAt(value string) (float64, error) {
+	stamp, err := time.Parse(time.RFC3339, value)
+	if err != nil {
+		stamp, err = time.Parse("2006-01-02T15:04:05", value)
+		if err != nil {
+			return 0, fmt.Errorf("%w: invalid datetime format", ErrInvalid)
+		}
+	}
+	return float64(stamp.Unix()), nil
+}
+
+// UpdateClient changes everything about a client the editor can change in one
+// write. The three narrower updates still exist, but a dialog that sends them
+// one after the other leaves half of an edit applied when the second is
+// refused - with this one the request either applies or it does not.
+func (m *Manager) UpdateClient(serverID, clientID string, req api.UpdateClientRequest) (*api.Client, string, error) {
+	if req.AllowedIPs != nil {
+		if problem := api.ValidateAllowedIPs(*req.AllowedIPs); problem != "" {
+			return nil, "", fmt.Errorf("%w: %s", ErrInvalid, problem)
+		}
+	}
+	if req.ISettings != nil {
+		if err := validateISettings(req.ISettings); err != nil {
+			return nil, "", fmt.Errorf("%w: %w", ErrInvalid, err)
+		}
+	}
+
+	suspendSet := req.SuspendAt != nil
+	var suspendAt *float64
+	if suspendSet && *req.SuspendAt != "" {
+		when, err := ParseSuspendAt(*req.SuspendAt)
+		if err != nil {
+			return nil, "", err
+		}
+		suspendAt = &when
+	}
+
+	clientCopy, err := m.updateClientLocked(serverID, clientID, func(client *api.Client) {
+		if req.AllowedIPs != nil {
+			client.AllowedIPs = wgconf.AllowedIPsOrDefault(*req.AllowedIPs)
+		}
+		if req.ApplyISettings != nil {
+			client.ApplyISettings = *req.ApplyISettings
+		}
+		if req.ISettings != nil {
+			if client.ApplyISettings {
+				client.ISettings = wgconf.MergeISettings(client.ISettings, req.ISettings)
+			} else {
+				client.ISettings = map[string]string{}
+			}
+		}
+		if suspendSet {
+			client.SuspendAt = suspendAt
+		}
 	})
 	if err != nil {
 		return nil, "", err

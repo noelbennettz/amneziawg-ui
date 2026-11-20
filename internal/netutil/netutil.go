@@ -78,6 +78,13 @@ func NextFreeIP(subnet string, used map[string]bool) string {
 	return ""
 }
 
+// IPInSubnet reports whether ip is a literal address inside subnet.
+func IPInSubnet(ip, subnet string) bool {
+	parsed := net.ParseIP(ip)
+	_, network, err := net.ParseCIDR(subnet)
+	return err == nil && parsed != nil && network.Contains(parsed)
+}
+
 // ServerIPV6 is the address the server takes in its own IPv6 subnet: the first
 // host, so fd42:ab12:: becomes fd42:ab12::1. It returns "" for anything that
 // is not an IPv6 address.

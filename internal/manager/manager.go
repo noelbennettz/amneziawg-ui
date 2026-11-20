@@ -37,6 +37,9 @@ type Manager struct {
 	// requests are generating configs from it, so it lives behind mu rather
 	// than as a bare field.
 	publicIP string
+	// detect finds the host's public address. It is a field so tests can
+	// answer without the network; New points it at publicip.Detect.
+	detect func() string
 
 	mu sync.RWMutex
 
@@ -77,6 +80,9 @@ func New(settings config.Settings, st *store.Store, tools *awg.Tools) (*Manager,
 		host:     sysinfo.Default(settings.WireguardConfigDir),
 		started:  time.Now(),
 		statuses: map[string]statusObservation{},
+		detect: func() string {
+			return publicip.Detect(tools.RouteSourceIP, tools.RouteSourceIP6)
+		},
 	}
 
 	cfg, err := st.Load()
@@ -95,7 +101,7 @@ func New(settings config.Settings, st *store.Store, tools *awg.Tools) (*Manager,
 // scheduled-suspension checker. It returns once the servers are up; the
 // checker keeps running in the background for the life of the process.
 func (m *Manager) Start() {
-	m.setPublicIP(publicip.Detect(m.tools.RouteSourceIP, m.tools.RouteSourceIP6))
+	m.setPublicIP(m.detectPublicIP())
 
 	// The address files come before any server is brought up: awg-quick reads
 	// the .conf on the way up, and a server that starts IPv4-only because of a

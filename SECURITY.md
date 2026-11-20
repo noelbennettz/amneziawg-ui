@@ -52,19 +52,24 @@ How the panel addresses that model:
   kept as an argon2id hash (19 MiB, `t=2`, `p=1`) — in `admin.hash` on the
   config volume, or in `WEB_UI_PASSWORD` — and compared in constant time. The
   hash is never the password: with no variable and no file the panel generates
-  one on the first start, prints it once and stores only its hash. The base64
-  of a SHA-256 that earlier releases accepted is refused at startup — the
-  format is fast to compute, and therefore fast to attack — and so is a hash
-  that verifies `changeme`.
+  one on the first start, writes it to `/etc/amnezia/first-run-password`
+  (mode `0600`, not the log) and stores only its hash; the first successful
+  login deletes the file. The base64 of a SHA-256 that earlier releases
+  accepted is refused at startup — the format is fast to compute, and therefore
+  fast to attack — and so is a hash that verifies `changeme`.
 * Verifying a password is expensive by design, so it is bounded: no more than
   two derivations run at a time, and a Basic credential that verified is cached
   in memory for five minutes — an HMAC of the pair under a random per-process
   key, never the password, and never on disk. A password change empties that
   cache, because every entry carries the generation it was written under.
+  A blocked address is refused before any derivation runs, so guessing cannot
+  spend the server's CPU once the limiter has blocked it.
 * A signed session cookie (`HttpOnly`, `SameSite=Strict`, 12 hours) whose key is
-  derived from the password hash: a restart keeps sessions, changing the password
-  — in `WEB_UI_PASSWORD` or with `reset-password` — ends all of them. `Secure` follows `WEB_UI_SECURE_COOKIE`, the request, or
-  `X-Forwarded-Proto`.
+  derived from the password hash and, when one is configured, the TOTP secret:
+  a restart keeps sessions, and changing either credential — in
+  `WEB_UI_PASSWORD`, with `reset-password`, or by replacing
+  `WEB_UI_TOTP_SECRET` — ends all of them. `Secure` follows
+  `WEB_UI_SECURE_COOKIE`, the request, or `X-Forwarded-Proto`.
 * A double-submit token on every state-changing request. A request that carries
   an `Authorization` header is exempt — that is not an ambient credential, and
   it is what keeps `curl -u` working.
@@ -73,7 +78,9 @@ How the panel addresses that model:
   DENY`, `nosniff`, `no-referrer`.
 * Request bodies are never logged. The API's own log line carries the method,
   the route, the status and the address; the URIs and private keys travel in
-  response bodies only.
+  response bodies only, and a list, a status answer or the result of an edit
+  blanks the private-key fields — the only JSON carrying one is the config
+  endpoint that exists to hand a config out.
 * A suspended peer block is only ever written back into a `.conf` after its
   public key has been compared with the client it is being restored for. The
   `suspended/` directory is shared by every server and keyed by the client ID
@@ -121,9 +128,9 @@ Written down rather than left to be discovered:
   from another site, and `SameSite=Strict` is what keeps that from mattering.
 * **The audit log is opt-in.** `WEB_UI_AUDIT_LOG=true` appends to
   `/etc/amnezia/audit.log`; entries are kept for `WEB_UI_AUDIT_RETENTION_HOURS`
-  (24 hours by default, 30 days at most). The file is swept at most once an
-  hour, so an entry can outlive the window by up to an hour, and the panel holds
-  no lock on it — an operator who deletes the file just loses the record.
+  (24 hours by default, 30 days at most). The file is swept on startup and then
+  hourly, so an entry can outlive the window by up to an hour, and the panel
+  holds no lock on it — an operator who deletes the file just loses the record.
 
 ## The tunnel
 

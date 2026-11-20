@@ -11,9 +11,29 @@ import (
 // network and broadcast addresses.
 const MaxSubnetPrefix = 30
 
+// MinSubnetPrefix is the widest prefix a server's IPv4 subnet may have. A
+// wider block is not a VPN subnet, it is a routing accident: a server with
+// 0.0.0.0/0 gets 0.0.0.1 on its interface, and awg-quick adds the matching
+// route - which replaces the host's own default route and takes the machine
+// (and the panel with it) off the network. /8 is the floor rather than /16
+// because a 10.0.0.0/8 deployment is a real one; the reserved ranges below
+// are still refused whatever their prefix.
+const MinSubnetPrefix = 8
+
+// reservedIPv4 are the blocks a server subnet may never come from: the
+// "this network" block, loopback, link-local, multicast and the reserved
+// block that holds the broadcast address.
+var reservedIPv4 = []string{"0.0.0.0/8", "127.0.0.0/8", "169.254.0.0/16", "224.0.0.0/4", "240.0.0.0/4"}
+
 // MaxSubnetPrefixV6 is the longest prefix a server's IPv6 subnet may have: a
 // /120 leaves 8 host bits, room for the server and 254 clients.
 const MaxSubnetPrefixV6 = 120
+
+// MinSubnetPrefixV6 is the widest prefix a server's IPv6 subnet may have. A
+// ULA wider than /48 is a whole site's address plan, not one tunnel: it puts
+// an enormous route on the interface and overlaps the /64 every server after
+// it is given, so the second server can never be created.
+const MinSubnetPrefixV6 = 48
 
 // ULAv6Group is the 16-bit group every automatically assigned IPv6 subnet
 // starts from: fd42::/16 sits inside fc00::/7, the private block RFC 4193 sets
@@ -29,8 +49,18 @@ func ParseSubnet(subnet string) (*net.IPNet, error) {
 	if err != nil || ip.To4() == nil {
 		return nil, fmt.Errorf("subnet %q is not an IPv4 CIDR such as 10.0.0.0/24", subnet)
 	}
-	if ones, _ := network.Mask.Size(); ones > MaxSubnetPrefix {
+	ones, _ := network.Mask.Size()
+	if ones > MaxSubnetPrefix {
 		return nil, fmt.Errorf("subnet %q is too small: the prefix can be at most /%d", subnet, MaxSubnetPrefix)
+	}
+	if ones < MinSubnetPrefix {
+		return nil, fmt.Errorf("subnet %q is too large: the prefix must be at least /%d", subnet, MinSubnetPrefix)
+	}
+	for _, reserved := range reservedIPv4 {
+		_, block, err := net.ParseCIDR(reserved)
+		if err == nil && block.Contains(network.IP) {
+			return nil, fmt.Errorf("subnet %q is inside %s, a reserved range no server may route", subnet, reserved)
+		}
 	}
 	return network, nil
 }
@@ -50,8 +80,12 @@ func ParseSubnetV6(subnet string) (*net.IPNet, error) {
 	if !isULA(network.IP) {
 		return nil, fmt.Errorf("IPv6 subnet %q is not a ULA block: it must start with fc00::/7 (e.g. %s:ab12::/64)", subnet, ULAv6Group)
 	}
-	if ones, _ := network.Mask.Size(); ones > MaxSubnetPrefixV6 {
+	ones, _ := network.Mask.Size()
+	if ones > MaxSubnetPrefixV6 {
 		return nil, fmt.Errorf("IPv6 subnet %q is too small: the prefix can be at most /%d", subnet, MaxSubnetPrefixV6)
+	}
+	if ones < MinSubnetPrefixV6 {
+		return nil, fmt.Errorf("IPv6 subnet %q is too large: the prefix must be at least /%d", subnet, MinSubnetPrefixV6)
 	}
 	return network, nil
 }
@@ -119,12 +153,12 @@ func SubnetsOverlap(a, b string) bool {
 	return na.Contains(nb.IP) || nb.Contains(na.IP)
 }
 
-// parseEither reads a subnet of either family, or nil when it is neither.
+// parseEither reads a subnet of either family, or nil when it is neither. It
+// deliberately does not apply the creation rules - a stored subnet may predate
+// them, and one the panel can no longer create must still be recognised as
+// overlapping the next one.
 func parseEither(subnet string) *net.IPNet {
-	if network, err := ParseSubnet(subnet); err == nil {
-		return network
-	}
-	if network, err := ParseSubnetV6(subnet); err == nil {
+	if _, network, err := net.ParseCIDR(subnet); err == nil {
 		return network
 	}
 	return nil

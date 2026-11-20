@@ -548,9 +548,18 @@ follows.
 
 `subnet_v6` is optional too: an empty value (or a missing field) means "take a
 free ULA `/64` of the form `fd42:<server ID>::/64`". The subnet must be a ULA
-block (`fc00::/7`) no longer than `/120`; overlapping another server's subnet
-answers `409`, a malformed block `400`. The response, like `GET /api/servers`,
-carries `subnet_v6` and `server_ipv6`, and a client carries `client_ipv6`.
+block (`fc00::/7`) with a prefix between `/48` and `/120`; overlapping another
+server's subnet answers `409`, a malformed block `400`. The response, like
+`GET /api/servers`, carries `subnet_v6` and `server_ipv6`, and a client carries
+`client_ipv6`.
+
+`subnet` has bounds for the same reason: it is a route on the host, not just an
+address range. It must be an IPv4 CIDR with a prefix between `/8` and `/30` and
+may not come from `0.0.0.0/8`, `127.0.0.0/8`, `169.254.0.0/16`, `224.0.0.0/4`
+or `240.0.0.0/4`. A wider block — `0.0.0.0/0` above all — would put a route for
+it (for `/0`, the default route) on the interface when the server starts, which
+takes the host itself off the network. `10.0.0.0/8` is still allowed: a large
+private range is a deployment choice, a default route is not.
 
 #### AmneziaWG 3.1 (header protection, random trailers)
 
@@ -563,6 +572,12 @@ AmneziaWG 3.x parameter set, header protection included. There are no
     rejects the request. The documentation recommends setting all four to the
     same value and leaving `H1`-`H4` at 1/2/3/4 — more in the
     [Obfuscation parameters](#obfuscation-parameters) section.
+*   `S4` rides on every transport packet, so the whole packet has to fit a
+    1500-byte path: `MTU + 60 + S4 ≤ 1500`. That leaves obfuscation usable up
+    to an MTU of 1425; `1426`–`1440` with obfuscation on answers `400`, because
+    the smallest padding the engine accepts would already overflow the path
+    and fragment every full-size packet. Choose a lower MTU, or turn
+    obfuscation off.
 *   A 32-byte `HeaderProtectionKey` in base64 is required; it is generated
     automatically if you do not pass one in `obfuscation_params`. It must match
     byte for byte between the server and each of its clients — for the configs
@@ -677,6 +692,34 @@ parked blocks of its suspended clients, and the server with its clients from
 `web_config.json`. Its `suspended/` entries are keys on disk that nothing owns
 once the server is gone, which is why they go with it.
 
+#### Change a server's settings
+
+```yaml
+PUT /api/servers/{server_id}
+Content-Type: application/json
+{
+  "endpoint": "vpn.example.com",
+  "dns": ["8.8.8.8", "2606:4700:4700::1111"],
+  "mtu": 1280,
+  "auto_start": true
+}
+```
+
+Every field is optional and an omitted one is left alone. `endpoint` is the
+host clients dial; an empty string clears it, so the server follows the
+detected public address again. `dns` and `mtu` are what new client configs are
+generated from, and `auto_start` is whether the server comes up with the
+container.
+
+`mtu` may only change while the interface is down (`409` otherwise: the
+interface has to be re-created), and the new value is validated against the
+server's obfuscation parameters, so an MTU their padding no longer fits answers
+`400` and leaves the `.conf` untouched. The rewrite replaces only the
+`[Interface]` section — every peer block stays exactly where it was. The subnet,
+the port and the keys are not editable: changing any of them invalidates every
+config already handed out, which is what deleting and recreating the server is
+for.
+
 #### Get a server's configuration
 
 `GET /api/servers/{server_id}/config`
@@ -745,6 +788,13 @@ Content-Type: application/json
 }
 ```
 
+`allowed_ips` is a comma separated list of CIDRs and is validated before
+anything is stored: an entry the engine cannot parse (`not-a-cidr`, a bare
+address, a stray comma) answers `400`, instead of being written into a client
+config that then refuses to start on the user's machine. An empty value means
+the full-tunnel default. The keys of `i_settings` are `i1`–`i5`; anything else
+is refused rather than stored and silently dropped.
+
 #### List a server's clients
 
 `GET /api/servers/{server_id}/clients`
@@ -777,6 +827,26 @@ Content-Type: application/json
 The body is `{"suspend_at": "<ISO 8601>"}` or `{"suspend_at": null}` to clear
 the timer.
 
+#### Change everything about a client in one request
+
+```yaml
+PUT /api/servers/{server_id}/clients/{client_id}
+Content-Type: application/json
+{
+  "allowed_ips": "10.0.0.0/8, ::/0",
+  "apply_i_settings": true,
+  "i_settings": { "i2": "<b 0xd100000001><rc 8><t><r 50>" },
+  "suspend_at": "2026-12-01T22:00:00Z"
+}
+```
+
+The dialog uses this one: the three narrower updates above are each their own
+write, so a value the second refuses leaves the first applied while the UI
+reports a failure. Here every field is optional and an omitted one is left
+alone, `"suspend_at": ""` clears the schedule, and a value that fails
+validation (`allowed_ips`, an I-packet, a timestamp) applies none of the
+request.
+
 #### Download a client config as `text/plain` (a .conf file)
 
 `GET /api/servers/{server_id}/clients/{client_id}/config`
@@ -808,13 +878,20 @@ imported AWG config as the outdated `amnezia-awg` container (shown as
 
 #### Refresh the public IP
 
-`GET /api/system/refresh-ip`
+`POST /api/system/refresh-ip`
 
 Re-detects the host's public address. A server created without an `endpoint`
 of its own follows it: every client config generated afterwards carries the
 new address. A server created with an `endpoint` — a name or an address the
 operator typed — keeps that one. Configs already downloaded are not rewritten;
 regenerate them after a refresh that changed the address.
+
+It is a `POST` because it is not a read: it makes outbound requests and can
+rewrite `web_config.json`. When no service answers, the address already in
+force is kept and the request answers `503` — replacing a working address with
+the `YOUR_SERVER_IP` placeholder would break every config generated afterwards.
+A server's endpoint can also be set or cleared directly with the `PUT
+/api/servers/{server_id}` request above.
 
 #### iptables check
 
@@ -990,13 +1067,13 @@ the two failures that happen before anything is logged by the panel itself.
 | `WEB_UI_PASSWORD` | *unset* | Login password, as a hash and never as the password itself: an argon2id PHC string (`$argon2id$v=19$m=…`, what `api hash-password` prints, and what the panel writes). Unset — the default — means the panel generates a password on its first start, writes it to `/etc/amnezia/first-run-password` (mode `0600`, deleted on the first successful login) and keeps only the hash in `/etc/amnezia/admin.hash`; set it to override the stored hash. `changeme` is refused at startup, and so is the old base64(SHA-256) format |
 | `WEB_UI_SECURE_COOKIE` | *auto* | `true` marks every cookie `Secure`, `false` never does, unset follows the request and `X-Forwarded-Proto`. Behind a TLS proxy the container sees plain HTTP, so `true` (or a proxy that sends the header) is what makes the flag appear at all |
 | `WEB_UI_AUDIT_LOG` | `false` | Append logins, logouts and every change made through the API to `/etc/amnezia/audit.log`: time, address, user, route, status. Off by default — it records who reached the panel |
-| `WEB_UI_AUDIT_RETENTION_HOURS` | `24` | How long an entry stays in that file: a value below `1` is raised to `1`, one above `720` (30 days) is lowered to `720`, and anything that is not a number falls back to `24`. The file is swept at most once an hour, and rewritten atomically only when something has aged out |
-| `WEB_UI_LOGIN_RATE_LIMIT` | `true` | Five failed logins from one address block it for 15 minutes; the second block lasts 30, and each one after that doubles, up to 24 hours. A blocked address gets `429` and `Retry-After` on the login form, on the API and on a basic-auth header alike. On by default; `false` turns it off, which is the right setting only behind a proxy that does not forward the client address — every request then looks like one address, and the limiter would lock the operator out along with the attacker. Any value other than `false`/`0`/`no`/`off` leaves it on |
-| `WEB_UI_TOTP_SECRET` | *unset* | Optional second factor: the base32 secret an authenticator app is given (grouping spaces and dashes are accepted). When set, the login form draws an authentication-code field, and a Basic credential has to carry the six digits in `X-TOTP-Code`. A code is accepted in its own 30-second step and one step either side, and **only once**: the panel remembers the last accepted step and refuses anything at or before it, so a script that sends one code twice gets `401` the second time — log in for a session cookie instead. The counter is in memory and a restart forgets it. A secret that is not valid base32, or shorter than 80 bits, stops the container at startup |
+| `WEB_UI_AUDIT_RETENTION_HOURS` | `24` | How long an entry stays in that file: a value below `1` is raised to `1`, one above `720` (30 days) is lowered to `720`, and anything that is not a number falls back to `24`. The file is swept on startup, on an hourly timer and after an event at most once an hour, and rewritten atomically only when something has aged out |
+| `WEB_UI_LOGIN_RATE_LIMIT` | `true` | Five failed logins from one address block it for 15 minutes; the second block lasts 30, and each one after that doubles, up to 24 hours. A blocked address gets `429` and `Retry-After` on the login form, on the API and on a basic-auth header alike, and is refused **before** any password hash is computed — guessing cannot spend the server's CPU once it is blocked. On by default; `false` turns it off, which is the right setting only behind a proxy that does not forward the client address — every request then looks like one address, and the limiter would lock the operator out along with the attacker. Any value other than `false`/`0`/`no`/`off` leaves it on |
+| `WEB_UI_TOTP_SECRET` | *unset* | Optional second factor: the base32 secret an authenticator app is given (grouping spaces and dashes are accepted). When set, the login form draws an authentication-code field, and a Basic credential has to carry the six digits in `X-TOTP-Code`. A code is accepted in its own 30-second step and one step either side, and **only once**: the panel remembers the last accepted step and refuses anything at or before it, so a script that sends one code twice gets `401` the second time — log in for a session cookie instead. The counter is in memory and a restart forgets it. Adding or replacing the secret ends every existing session, because the session key is derived from it as well as from the password. A secret that is not valid base32, or shorter than 80 bits, stops the container at startup |
 | `WEB_UI_TRUST_PROXY` | `false` | Take the client address from `X-Forwarded-For` instead of the connection: the left-most entry, and only when it parses as an IP. It feeds the limiter and the audit log. Only turn it on when every request arrives through a proxy that appends the address it saw — a client that can reach the panel directly sets that header itself, and a limiter counting a value the attacker picks is no limiter |
 | `WEB_UI_PPROF` | `false` | Enables the profiler at `/debug/pprof` (behind the same login). Parsed as a boolean (`1`, `true`, `t`); anything else is "off" |
 | `AUTO_START_SERVERS` | `true` | Bring servers up automatically: on container start, and for a server created in the panel — the form's "Auto-start server on creation" switch defaults to it |
-| `DEFAULT_MTU` | `1280` | Default MTU for new servers: what the panel's form defaults to, and what an API request that omits `mtu` gets |
+| `DEFAULT_MTU` | `1280` | Default MTU for new servers: what the panel's form defaults to, and what an API request that omits `mtu` gets. With obfuscation enabled the usable ceiling is 1425, because `S4` has to leave the whole packet under a 1500-byte path |
 | `DEFAULT_SUBNET` | `10.0.0.0/24` | Default subnet for new servers: the first one the panel's form offers — a second server moves to the next `/24` of the same block — and what an API request that omits `subnet` gets |
 | `DEFAULT_PORT` | `54844` | Default port for new servers: what the panel's form defaults to, and what an API request that omits `port` gets. `docker-compose.yml` publishes exactly this one over UDP |
 | `DEFAULT_DNS` | `8.8.8.8,1.1.1.1` | Default DNS servers for clients: what the panel's form defaults to, and what an API request that omits `dns` gets. IPv4 and IPv6 resolvers are both accepted — a client on an IPv6-only network needs a v6 one |
@@ -1540,13 +1617,15 @@ factor nobody can produce.
 Five failures from one address inside fifteen minutes block it: the first block
 lasts fifteen minutes, and each one after that doubles, up to a day. It is on by
 default. A blocked address gets `429` with `Retry-After` on the form, on the API
-and on a refused Basic header alike; a request that is already authenticated
-never consults it, so a working session cannot be locked out by somebody sharing
-its address. `WEB_UI_LOGIN_RATE_LIMIT=false` turns it off — the setting for a
-deployment behind a proxy that does not forward the client address, where every
-request looks like one address and the limiter would lock the operator out
-along with the attacker. `WEB_UI_TRUST_PROXY=true` is the other way out: with it
-the address is read from `X-Forwarded-For`, which is only safe when a proxy in
+and on a refused Basic header alike, and is refused before any password hash is
+computed — the block is the point at which guessing must stop costing the server
+anything. A request that is already authenticated never consults it, so a
+working session cannot be locked out by somebody sharing its address.
+`WEB_UI_LOGIN_RATE_LIMIT=false` turns it off — the setting for a deployment
+behind a proxy that does not forward the client address, where every request
+looks like one address and the limiter would lock the operator out along with
+the attacker. `WEB_UI_TRUST_PROXY=true` is the other way out: with it the
+address is read from `X-Forwarded-For`, which is only safe when a proxy in
 front of the panel appends it.
 
 ## The session cookie
@@ -1559,9 +1638,10 @@ never, unset when the request itself arrived over TLS or a proxy said
 `X-Forwarded-Proto: https`. Behind a TLS-terminating proxy the container sees
 plain HTTP, which is why setting the variable is the normal deployment. Its
 value is the user and the expiry, signed with an HMAC whose key is derived from
-the password hash, so nothing is kept on the server: a container restart keeps
-you logged in, and changing the password — in `WEB_UI_PASSWORD` or through
-`reset-password` — ends every session at once.
+the password hash and, when a second factor is configured, the TOTP secret, so
+nothing is kept on the server: a container restart keeps you logged in, and
+changing either credential — in `WEB_UI_PASSWORD`, through `reset-password`, or
+by replacing `WEB_UI_TOTP_SECRET` — ends every session at once.
 
 ## The CSRF token
 
@@ -1763,6 +1843,25 @@ token the new one expects.
 > **Breaking change: `changeme` no longer starts either.** The image used to
 > ship that password, and a hash that verifies it is refused at startup with
 > the same kind of message.
+
+### My client configs say `YOUR_SERVER_IP`, and the panel shows a warning
+
+The panel could not detect the host's public address: every external service it
+asks was unreachable, so a server with no `endpoint` of its own has nothing to
+put on the `Endpoint` line. Set the endpoint explicitly with **Edit server**
+(the menu on the server card) or `PUT /api/servers/{id}`; the name or address
+you give is used from then on. Otherwise fix the container's outbound access
+and press **Refresh IP** — a failed refresh keeps the address already in force
+and answers `503` instead of replacing it with the placeholder.
+
+### A banner says amneziawg-tools is missing
+
+The panel is running in a container that has no `/usr/bin/awg` or
+`/usr/bin/awg-quick`. Servers and clients can be configured, and the keys are
+real, but starting an interface and applying peers will fail until the binaries
+are there. Use the published image (it builds both from source) rather than a
+custom one; `GET /api/system/status` reports the same fact as
+`"awg_available": false`.
 
 ### Do I need HTTPS, and how do I enable it?
 

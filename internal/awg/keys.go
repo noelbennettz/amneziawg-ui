@@ -1,6 +1,7 @@
 package awg
 
 import (
+	"crypto/ecdh"
 	"crypto/rand"
 	"encoding/base64"
 	"fmt"
@@ -11,20 +12,35 @@ type KeyPair struct {
 	Private, Public string
 }
 
-// GenerateKeyPair asks awg for a key pair. Without the binary it falls back
-// to two unrelated random keys: the config can still be written and read
-// back, which is what a development tree without amneziawg-tools needs, but
-// no tunnel will come up on it.
+// GenerateKeyPair asks awg for a key pair, falling back to one drawn from
+// crypto/rand when the binary is missing - or when it produced a private key
+// but could not derive the public one.
+//
+// The fallback derives the public half from the private one (X25519) instead
+// of drawing a second random key. Two unrelated keys would write and read back
+// cleanly, which is exactly the problem: the server's PrivateKey would not
+// match the PublicKey its clients are handed, nothing in the panel would say
+// so, and the tunnel could never handshake.
 func (t *Tools) GenerateKeyPair() KeyPair {
 	priv, err := t.run.Run("awg genkey")
-	if err != nil {
-		return KeyPair{Private: RandomKey(), Public: RandomKey()}
+	if err == nil {
+		if pub, err := t.run.Run(fmt.Sprintf("echo '%s' | awg pubkey", priv)); err == nil {
+			return KeyPair{Private: priv, Public: pub}
+		}
 	}
-	pub, err := t.run.Run(fmt.Sprintf("echo '%s' | awg pubkey", priv))
+	return randomKeyPair()
+}
+
+// randomKeyPair draws a Curve25519 private key and computes its public key.
+func randomKeyPair() KeyPair {
+	key, err := ecdh.X25519().GenerateKey(rand.Reader)
 	if err != nil {
-		return KeyPair{Private: RandomKey(), Public: RandomKey()}
+		panic("crypto/rand unavailable: " + err.Error())
 	}
-	return KeyPair{Private: priv, Public: pub}
+	return KeyPair{
+		Private: base64.StdEncoding.EncodeToString(key.Bytes()),
+		Public:  base64.StdEncoding.EncodeToString(key.PublicKey().Bytes()),
+	}
 }
 
 // GeneratePresharedKey asks awg for a preshared key, falling back to a

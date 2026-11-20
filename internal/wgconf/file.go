@@ -51,6 +51,42 @@ func RemovePeer(path string, client *api.Client) (block []string, err error) {
 	return block, nil
 }
 
+// RewriteInterface replaces the [Interface] section of path and keeps every
+// peer block after it.
+//
+// It is how a setting of a server that already exists - the MTU, above all -
+// reaches the .conf: recreating the interface section from the model is
+// exactly what WriteServerConf does, but writing that over a file that also
+// holds the peers would drop every client on the way. The peers are the one
+// part of the file the model does not describe, so they are copied through
+// untouched.
+func RewriteInterface(path string, iface ServerInterface) error {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return fmt.Errorf("reading %s: %w", path, err)
+	}
+	lines := strings.Split(strings.TrimRight(string(data), "\n"), "\n")
+
+	start := -1
+	for i, line := range lines {
+		if _, _, isMarker := ParsePeerMarker(line); isMarker || startsPeerBlock(line) {
+			start = i
+			break
+		}
+	}
+
+	body := iface.Render()
+	if start >= 0 {
+		// Peer blocks are introduced by a blank line, so the rewritten
+		// section ends with one before the first of them.
+		body += "\n" + strings.Join(lines[start:], "\n") + "\n"
+	}
+	if err := atomicfile.Write(path, []byte(body), 0o600); err != nil {
+		return fmt.Errorf("rewriting %s: %w", path, err)
+	}
+	return nil
+}
+
 // SuspendedDir is where a suspended peer block is parked while it is out of
 // the server's live .conf. It sits next to that .conf rather than under a
 // fixed path, so the two always move together.
