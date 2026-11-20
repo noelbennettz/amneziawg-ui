@@ -31,7 +31,7 @@ What does identify a build:
   the date tag, or the digest, is how an upgrade becomes a decision.
 - **The signature.** Every published image is signed keylessly by the workflow
   that built it, and `cosign verify` names the commit's workflow run —
-  [Verifying a published image](../DOCS.md#verifying-a-published-image).
+  [Verifying a published image](../../DOCS.md#verifying-a-published-image).
 
 The three values are filled by the linker, not guessed at runtime:
 
