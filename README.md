@@ -51,7 +51,7 @@ with `docker compose pull && docker compose up -d`.
 
 Every published image is signed keylessly with [cosign](https://docs.sigstore.dev/cosign/overview/)
 and carries an SPDX software bill of materials; [Verifying a published
-image](DOCS.md#verifying-a-published-image) has the one command that checks
+image](DOCS.md#verifying-a-published-image) has the commands that check
 either, against the image digest.
 
 Check it came up:
@@ -77,8 +77,8 @@ Check it came up:
 
 ### Set your own password
 
-The panel reads `WEB_UI_PASSWORD` and uses it instead of the stored hash. It
-holds a hash, never the password, and the image produces one for you:
+The panel reads `WEB_UI_PASSWORD` and uses it instead of the stored hash. The
+variable holds a hash, never the password; the image produces one for you:
 
 ```bash
 printf '%s' 'your-password' | docker run --rm -i ghcr.io/noelbennettz/amneziawg-ui:latest api hash-password

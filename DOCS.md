@@ -12,9 +12,10 @@ manage their clients and watch traffic from a single web interface, where
 always-on obfuscation mode**.
 
 All server configuration happens through the web interface or the REST API.
-The environment variables given at container start mostly set only *defaults* —
-almost everything can be overridden per request and per server through the UI
-or the API, with the exception of `WEB_UI_PORT`.
+The environment variables mostly set *defaults*: a create request can carry its
+own port, subnet, MTU, DNS and obfuscation parameters, and the panel's form
+starts from the same defaults. `WEB_UI_PORT` is the exception — it is fixed when
+the panel starts.
 
 <p align="center">
   <img src="screenshot.png" alt="Monitoring panel with VPN traffic, CPU, RAM and storage charts, and the create-server form with the IPv4 and IPv6 subnet fields"/>
@@ -105,9 +106,10 @@ their stored parameters have no flags, and the absence of a flag means "off".
 ## IPv6 and NAT6
 
 AmneziaWG (like WireGuard) is a dual-stack protocol, and a client's default
-`AllowedIPs` is `0.0.0.0/0, ::/0`. A tunnel with an IPv4 address only takes
-`::/0` in and drops it there: IPv6 on the internet does not work over it. Every
-server and every client therefore gets an IPv6 address automatically.
+`AllowedIPs` is `0.0.0.0/0, ::/0`. A tunnel that carries only an IPv4 address
+accepts `::/0` but has nowhere to send that traffic, so IPv6 on the internet
+does not work over it. Every server and every client therefore gets an IPv6
+address automatically.
 
 *   **Subnet**: an RFC 4193 ULA block, a `/64` per server, by default
     `fd42:<server ID>::/64` — the address says which server it belongs to. A
@@ -133,8 +135,8 @@ server and every client therefore gets an IPv6 address automatically.
     default route **and** an address on that route — a masquerade onto an
     interface with no address drops the packet where no counter is read. An
     IPv4-only host therefore gets no IPv6 NAT rules and keeps working IPv4; an
-    IPv6-only host the other way round. The family that exists is never taken
-    down by the one that does not.
+    IPv6-only host the other way round. A host never loses the family it has
+    because the other one is missing.
 *   **`GET /api/system/iptables-test?server_id=…`** answers both questions: the
     rules that are there (`iptables_check`, keyed by the command that looked,
     read with `iptables -S` — the plain `-L` listing does not print the
@@ -250,8 +252,8 @@ server and every client therefore gets an IPv6 address automatically.
 *   **Your own subnet**: the optional `subnet_v6` field of `POST /api/servers`
     and the "IPv6 subnet" row in the advanced form. An empty value means "pick
     a free `/64` yourself".
-*   **Upgrading**: `web_config.json` is brought to schema version 5 by a
-    migration — existing servers and clients get addresses — and the panel
+*   **Upgrading**: `web_config.json` is brought up to the current schema version
+    by a migration — existing servers and clients get addresses — and the panel
     appends the addresses to the `.conf` files on startup (the `Address` line
     and the peers' `AllowedIPs`), so servers do not have to be recreated.
 
@@ -538,15 +540,14 @@ any other). `endpoint` is a host on its own — a name, an IPv4 address, or an
 IPv6 literal with or without brackets — and a value carrying a port
 (`vpn.example.com:54844`), a scheme or an IPv6 zone (`fe80::1%eth0`) answers
 `400`: the port is the server's own and is appended to every client config, and
-a zone names an interface on the machine that dials, which is the client. The
-same goes for `port`, `subnet`
-and `mtu`: an omitted field falls back to `DEFAULT_PORT`, `DEFAULT_SUBNET` and
-`DEFAULT_MTU` respectively, and the panel's form defaults to those same three
-plus `DEFAULT_DNS`, which is why they are worth setting even when every server
-is created through the UI. `auto_start` is the odd one out: the form sends it
-explicitly, from the switch in its advanced mode — which defaults to
-`AUTO_START_SERVERS` — so that setting is what a server created in the panel
-follows.
+a zone names an interface on the machine that dials, which is the client.
+`port`, `subnet` and `mtu` work differently: an omitted field falls back to
+`DEFAULT_PORT`, `DEFAULT_SUBNET` and `DEFAULT_MTU`, and the panel's form starts
+from those same three plus `DEFAULT_DNS` — which is why they are worth setting
+even when every server is created through the UI. `auto_start` follows the same
+rule: an omitted field takes `AUTO_START_SERVERS`, and the form's switch starts
+from that value as well, so a server created either way follows it until
+somebody changes it.
 
 `subnet_v6` is optional too: an empty value (or a missing field) means "take a
 free ULA `/64` of the form `fd42:<server ID>::/64`". The subnet must be a ULA
@@ -691,8 +692,8 @@ key out, because that is what they exist for.
 
 Stops the interface first if it is up, then removes the server's `.conf`, the
 parked blocks of its suspended clients, and the server with its clients from
-`web_config.json`. Its `suspended/` entries are keys on disk that nothing owns
-once the server is gone, which is why they go with it.
+`web_config.json`. The parked blocks go too: they are keys on disk that nothing
+would own once the server is gone.
 
 #### Change a server's settings
 
@@ -762,7 +763,7 @@ response — what the frontend polls every 5 seconds:
 }
 ```
 
-Every value is instantaneous: `rx_bytes`/`tx_bytes` and `cpu` are cumulative
+Every value is a snapshot: `rx_bytes`/`tx_bytes` and `cpu` are cumulative
 counters since the interface came up and since the system booted, and the panel
 derives the rate and the CPU load from the difference between two consecutive
 responses. The server and client bytes come from one source,
@@ -997,12 +998,12 @@ CI builds and publishes the image to GitHub Container Registry on every push to
 `main` (see `.github/workflows/docker.yml`). Each build publishes two tags: a
 dated one (`2026.11.11`, the day the build was made) and `latest`, which always
 points at the newest commit on main. A day with several pushes moves that day's
-tag — the registry holds one image per tag, and the panel carries no version of
-its own to tell them apart — so pinning a dated tag is how an upgrade becomes a
-decision instead of a restart. A `v*.*.*` git tag does not start a build and
-produces no `3.1` / `3` images. The image is `ghcr.io/<owner>/<repository>`,
-built with the workflow's built-in `GITHUB_TOKEN` — no secret has to be
-configured. Every build is also signed and accompanied by an SBOM: see
+tag — the registry holds one image per tag — so pinning a dated tag is how an
+upgrade becomes a decision instead of a restart. A `v*.*.*` git tag does not
+start a build and produces no `3.1` / `3` images. The image is
+`ghcr.io/<owner>/<repository>`, built with the workflow's built-in
+`GITHUB_TOKEN` — no secret has to be configured. Every build is also signed and
+accompanied by an SBOM: see
 [Verifying a published image](#verifying-a-published-image).
 
 Every action in every workflow is pinned by full commit SHA (with the release
@@ -1100,7 +1101,7 @@ spelled out and the optional ones commented. What each key does:
 | --- | --- |
 | `image` | The image to run. `${IMAGE:-ghcr.io/noelbennettz/amneziawg-ui:latest}` lets `make run` and `make deploy` substitute their own build; pin a dated tag (`…:2026.11.18`) to keep an upgrade a decision |
 | `ports` | `"host address:host port:container port"`. Naming the host address (`127.0.0.1:54845:54845/tcp`) binds that address only — the usual setup behind a local TLS proxy. A UDP range (`54844-54864:54844-54864/udp`) publishes several servers at once |
-| `environment` / `env_file` | The variables from the table above. `.env` is optional (`required: false`) because every one of them has a default, and the password's default is to be generated on the first start and printed once in the log |
+| `environment` / `env_file` | The variables from the table above. `.env` is optional (`required: false`) because every one of them has a default; when no password is set, one is generated on the first start and written to `/etc/amnezia/first-run-password` |
 | `volumes` | `/etc/amnezia` holds `web_config.json` and `audit.log`, plus the servers' `.conf` files under `amneziawg/`, `suspended/` included, and `admin.hash` (and `first-run-password` until the first login). A named volume or a host directory both work; this is the only state to back up |
 | `cap_add: NET_ADMIN` | Needed to write iptables rules, create the interface and manage routes inside the container's network namespace |
 | `devices: /dev/net/tun` | The TUN device the userspace engine attaches to. No kernel module, so no `SYS_MODULE` |
@@ -1117,8 +1118,9 @@ base one, running the published `image:` and reading an optional `.env`),
 which is what gives the clients IPv4 and IPv6 egress on a host with a public
 address of each). `make run` merges the first two to build from source and run;
 to bring up the published image, use the base file alone:
-`docker compose -f docker-compose.yml up -d`. It needs a `.env` only if you want
-to change something: `cp .env.example .env` and edit it, or set `IMAGE`,
+`docker compose -f docker-compose.yml up -d`. The base file needs a `.env` only
+if you want to change something: `cp .env.example .env` and edit it, or set
+`IMAGE`,
 `WEB_UI_PORT`, `DEFAULT_PORT` and the credentials in the environment. Without
 `.env`, the built-in defaults apply — `54845/tcp` for the web UI and `54844/udp`
 for the VPN, the same numbers `docker-compose.yml` substitutes when a variable
@@ -1292,8 +1294,8 @@ Two recommendations are specific to the AmneziaWG 3.1 mode and explain the
     The advice has a cost the documentation does not mention: with equal `S`
     values the difference between the minimum sizes of the message types stays
     exactly WireGuard's own (148/92/64/32), and an observer who collects the
-    minimums recovers that structure. Different `S` values mask it but cost the
-    receiver exactly that margin. The choice is behind the "Roll S1-S4
+    minimums recovers that structure. Different `S` values mask it, at the price
+    of more padding on the wire. The choice is behind the "Roll S1-S4
     separately" checkbox in the advanced mode; the default, and the simple
     mode, follow the vendor's recommendation.
 *   **`H1`-`H4` stay at 1/2/3/4.** "When using Header Protection, it is
@@ -1360,7 +1362,7 @@ reject.
     of any packet exceeds system MTU, it would be fractured into fragments,
     which looks suspicious". Keep it at about 1472 bytes or less. The default
     `I1` shipped here is 1200 static bytes.
-*   **These are one side's parameters, not a pair.** Only the side that
+*   **These belong to the client, not to both sides.** Only the side that
     initiates the handshake sends them, so they are never written into the
     server config — only into client configs and into the `vpn://` link. The
     upstream advice: "no need to specify it on both sides… use it on the client
@@ -1643,7 +1645,7 @@ front of the panel appends it.
 
 The cookie is called `awg_session`, is `HttpOnly` and `SameSite=Strict` (no other
 site gets to send it, not even by navigating the browser here — the cost is one
-redirect through `/login`, which turns straight back around), lives 12 hours and
+redirect through `/login` and back), lives 12 hours and
 is marked `Secure` according to `WEB_UI_SECURE_COOKIE`: `true` always, `false`
 never, unset when the request itself arrived over TLS or a proxy said
 `X-Forwarded-Proto: https`. Behind a TLS-terminating proxy the container sees
@@ -1660,10 +1662,10 @@ The session cookie is an ambient credential — the browser attaches it to
 anything that asks — so every `POST`, `PUT` and `DELETE` also has to carry a
 token that matches the one in a second cookie, `awg_csrf`. The panel's wasm
 client reads that cookie and echoes it in `X-CSRF-Token`; the login form carries
-it in a hidden field and the server rotates it when the session starts. Two
-kinds of request are exempt: one that authenticates with an `Authorization`
-header (no browser attaches one by itself, which is what keeps
-`curl -u admin:<password> -X DELETE ...` working), and nothing else. A write
+it in a hidden field and the server rotates it when the session starts. One kind
+of request is exempt: one that authenticates with an `Authorization` header (no
+browser attaches one by itself, which is what keeps
+`curl -u admin:<password> -X DELETE ...` working). Nothing else is; a write
 without the token is `403`.
 
 `/logout` — GET or POST — deletes the cookie and redirects to `/login`. The
@@ -1714,7 +1716,7 @@ resolved in this order at every start:
    anything on the volume, so a deployment that sets it does not care what
    `admin.hash` holds.
 2. `/etc/amnezia/admin.hash` on the config volume, mode `0600`, when it exists.
-   This is what the panel writes, and nothing is printed for it.
+   The panel writes this file itself and prints nothing when it is the source.
 3. Neither: the first start generates a 24-character `[A-Za-z0-9]` password
    with `crypto/rand`, stores only its argon2id hash in `admin.hash`, and writes
    the password itself to `/etc/amnezia/first-run-password` on the config
@@ -1753,8 +1755,8 @@ and in `.env` alike every `$` of the hash is written `$$`.
 notices the rewritten file within a second and adopts it — no restart. With
 `WEB_UI_PASSWORD` set the variable still wins, and the command says so.
 
-Three refusals at startup: a hash in the base64(SHA-256) format releases before
-argon2id used (the message says to make a new one with `hash-password`), a hash
+Three refusals at startup: a hash in the base64(SHA-256) format that earlier
+releases used (the message says to make a new one with `hash-password`), a hash
 that does not parse exactly (including argon2id parameters above the ceilings
 the panel will run — 256 MiB, `t=10`, `p=8`, so a compose file cannot turn every
 login attempt into a memory bomb), and a hash that verifies `changeme`, which
@@ -1771,8 +1773,8 @@ credential dialog and always gets the login page instead.
 > [!IMPORTANT]
 > I strongly recommend restricting access to the panel with a firewall and/or a
 > TLS-terminating reverse proxy in front of the container.
-> A login form and a 12-hour cookie are no substitute for TLS, and a password is
-> still worth brute-forcing — `WEB_UI_LOGIN_RATE_LIMIT` is on by default and
+> A login form and a 12-hour cookie are no substitute for TLS, and a password can
+> still be brute-forced — `WEB_UI_LOGIN_RATE_LIMIT` is on by default and
 > makes guessing expensive per address (turn it off only when a proxy hides the
 > client address), and `WEB_UI_TOTP_SECRET` adds a second factor.
 
@@ -1818,8 +1820,9 @@ printf '%s' 'your-password' | docker run --rm -i \
 ```
 
 The output is a `$argon2id$…` string, and every `$` of it is written `$$` —
-compose interpolates `$` in `.env` and in the compose file alike. The password is
-never stored in the clear.
+compose interpolates `$` in `.env` and in the compose file alike. The password
+is never stored in the clear.
+
 The session cookie is signed with a key derived from the hash, so a restart
 keeps everyone logged in while a password change ends every session at once.
 

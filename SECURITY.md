@@ -21,9 +21,9 @@ the advisory is where the timetable lives.
 The image is published as `ghcr.io/noelbennettz/amneziawg-ui` with two tags:
 `latest`, which is the newest commit on `main`, and the date the build was made,
 e.g. `2026.11.11`. Only the newest date is supported — there are no release
-branches, and a fix lands on `main` and in the next build. The panel reports
-nothing about its own version, so "which one am I running" is answered by the
-tag you pulled.
+branches, and a fix lands on `main` and in the next build. The commit a build
+came from is in `/api/version` and in the image labels, so a running panel can
+say which build it is.
 
 ## Threat model
 
@@ -32,8 +32,8 @@ The panel is assumed to be reachable from the internet. Port `54845` offers a
 answers with an AmneziaWG handshake. An attacker is assumed to be able to:
 
 * guess and stuff passwords at the login form and at `curl -u` — each attempt
-  costs the server an argon2id derivation, so the cost is theirs to pay but the
-  memory is the panel's;
+  makes the server run an argon2id derivation, so the guesser pays in time and
+  the panel pays in memory;
 * send requests with any header, cookie or body they like;
 * make a victim's browser send requests to the panel from another site;
 * read every response the panel gives them, including the client configs and

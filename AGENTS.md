@@ -38,7 +38,7 @@ amnezialink, publicip, config, sysinfo}`:
 
 Placement of frontend files in the `web-ui` directory: `main.go` is the entry
 point, the UI lives in `web-ui/internal/ui`, and the page, from top to bottom,
-is `dashboard` (charts), `newserver` (create form), `serverlist` (cards)
+is `dashboard` (charts), `newserver` (create form), `serverlist` (cards).
 
 `web-ui/api` is what the two sides share, pulled into the root module via a
 `replace` directive: the wire structs, and the AmneziaWG rules that go with
