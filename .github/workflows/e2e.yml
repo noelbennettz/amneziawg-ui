@@ -24,7 +24,7 @@ jobs:
     timeout-minutes: 30
     steps:
       - name: Checkout
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       # The test containers need /dev/net/tun. GitHub's runner usually has it;
       # create it if the image does not.
@@ -42,7 +42,7 @@ jobs:
       # without a cache every pull request pays for all of it again. The cache
       # is the same GHA backend docker.yml uses, under its own scope.
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
       # The browser is the runner's Chrome, so the version is whatever the
       # image ships; the pinned half is playwright-go in e2e/go.mod, which is
