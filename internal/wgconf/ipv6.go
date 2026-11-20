@@ -73,13 +73,7 @@ func ensurePeerAllowedIPsIn(path string, client *api.Client, allowedIPs string) 
 		return false, nil
 	}
 
-	end := len(lines)
-	for i := start + 1; i < len(lines); i++ {
-		if _, _, isMarker := ParsePeerMarker(lines[i]); isMarker {
-			end = i
-			break
-		}
-	}
+	end := blockEnd(lines, start)
 
 	for i := start; i < end; i++ {
 		key, _, ok := splitKeyValue(lines[i])

@@ -655,6 +655,11 @@ Content-Type: application/json
 
 `GET /api/servers`
 
+Every list, status and edit response — this one, the client lists and the
+`client` object an add/edit returns — carries `server_private_key` and
+`client_private_key` as empty strings. Only the config endpoints above hand a
+key out, because that is what they exist for.
+
 #### Start a server
 
 `POST /api/servers/{server_id}/start`
@@ -804,6 +809,12 @@ imported AWG config as the outdated `amnezia-awg` container (shown as
 #### Refresh the public IP
 
 `GET /api/system/refresh-ip`
+
+Re-detects the host's public address. A server created without an `endpoint`
+of its own follows it: every client config generated afterwards carries the
+new address. A server created with an `endpoint` — a name or an address the
+operator typed — keeps that one. Configs already downloaded are not rewritten;
+regenerate them after a refresh that changed the address.
 
 #### iptables check
 

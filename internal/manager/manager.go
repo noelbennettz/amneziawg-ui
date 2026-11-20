@@ -64,7 +64,12 @@ type Manager struct {
 
 // New loads the config from st and brings it up to the current schema. It
 // does not touch the host: see Start for that.
-func New(settings config.Settings, st *store.Store, tools *awg.Tools) *Manager {
+//
+// A config file that cannot be read or parsed stops the start instead of
+// yielding an empty panel: the migration below saves what it was given, and
+// saving an empty config over the operator's file would take every server,
+// client and private key with it.
+func New(settings config.Settings, st *store.Store, tools *awg.Tools) (*Manager, error) {
 	m := &Manager{
 		settings: settings,
 		store:    st,
@@ -74,11 +79,15 @@ func New(settings config.Settings, st *store.Store, tools *awg.Tools) *Manager {
 		statuses: map[string]statusObservation{},
 	}
 
-	m.cfg = st.Load()
+	cfg, err := st.Load()
+	if err != nil {
+		return nil, err
+	}
+	m.cfg = cfg
 	if store.Migrate(m.cfg) {
 		m.saveOrLog("schema migration")
 	}
-	return m
+	return m, nil
 }
 
 // Start does what a booting backend does once the config is in memory:

@@ -80,8 +80,14 @@ func TestCreateServer(t *testing.T) {
 	if !slices.Equal(server.DNS, wantDNS) {
 		t.Errorf("dns = %v, want DEFAULT_DNS %v", server.DNS, wantDNS)
 	}
-	if server.Endpoint == "" {
-		t.Error("the endpoint is empty")
+	// The simple mode sends no endpoint, so the server stores none and follows
+	// the detected public IP - which is what makes Refresh IP reach the configs
+	// it generates. A value copied in here would freeze the address for good.
+	if server.Endpoint != "" {
+		t.Errorf("endpoint = %q, want it empty for a server with none of its own", server.Endpoint)
+	}
+	if server.PublicIP == "" {
+		t.Error("the server has no public IP to fall back to")
 	}
 	if !server.ObfuscationEnabled {
 		t.Error("obfuscation is off")

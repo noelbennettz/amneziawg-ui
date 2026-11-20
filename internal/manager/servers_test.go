@@ -2,9 +2,12 @@ package manager
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"slices"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 
 	"amneziawg-web-ui/web-ui/api"
@@ -244,6 +247,121 @@ func TestNormalizeDNSWritesCanonicalResolvers(t *testing.T) {
 	for _, in := range []string{"dns.google", "8.8.8.8:53", "fe80::1%eth0", "::1/128"} {
 		if _, err := normalizeDNS([]string{in}); err == nil {
 			t.Errorf("normalizeDNS(%q) accepted it", in)
+		}
+	}
+}
+
+// A created server's endpoint is set only when the operator gave one. An empty
+// field means "whatever the backend detected last", which is what lets Refresh
+// IP reach the configs already handed out. Copying the detected address into
+// Endpoint at creation froze it: the stored copy outranked PublicIP, so a host
+// whose address changed went on handing out the old one.
+func TestCreateServerLeavesTheEndpointToThePublicIP(t *testing.T) {
+	m, _ := newTestManager(t)
+	m.setPublicIP("203.0.113.5")
+
+	srv, err := m.CreateServer(api.CreateServerRequest{Name: "auto", Port: 54846, Subnet: "10.0.2.0/24", MTU: 1280})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if srv.Endpoint != "" {
+		t.Errorf("Endpoint = %q, want it empty for a server with none of its own", srv.Endpoint)
+	}
+
+	// What RefreshPublicIP does when the host's address changes.
+	m.setPublicIP("203.0.113.9")
+	m.mu.Lock()
+	m.cfg.Servers[len(m.cfg.Servers)-1].PublicIP = "203.0.113.9"
+	m.mu.Unlock()
+
+	client, _, err := m.AddClient(srv.ID, api.AddClientRequest{Name: "alice"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	conf, err := m.ClientConfig(srv.ID, client.ID, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(conf, "Endpoint = 203.0.113.9:54846") {
+		t.Errorf("a refreshed public IP did not reach the client config:\n%s", conf)
+	}
+}
+
+// A name the operator typed is theirs: it survives a public IP change.
+func TestCreateServerKeepsANamedEndpoint(t *testing.T) {
+	m, _ := newTestManager(t)
+	m.setPublicIP("203.0.113.5")
+
+	srv, err := m.CreateServer(api.CreateServerRequest{
+		Name: "named", Port: 54846, Subnet: "10.0.2.0/24", MTU: 1280, Endpoint: "vpn.example.com",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	client, _, err := m.AddClient(srv.ID, api.AddClientRequest{Name: "alice"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	conf, err := m.ClientConfig(srv.ID, client.ID, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(conf, "Endpoint = vpn.example.com:54846") {
+		t.Errorf("the named endpoint was not used:\n%s", conf)
+	}
+}
+
+// A subnet does not have to start on a /24 boundary: the server takes the
+// first host inside it, and its clients the next ones, not an address outside
+// the block.
+func TestCreateServerStaysInsideANonZeroSubnet(t *testing.T) {
+	m, _ := newTestManager(t)
+
+	srv, err := m.CreateServer(api.CreateServerRequest{Name: "half", Port: 54846, Subnet: "10.9.0.128/25", MTU: 1280})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if srv.ServerIP != "10.9.0.129" {
+		t.Errorf("ServerIP = %q, want 10.9.0.129 (inside 10.9.0.128/25)", srv.ServerIP)
+	}
+
+	client, _, err := m.AddClient(srv.ID, api.AddClientRequest{Name: "alice"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if client.ClientIP != "10.9.0.130" {
+		t.Errorf("client IP = %q, want 10.9.0.130", client.ClientIP)
+	}
+}
+
+// The port and subnet checks and the insert are one critical section, so
+// creates that arrive together cannot both pass the same check. Before that,
+// eight simultaneous requests could all see a free port and insert.
+func TestConcurrentCreatesCannotShareAPortOrSubnet(t *testing.T) {
+	for round := range 5 {
+		m, _ := newTestManager(t)
+		port := 55000 + round
+
+		var succeeded atomic.Int32
+		var wg sync.WaitGroup
+		start := make(chan struct{})
+		for i := range 8 {
+			wg.Go(func() {
+				<-start
+				_, err := m.CreateServer(api.CreateServerRequest{
+					Name: fmt.Sprintf("s%d", i), Port: port, Subnet: "10.20.0.0/24", MTU: 1280,
+				})
+				if err == nil {
+					succeeded.Add(1)
+				}
+			})
+		}
+		close(start)
+		wg.Wait()
+
+		if got := succeeded.Load(); got != 1 {
+			t.Fatalf("round %d: %d creates succeeded on one port and subnet, want exactly 1", round, got)
 		}
 	}
 }

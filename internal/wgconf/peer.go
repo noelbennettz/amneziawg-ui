@@ -60,8 +60,8 @@ func MarkerMatches(line string, client *api.Client) bool {
 
 // SplitPeerBlock finds the client's peer block and returns the config lines
 // with the block removed, plus the block itself. The block runs from its
-// marker to the line before the next marker, trailing blank lines excluded,
-// so removing it cannot swallow the peer that follows.
+// marker to the line before the next block, trailing blank lines excluded, so
+// removing it cannot swallow the peer that follows.
 func SplitPeerBlock(lines []string, client *api.Client) (rest, block []string, found bool) {
 	start := -1
 	for i, line := range lines {
@@ -74,17 +74,64 @@ func SplitPeerBlock(lines []string, client *api.Client) (rest, block []string, f
 		return lines, nil, false
 	}
 
-	end := len(lines)
-	for i := start + 1; i < len(lines); i++ {
-		if _, _, isMarker := ParsePeerMarker(lines[i]); isMarker {
-			end = i
-			break
-		}
-	}
-
+	end := blockEnd(lines, start)
 	block = trimTrailingBlank(lines[start:end])
 	rest = append(append([]string{}, lines[:start]...), lines[end:]...)
 	return trimTrailingBlank(rest), block, true
+}
+
+// startsPeerBlock reports whether line opens a peer section.
+func startsPeerBlock(line string) bool {
+	return strings.EqualFold(strings.TrimSpace(line), "[Peer]")
+}
+
+// blockEnd is the index just past the block starting at i.
+//
+// A block ends where the next one begins: at a client marker, at a [Peer] line
+// that opens a section of its own, or at a comment that introduces that
+// section. The first [Peer] after a marker belongs to that block - the marker
+// introduces it - so only a second one counts. Without that, a peer somebody
+// wrote by hand right after a marked block was treated as part of it:
+// suspending that client took the hand-written peer out of the config with it.
+func blockEnd(lines []string, i int) int {
+	section := startsPeerBlock(lines[i])
+	for j := i + 1; j < len(lines); j++ {
+		if _, _, isMarker := ParsePeerMarker(lines[j]); isMarker {
+			return j
+		}
+		if startsPeerBlock(lines[j]) {
+			if section {
+				return j
+			}
+			section = true
+			continue
+		}
+		if section && isComment(lines[j]) && nextPeerSection(lines, j) {
+			return j
+		}
+	}
+	return len(lines)
+}
+
+// isComment reports whether line is a comment that is not a client marker.
+func isComment(line string) bool {
+	if _, _, isMarker := ParsePeerMarker(line); isMarker {
+		return false
+	}
+	return strings.HasPrefix(strings.TrimSpace(line), "#")
+}
+
+// nextPeerSection reports whether the next line with content after i opens a
+// [Peer] section. Blank lines and comments in between belong to that section.
+func nextPeerSection(lines []string, i int) bool {
+	for j := i + 1; j < len(lines); j++ {
+		trimmed := strings.TrimSpace(lines[j])
+		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
+			continue
+		}
+		return startsPeerBlock(lines[j])
+	}
+	return false
 }
 
 func trimTrailingBlank(lines []string) []string {

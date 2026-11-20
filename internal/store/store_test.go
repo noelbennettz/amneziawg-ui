@@ -12,9 +12,26 @@ import (
 
 func TestLoadOfAMissingFileIsAnEmptyConfig(t *testing.T) {
 	s := New(filepath.Join(t.TempDir(), "web_config.json"))
-	cfg := s.Load()
+	cfg, err := s.Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
 	if cfg.Servers == nil || len(cfg.Servers) != 0 {
 		t.Errorf("Load = %+v, want an empty server list", cfg)
+	}
+}
+
+// A file that exists but cannot be read back is an error, not an empty
+// config: the manager saves what it loaded, so answering "empty" would let a
+// corrupt file overwrite itself with a panel that has no servers at all.
+func TestLoadOfACorruptFileIsAnError(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "web_config.json")
+	if err := os.WriteFile(path, []byte(`{"servers":[{"id":"s1"`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := New(path).Load(); err == nil {
+		t.Fatal("Load of a truncated config returned no error")
 	}
 }
 
@@ -26,7 +43,10 @@ func TestLoadFillsInMissingSlices(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	cfg := New(path).Load()
+	cfg, err := New(path).Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
 	if len(cfg.Servers) != 1 || cfg.Servers[0].Clients == nil || cfg.Servers[0].UnboundNATIPs == nil {
 		t.Errorf("Load = %+v", cfg)
 	}
@@ -41,7 +61,10 @@ func TestSaveRoundTrips(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	got := s.Load()
+	got, err := s.Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
 	if got.SchemaVersion != SchemaVersion || len(got.Servers) != 1 || len(got.Servers[0].Clients) != 1 {
 		t.Errorf("Load after Save = %+v", got)
 	}

@@ -184,6 +184,43 @@ func TestReconcileLeavesHandWrittenPeersAlone(t *testing.T) {
 	}
 }
 
+// Suspending a client takes its block out of the live config and parks it.
+// A peer written by hand directly below it is somebody else's and stays where
+// it is - both in the live file and in the parked copy.
+func TestReconcileSuspendingKeepsTheHandWrittenPeerBelow(t *testing.T) {
+	path := writePeerConf(t,
+		"\n# Client: alice [id:aaa]\n[Peer]\nPublicKey = pub-aaa\nPresharedKey = psk-aaa\nAllowedIPs = 10.0.0.2/32, fd42:1::2/128\n",
+		"\n# hand-written\n[Peer]\nPublicKey = handwritten\nAllowedIPs = 10.0.0.9/32\n")
+
+	alice := testClient("aaa", "alice", "suspended")
+	result, err := Reconcile(path, []api.Client{alice})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Parked) != 1 {
+		t.Fatalf("result = %+v, want alice parked", result)
+	}
+
+	live, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(live), "pub-aaa") {
+		t.Errorf("alice's block is still in the live config:\n%s", live)
+	}
+	if !strings.Contains(string(live), "PublicKey = handwritten") {
+		t.Errorf("the hand-written peer was removed with alice's block:\n%s", live)
+	}
+
+	parked, err := os.ReadFile(filepath.Join(SuspendedDir(path), "aaa.conf"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(parked), "handwritten") {
+		t.Errorf("the hand-written peer was parked inside alice's block:\n%s", parked)
+	}
+}
+
 // Deleting a client has to take its parked block with it; forgetting a block
 // that was never parked is not an error.
 func TestForgetPeer(t *testing.T) {

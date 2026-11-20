@@ -2,6 +2,7 @@ package store
 
 import (
 	"amneziawg-web-ui/internal/netutil"
+	"amneziawg-web-ui/internal/publicip"
 	"amneziawg-web-ui/web-ui/api"
 )
 
@@ -27,13 +28,16 @@ import (
 //	    repairClientServerIDs.
 //	5 - every server owns a ULA /64 and every client an address in it; see
 //	    addIPv6Addressing.
+//	6 - a server whose endpoint was never the operator's own choice stores no
+//	    endpoint at all, so a detected public IP change reaches its client
+//	    configs; see unfreezeServerEndpoints.
 //
 // It starts at 3 rather than 1 because pre-release builds already stamped 1
 // and 2 into deployed configs. Numbering the first release below what is
 // already on disk would make those files look newer than the code, and the
 // next migration - guarded by "the config is older than this revision" -
 // would never run on them.
-const SchemaVersion = 5
+const SchemaVersion = 6
 
 // Migrate applies every migration cfg still needs and stamps the result, so
 // none of them run twice. It reports whether cfg changed and therefore needs
@@ -46,6 +50,7 @@ func Migrate(cfg *AppConfig) (changed bool) {
 	// Migrations go here, oldest first.
 	repairClientServerIDs(cfg)
 	complete := addIPv6Addressing(cfg)
+	unfreezeServerEndpoints(cfg)
 
 	if complete {
 		cfg.SchemaVersion = SchemaVersion
@@ -154,4 +159,29 @@ func addIPv6Addressing(cfg *AppConfig) (complete bool) {
 		}
 	}
 	return complete
+}
+
+const schemaEndpoints = 6
+
+// unfreezeServerEndpoints clears the endpoint of a server that never had one
+// of its own.
+//
+// Releases up to 5 copied the detected public address into Endpoint when the
+// request carried none - "your server IP" included, when detection failed on
+// the first boot. endpointFor prefers Endpoint over PublicIP, so the stored
+// copy outranked the live one for good: Refresh IP updated the dashboard and
+// PublicIP, and every client config went on pointing at the old address (or
+// at YOUR_SERVER_IP, with no way to fix it from the panel). An endpoint that
+// differs from the stamped PublicIP is a name or an address somebody typed,
+// and is kept.
+func unfreezeServerEndpoints(cfg *AppConfig) {
+	if cfg.SchemaVersion >= schemaEndpoints {
+		return
+	}
+	for i := range cfg.Servers {
+		srv := &cfg.Servers[i]
+		if srv.Endpoint == srv.PublicIP || srv.Endpoint == publicip.Unknown {
+			srv.Endpoint = ""
+		}
+	}
 }

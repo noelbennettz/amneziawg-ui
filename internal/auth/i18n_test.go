@@ -38,6 +38,12 @@ func TestLoginTextFor(t *testing.T) {
 		// q=0 means "not acceptable", and a broken q is not a preference.
 		{"ru;q=0,es;q=0.5", "Iniciar sesión"},
 		{"ru;q=not-a-number,es;q=0.5", "Iniciar sesión"},
+		// A tag that is nothing but separators names no language. It used
+		// to panic on the empty split and turn /login into a 500.
+		{"-", "Sign in"},
+		{"_", "Sign in"},
+		{"-,en;q=0.5", "Sign in"},
+		{"de-,-", "Sign in"},
 	}
 
 	for _, c := range cases {

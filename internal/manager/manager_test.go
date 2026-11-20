@@ -60,13 +60,20 @@ func TestNewMigratesAndSavesAnOldConfig(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	m := New(config.Settings{ConfigFile: path}, st, awg.New(awgtest.New()))
+	m, err := New(config.Settings{ConfigFile: path}, st, awg.New(awgtest.New()))
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
 
 	client, ok := m.Client("s1", "c1")
 	if !ok || client.ServerID != "s1" {
 		t.Errorf("client after migration = %+v, %v", client, ok)
 	}
-	if saved := st.Load(); saved.SchemaVersion != store.SchemaVersion {
+	saved, err := st.Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if saved.SchemaVersion != store.SchemaVersion {
 		t.Errorf("saved schema version = %d, want %d", saved.SchemaVersion, store.SchemaVersion)
 	}
 }
@@ -79,7 +86,9 @@ func TestNewLeavesACurrentConfigAlone(t *testing.T) {
 	}
 	before, _ := os.Stat(path)
 
-	New(config.Settings{ConfigFile: path}, st, awg.New(awgtest.New()))
+	if _, err := New(config.Settings{ConfigFile: path}, st, awg.New(awgtest.New())); err != nil {
+		t.Fatalf("New: %v", err)
+	}
 
 	after, _ := os.Stat(path)
 	if !after.ModTime().Equal(before.ModTime()) || after.Size() != before.Size() {

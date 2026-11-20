@@ -117,6 +117,12 @@ func languageTag(tag string) string {
 	}
 
 	parts := strings.FieldsFunc(tag, func(r rune) bool { return r == '-' || r == '_' })
+	if len(parts) == 0 {
+		// A header entry like "-" has no language part at all. Indexing the
+		// empty result used to panic inside the login page, which turned a
+		// header a scanner can send into a 500 on /login.
+		return ""
+	}
 
 	switch {
 	case parts[0] == "zh":

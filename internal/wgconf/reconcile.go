@@ -150,16 +150,10 @@ func Reconcile(path string, clients []api.Client) (ReconcileResult, error) {
 
 // peerBlockAt returns the block that starts at i and the index just past it. A
 // block runs from its marker (or its [Peer] line) to the line before the next
-// marker, trailing blank lines excluded, so removing one cannot swallow the
+// block, trailing blank lines excluded, so removing one cannot swallow the
 // peer that follows.
 func peerBlockAt(lines []string, i int) ([]string, int) {
-	end := len(lines)
-	for j := i + 1; j < len(lines); j++ {
-		if _, _, next := ParsePeerMarker(lines[j]); next {
-			end = j
-			break
-		}
-	}
+	end := blockEnd(lines, i)
 	return trimTrailingBlank(lines[i:end]), end
 }
 

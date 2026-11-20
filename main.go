@@ -85,7 +85,10 @@ func main() {
 		announceGeneratedPassword(os.Stdout, settings.User, settings.FirstRunPasswordFile)
 	}
 
-	mgr := manager.New(settings, store.New(settings.ConfigFile), awg.New(awg.Shell{}))
+	mgr, err := manager.New(settings, store.New(settings.ConfigFile), awg.New(awg.Shell{}))
+	if err != nil {
+		log.Fatalf("config: %v", err)
+	}
 	mgr.Start()
 
 	// The frontend is opened before the app so the nonce its loader page is

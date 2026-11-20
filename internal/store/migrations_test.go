@@ -19,6 +19,31 @@ func TestMigrateStampsAnUnversionedConfig(t *testing.T) {
 	}
 }
 
+// A config written by releases up to 5 holds the detected address in Endpoint
+// as well as in PublicIP, because the create path copied it there. That copy
+// outranked PublicIP in endpointFor, so Refresh IP never reached the client
+// configs; revision 6 clears it. An endpoint the operator typed is kept.
+func TestMigrationUnfreezesTheDetectedEndpoint(t *testing.T) {
+	cfg := &AppConfig{SchemaVersion: 5, Servers: []api.Server{
+		{ID: "auto", Endpoint: "203.0.113.5", PublicIP: "203.0.113.5"},
+		{ID: "unknown", Endpoint: "YOUR_SERVER_IP", PublicIP: "YOUR_SERVER_IP"},
+		{ID: "named", Endpoint: "vpn.example.com", PublicIP: "203.0.113.5"},
+	}}
+
+	if !Migrate(cfg) {
+		t.Fatal("a config one revision behind must be reported as changed")
+	}
+	if cfg.Servers[0].Endpoint != "" {
+		t.Errorf("the detected endpoint was kept: %q", cfg.Servers[0].Endpoint)
+	}
+	if cfg.Servers[1].Endpoint != "" {
+		t.Errorf("the placeholder endpoint was kept: %q", cfg.Servers[1].Endpoint)
+	}
+	if cfg.Servers[2].Endpoint != "vpn.example.com" {
+		t.Errorf("the operator's endpoint was cleared: %q", cfg.Servers[2].Endpoint)
+	}
+}
+
 func TestMigrateLeavesACurrentConfigAlone(t *testing.T) {
 	cfg := &AppConfig{SchemaVersion: SchemaVersion}
 	if Migrate(cfg) {

@@ -3,7 +3,6 @@
 package netutil
 
 import (
-	"fmt"
 	"net"
 	"strings"
 )
@@ -37,13 +36,19 @@ func SplitCIDR(subnet string) (network, prefix string) {
 }
 
 // ServerIP is the address the server takes in its own subnet: the first host,
-// so 10.0.0.0 becomes 10.0.0.1.
+// so 10.0.0.0 becomes 10.0.0.1 - and 10.0.0.128, the network of a /25 carved
+// out of a /24, becomes 10.0.0.129 rather than the 10.0.0.1 outside it. The
+// whole address is carried through; rebuilding it from the first three octets
+// alone put the server outside every subnet that does not start on a /24
+// boundary. It returns "" for anything that is not an IPv4 address.
 func ServerIP(network string) string {
-	parts := strings.Split(network, ".")
-	if len(parts) == 4 {
-		return fmt.Sprintf("%s.%s.%s.1", parts[0], parts[1], parts[2])
+	ip := net.ParseIP(network).To4()
+	if ip == nil {
+		return ""
 	}
-	return "10.0.0.1"
+	first := cloneIP(ip)
+	incrementIP(first)
+	return first.String()
 }
 
 // NextFreeIP returns the lowest host address in subnet that is not in used,

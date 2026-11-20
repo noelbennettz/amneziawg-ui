@@ -9,7 +9,11 @@ import (
 )
 
 func (h *Handlers) getServers(c fiber.Ctx) error {
-	return c.JSON(h.mgr.Servers())
+	servers := h.mgr.Servers()
+	for i := range servers {
+		servers[i] = redactServer(servers[i])
+	}
+	return c.JSON(servers)
 }
 
 func (h *Handlers) createServer(c fiber.Ctx) error {
@@ -21,7 +25,7 @@ func (h *Handlers) createServer(c fiber.Ctx) error {
 	if err != nil {
 		return fail(c, err)
 	}
-	return c.JSON(srv)
+	return c.JSON(redactServer(*srv))
 }
 
 func (h *Handlers) deleteServer(c fiber.Ctx) error {
@@ -71,6 +75,7 @@ func (h *Handlers) getServerInfo(c fiber.Ctx) error {
 	if err != nil {
 		return fail(c, err)
 	}
+	info.Clients = redactClients(info.Clients)
 	return c.JSON(info)
 }
 

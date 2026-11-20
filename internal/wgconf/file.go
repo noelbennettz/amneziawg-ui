@@ -60,12 +60,17 @@ func SuspendedDir(serverConfPath string) string {
 
 // ParkPeer takes the client's block out of the server's .conf and stores it
 // under SuspendedDir, to be restored by RestorePeer.
+//
+// The parked copy is written before the live file is rewritten: the other way
+// round, a parked file that could not be written left the peer out of the live
+// config with no copy anywhere until the next start rebuilt it from memory.
 func ParkPeer(serverConfPath string, client *api.Client) error {
-	block, err := RemovePeer(serverConfPath, client)
+	data, err := os.ReadFile(serverConfPath)
 	if err != nil {
 		return fmt.Errorf("rewriting %s: %w", serverConfPath, err)
 	}
-	if len(block) == 0 {
+	rest, block, found := SplitPeerBlock(strings.Split(string(data), "\n"), client)
+	if !found {
 		return nil
 	}
 
@@ -76,6 +81,14 @@ func ParkPeer(serverConfPath string, client *api.Client) error {
 	parked := filepath.Join(dir, client.ID+".conf")
 	if err := atomicfile.Write(parked, []byte(strings.Join(block, "\n")+"\n"), 0o600); err != nil {
 		return fmt.Errorf("storing the suspended peer: %w", err)
+	}
+
+	if err := atomicfile.Write(serverConfPath, []byte(strings.Join(rest, "\n")+"\n"), 0o600); err != nil {
+		// The live file was not touched, so the copy just written is not a
+		// park at all - the client is still active in the config. Drop it
+		// rather than leave a block that a later activation would find.
+		os.Remove(parked)
+		return fmt.Errorf("rewriting %s: %w", serverConfPath, err)
 	}
 	return nil
 }

@@ -12,11 +12,18 @@ import (
 )
 
 func (h *Handlers) getServerClients(c fiber.Ctx) error {
-	return c.JSON(h.mgr.Clients(c.Params("id")))
+	id := c.Params("id")
+	// A client list is the one place an unknown server used to answer 200
+	// with an empty list. Every other route names the missing server; a
+	// stale ID should not read as "this server has no clients".
+	if _, ok := h.mgr.Server(id); !ok {
+		return fail(c, fmt.Errorf("server %s: %w", id, manager.ErrNotFound))
+	}
+	return c.JSON(redactClients(h.mgr.Clients(id)))
 }
 
 func (h *Handlers) getAllClients(c fiber.Ctx) error {
-	return c.JSON(h.mgr.Clients(""))
+	return c.JSON(redactClients(h.mgr.Clients("")))
 }
 
 func (h *Handlers) addClient(c fiber.Ctx) error {
@@ -33,7 +40,7 @@ func (h *Handlers) addClient(c fiber.Ctx) error {
 	if err != nil {
 		return fail(c, err)
 	}
-	return c.JSON(api.ClientResult{Client: client, Config: configContent})
+	return c.JSON(api.ClientResult{Client: redactClientPtr(client), Config: configContent})
 }
 
 func (h *Handlers) deleteClient(c fiber.Ctx) error {
@@ -56,7 +63,7 @@ func (h *Handlers) updateClientAllowedIPs(c fiber.Ctx) error {
 	if err != nil {
 		return fail(c, err)
 	}
-	return c.JSON(api.ClientResult{Client: client, Config: cfg})
+	return c.JSON(api.ClientResult{Client: redactClientPtr(client), Config: cfg})
 }
 
 func (h *Handlers) updateClientISettings(c fiber.Ctx) error {
@@ -70,7 +77,7 @@ func (h *Handlers) updateClientISettings(c fiber.Ctx) error {
 	if err != nil {
 		return fail(c, err)
 	}
-	return c.JSON(api.ClientResult{Client: client, Config: cfg})
+	return c.JSON(api.ClientResult{Client: redactClientPtr(client), Config: cfg})
 }
 
 func (h *Handlers) downloadClientConfig(c fiber.Ctx) error {
@@ -187,5 +194,5 @@ func (h *Handlers) updateClientSuspendTime(c fiber.Ctx) error {
 	if err != nil {
 		return fail(c, err)
 	}
-	return c.JSON(api.ClientResult{Client: client, Message: msg})
+	return c.JSON(api.ClientResult{Client: redactClientPtr(client), Message: msg})
 }

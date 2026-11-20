@@ -5,6 +5,7 @@ package store
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"sync"
@@ -47,20 +48,26 @@ func (s *Store) Path() string {
 	return s.path
 }
 
-// Load reads the config, or returns an empty one when the file is missing or
-// unreadable - a fresh install has no file yet. Slices a file written before
-// they existed leaves nil are made empty, so JSON renders them as [] and the
-// rest of the code can append without a nil check.
-func (s *Store) Load() *AppConfig {
+// Load reads the config. A missing file is a fresh install and comes back as
+// an empty config with a nil error. A file that is there but cannot be read or
+// parsed is an error, not an empty config: the caller migrates what it loaded
+// and writes it straight back, so answering "empty" here is how a corrupt file
+// becomes an empty panel with every private key gone.
+//
+// Slices a file written before they existed leaves nil are made empty, so JSON
+// renders them as [] and the rest of the code can append without a nil check.
+func (s *Store) Load() (*AppConfig, error) {
 	data, err := os.ReadFile(s.path)
 	if err != nil {
-		return &AppConfig{Servers: []api.Server{}}
+		if errors.Is(err, os.ErrNotExist) {
+			return &AppConfig{Servers: []api.Server{}}, nil
+		}
+		return nil, fmt.Errorf("reading %s: %w", s.path, err)
 	}
 
 	var cfg AppConfig
 	if err := json.Unmarshal(data, &cfg); err != nil {
-		fmt.Printf("Error unmarshaling config: %v\n", err)
-		return &AppConfig{Servers: []api.Server{}}
+		return nil, fmt.Errorf("parsing %s: %w", s.path, err)
 	}
 	if cfg.Servers == nil {
 		cfg.Servers = []api.Server{}
@@ -76,7 +83,7 @@ func (s *Store) Load() *AppConfig {
 			cfg.Servers[i].UnboundNATIPsV6 = []string{}
 		}
 	}
-	return &cfg
+	return &cfg, nil
 }
 
 // Save writes cfg to disk atomically. The caller must keep cfg from changing

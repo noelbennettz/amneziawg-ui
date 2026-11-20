@@ -61,8 +61,10 @@ type ObfuscationParams struct {
 
 // Server holds a WireGuard server configuration.
 //
-// The private key never leaves the backend: it is stored in the on-disk
-// config, but the frontend simply ignores the field.
+// The private key is stored in web_config.json and written into the server's
+// .conf. The HTTP layer blanks it in every list, status and edit response (see
+// internal/httpapi/redact.go); the only JSON that carries it is the config
+// endpoint that exists to hand a config out.
 type Server struct {
 	ID               string `json:"id"`
 	Name             string `json:"name"`

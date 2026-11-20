@@ -93,6 +93,39 @@ func TestSplitPeerBlockIgnoresAnUntaggedMarker(t *testing.T) {
 	}
 }
 
+// A hand-written peer right after a marked block is not part of it: there is
+// no marker between them, but the [Peer] line starts a block of its own.
+// Treating it as part of the marked block removed it from the live config
+// when the client was suspended, and parked it inside that client's copy.
+func TestSplitPeerBlockStopsAtTheNextPeerSection(t *testing.T) {
+	conf := []string{
+		"# Client: alice [id:aaa]",
+		"[Peer]",
+		"PublicKey = MINE",
+		"AllowedIPs = 10.0.0.2/32",
+		"",
+		"# hand-written",
+		"[Peer]",
+		"PublicKey = THEIRS",
+		"AllowedIPs = 192.168.9.0/24",
+	}
+
+	rest, block, found := SplitPeerBlock(conf, &api.Client{ID: "aaa", Name: "alice"})
+	if !found {
+		t.Fatal("block not found")
+	}
+	if strings.Join(block, "\n") != "# Client: alice [id:aaa]\n[Peer]\nPublicKey = MINE\nAllowedIPs = 10.0.0.2/32" {
+		t.Errorf("wrong block extracted:\n%s", strings.Join(block, "\n"))
+	}
+	joined := strings.Join(rest, "\n")
+	if strings.Contains(joined, "MINE") {
+		t.Errorf("block not removed:\n%s", joined)
+	}
+	if !strings.Contains(joined, "THEIRS") {
+		t.Errorf("the hand-written peer was swallowed:\n%s", joined)
+	}
+}
+
 func TestSanitizeName(t *testing.T) {
 	cases := []struct{ in, want string }{
 		{"alice", "alice"},

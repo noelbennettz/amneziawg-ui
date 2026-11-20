@@ -35,7 +35,8 @@ func newTestAPI(t *testing.T) (*fiber.App, *manager.Manager, *awgtest.Runner) {
 	st := store.New(filepath.Join(dir, "web_config.json"))
 	err := st.Save(&store.AppConfig{SchemaVersion: store.SchemaVersion, Servers: []api.Server{{
 		ID: "s1", Name: "srv", Interface: "wg-test-absent", ConfigPath: confPath,
-		Subnet: "10.0.1.0/24", ServerIP: "10.0.1.1", MTU: 1280, Port: 54844,
+		ServerPrivateKey: "SERVERPRIV",
+		Subnet:           "10.0.1.0/24", ServerIP: "10.0.1.1", MTU: 1280, Port: 54844,
 		Status: "stopped", ObfuscationEnabled: true,
 		ObfuscationParams: &api.ObfuscationParams{S1: 50, S2: 60, S3: 20, S4: 16, MTU: 1280},
 		Clients:           []api.Client{},
@@ -52,7 +53,10 @@ func newTestAPI(t *testing.T) (*fiber.App, *manager.Manager, *awgtest.Runner) {
 		DNSServers: []string{"8.8.8.8"}, EnableObfuscation: true,
 		ConfigFile: st.Path(), WireguardConfigDir: dir,
 	}
-	m := manager.New(settings, st, tools)
+	m, err := manager.New(settings, st, tools)
+	if err != nil {
+		t.Fatalf("manager.New: %v", err)
+	}
 
 	app := fiber.New(FiberConfig())
 	New(m).RegisterRoutes(app)
@@ -130,6 +134,56 @@ func TestCreateServerSeparatesAPortClashFromABadValue(t *testing.T) {
 		`{"name":"second","port":54846,"mtu":9000}`)
 	if status != http.StatusBadRequest {
 		t.Errorf("bad MTU: status = %d, want 400 (%s)", status, body)
+	}
+}
+
+// A list, a status answer or the result of an edit carries no private key.
+// They live in web_config.json and in the .conf the config endpoints hand out,
+// and the panel never reads them from these payloads - sending them on every
+// dashboard poll put every key on a wire it had no business on.
+func TestResponsesDoNotCarryPrivateKeys(t *testing.T) {
+	app, m, _ := newTestAPI(t)
+	client := addClient(t, m, "alice", false)
+	if client.ClientPrivateKey == "" {
+		t.Fatal("the fixture produced a client with no private key")
+	}
+
+	for _, path := range []string{"/api/servers", "/api/clients", "/api/servers/s1/clients", "/api/servers/s1/info"} {
+		status, body := call(t, app, http.MethodGet, path, "")
+		if status != http.StatusOK {
+			t.Fatalf("GET %s: status = %d (%s)", path, status, body)
+		}
+		for _, secret := range []string{"SERVERPRIV", client.ClientPrivateKey} {
+			if strings.Contains(string(body), secret) {
+				t.Errorf("GET %s carries a private key: %s", path, body)
+			}
+		}
+	}
+
+	status, body := call(t, app, http.MethodPost, "/api/servers/s1/clients", `{"name":"bob"}`)
+	if status != http.StatusOK {
+		t.Fatalf("create client: status = %d (%s)", status, body)
+	}
+	var created api.ClientResult
+	if err := json.Unmarshal(body, &created); err != nil {
+		t.Fatalf("create client payload = %s (%v)", body, err)
+	}
+	if created.Client == nil || created.Client.ClientPrivateKey != "" {
+		t.Errorf("the create result carries the client's private key: %s", body)
+	}
+	if created.Config == "" {
+		t.Error("the create result lost the config the dialog shows")
+	}
+}
+
+// An unknown server used to answer the client list with 200 and [], which
+// reads as "that server has no clients" for a stale ID.
+func TestClientsOfAnUnknownServerAre404(t *testing.T) {
+	app, _, _ := newTestAPI(t)
+
+	status, body := call(t, app, http.MethodGet, "/api/servers/nope/clients", "")
+	if status != http.StatusNotFound {
+		t.Errorf("status = %d, want 404 (%s)", status, body)
 	}
 }
 

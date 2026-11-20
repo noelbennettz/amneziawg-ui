@@ -75,7 +75,7 @@ func (m *Manager) ServerInfo(id string) (api.ServerInfo, error) {
 		SubnetV6:           srv.SubnetV6,
 		ServerIPV6:         srv.ServerIPV6,
 		MTU:                srv.MTU,
-		Endpoint:           srv.Endpoint,
+		Endpoint:           m.endpointFor(&srv),
 		ObfuscationEnabled: srv.ObfuscationEnabled,
 		ObfuscationParams:  srv.ObfuscationParams,
 		ClientsCount:       len(clients),
@@ -154,10 +154,14 @@ func (m *Manager) CreateServer(req api.CreateServerRequest) (*api.Server, error)
 		return nil, fmt.Errorf("MTU must be between %d and %d, got %d: %w", api.MinMTU, api.MaxMTU, mtu, ErrInvalid)
 	}
 
+	// An empty endpoint is not "the detected address, frozen": it is left
+	// empty in the config, and endpointFor falls back to the public IP the
+	// backend detected last - which RefreshPublicIP keeps current. Copying
+	// the detected address in here made the copy outrank the live one, so a
+	// host whose IP changed (or whose first start could not reach the
+	// internet) kept handing out the old address for good.
 	endpoint := strings.TrimSpace(req.Endpoint)
-	if endpoint == "" {
-		endpoint = m.PublicIP()
-	} else {
+	if endpoint != "" {
 		// The endpoint is a host and nothing else: the server's own port is
 		// appended wherever the line is written, so a port here would end up
 		// in the config twice, and an unbracketed IPv6 literal would come
@@ -212,35 +216,65 @@ func (m *Manager) CreateServer(req api.CreateServerRequest) (*api.Server, error)
 	ifaceName := "wg-" + serverID
 	configPath := filepath.Join(m.settings.WireguardConfigDir, ifaceName+".conf")
 
-	// The ULA /64 is named after the server ID, so an operator reading the
-	// configs can tell which server an address belongs to; a collision with a
-	// server that already holds that group moves on to the next one.
-	if subnetV6 == "" {
-		subnetV6 = api.NextFreeSubnetV6(serverID, func(candidate string) bool {
-			_, taken := m.subnetInUse(candidate)
-			return taken
-		})
-		if subnetV6 == "" {
-			return nil, fmt.Errorf("no free IPv6 subnet left: %w", ErrConflict)
-		}
-	}
-
+	// Key generation shells out to awg three times; it happens before the
+	// lock, so a create does not stall every other request behind it.
 	keys := m.tools.GenerateKeyPair()
 
 	network, prefix := netutil.SplitCIDR(subnet)
 	serverIP := netutil.ServerIP(network)
+	if serverIP == "" {
+		return nil, fmt.Errorf("%w: subnet %s has no usable server address", ErrInvalid, subnet)
+	}
+
+	// The checks and the insert are one critical section. Checking the port
+	// and the subnet first and inserting later let two creates that arrived
+	// together pass the same check, and the panel then held two servers whose
+	// interfaces could not both bind the port or route the subnet.
+	m.mu.Lock()
+
+	if holder, ok := m.portInUseLocked(port); ok {
+		m.mu.Unlock()
+		return nil, fmt.Errorf("port %d is already used by %s: %w", port, holder, ErrConflict)
+	}
+	if holder, ok := m.subnetInUseLocked(subnet); ok {
+		m.mu.Unlock()
+		return nil, fmt.Errorf("subnet %s overlaps %s: %w", subnet, holder, ErrConflict)
+	}
+
+	// The ULA /64 is named after the server ID, so an operator reading the
+	// configs can tell which server an address belongs to; a collision with a
+	// server that already holds that group moves on to the next one. It is
+	// picked under the lock for the same reason the checks are.
+	if subnetV6 == "" {
+		subnetV6 = api.NextFreeSubnetV6(serverID, func(candidate string) bool {
+			_, taken := m.subnetInUseLocked(candidate)
+			return taken
+		})
+		if subnetV6 == "" {
+			m.mu.Unlock()
+			return nil, fmt.Errorf("no free IPv6 subnet left: %w", ErrConflict)
+		}
+	} else if holder, ok := m.subnetInUseLocked(subnetV6); ok {
+		m.mu.Unlock()
+		return nil, fmt.Errorf("IPv6 subnet %s overlaps %s: %w", subnetV6, holder, ErrConflict)
+	}
+
 	networkV6, prefixV6 := netutil.SplitCIDR(subnetV6)
 	serverIPV6 := netutil.ServerIPV6(networkV6)
+	if serverIPV6 == "" {
+		m.mu.Unlock()
+		return nil, fmt.Errorf("%w: IPv6 subnet %s has no usable server address", ErrInvalid, subnetV6)
+	}
 
-	err = wgconf.WriteServerConf(configPath, wgconf.ServerInterface{
+	if err := wgconf.WriteServerConf(configPath, wgconf.ServerInterface{
 		PrivateKey:  keys.Private,
 		Address:     serverIP + "/" + prefix,
 		AddressV6:   serverIPV6 + "/" + prefixV6,
 		ListenPort:  port,
 		MTU:         mtu,
 		Obfuscation: obfParams,
-	})
-	if err != nil {
+	}); err != nil {
+		m.mu.Unlock()
 		return nil, err
 	}
 
@@ -259,7 +293,7 @@ func (m *Manager) CreateServer(req api.CreateServerRequest) (*api.Server, error)
 		SubnetV6:           subnetV6,
 		ServerIPV6:         serverIPV6,
 		MTU:                mtu,
-		PublicIP:           endpoint,
+		PublicIP:           m.publicIP,
 		Endpoint:           endpoint,
 		ObfuscationEnabled: enableObfuscation,
 		ObfuscationParams:  obfParams,
@@ -271,9 +305,9 @@ func (m *Manager) CreateServer(req api.CreateServerRequest) (*api.Server, error)
 		CreatedAt:          float64(time.Now().Unix()),
 	}
 
-	m.mu.Lock()
 	m.cfg.Servers = append(m.cfg.Servers, srv)
 	m.mu.Unlock()
+
 	m.saveOrLog("new server")
 
 	if autoStart {
@@ -340,12 +374,17 @@ func normalizeDNS(servers []string) ([]string, error) {
 // UDP and would technically coexist, but a deployment that publishes one
 // number for two different things is a trap, not a feature.
 func (m *Manager) portInUse(port int) (string, bool) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.portInUseLocked(port)
+}
+
+// portInUseLocked is portInUse for a caller that already holds mu - the
+// create path, which has to check and insert in one critical section.
+func (m *Manager) portInUseLocked(port int) (string, bool) {
 	if m.settings.WebUIPort == port {
 		return "the web UI", true
 	}
-
-	m.mu.RLock()
-	defer m.mu.RUnlock()
 	for i := range m.cfg.Servers {
 		if m.cfg.Servers[i].Port == port {
 			return fmt.Sprintf("server %q", m.cfg.Servers[i].Name), true
@@ -361,6 +400,11 @@ func (m *Manager) portInUse(port int) (string, bool) {
 func (m *Manager) subnetInUse(subnet string) (string, bool) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
+	return m.subnetInUseLocked(subnet)
+}
+
+// subnetInUseLocked is subnetInUse for a caller that already holds mu.
+func (m *Manager) subnetInUseLocked(subnet string) (string, bool) {
 	for i := range m.cfg.Servers {
 		srv := &m.cfg.Servers[i]
 		if api.SubnetsOverlap(subnet, srv.Subnet) {
