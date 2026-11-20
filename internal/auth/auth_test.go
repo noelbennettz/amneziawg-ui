@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -341,6 +342,131 @@ func TestTOTPWindowOnTheLogin(t *testing.T) {
 	form := url.Values{"username": {testUser}, "password": {testPassword}, "next": {"/"}, "csrf": {token}, "totp": {code}}
 	if sessionCookie(postForm(t, app, form, cookie)) == nil {
 		t.Error("a code one step old was refused")
+	}
+}
+
+// A code that was accepted once is spent: the guard remembers the step it
+// matched, so the same digits posted again do not open a second session.
+func TestTOTPCodeIsSingleUseOnTheLogin(t *testing.T) {
+	key, err := totp.Parse(testTOTPSecret)
+	if err != nil {
+		t.Fatalf("totp.Parse: %v", err)
+	}
+	app, _ := newTestAppAuth(t, WithTOTP(&key))
+
+	post := func(code string) *http.Response {
+		token, cookie := csrfToken(t, app)
+		form := url.Values{"username": {testUser}, "password": {testPassword}, "next": {"/"}, "csrf": {token}, "totp": {code}}
+		return postForm(t, app, form, cookie)
+	}
+
+	at := time.Unix(testNow, 0)
+	code := key.Code(at)
+
+	if sessionCookie(post(code)) == nil {
+		t.Fatal("the first use of the code did not log in")
+	}
+
+	replay := post(code)
+	if cookie := sessionCookie(replay); cookie != nil {
+		t.Fatal("the same code logged in twice")
+	}
+	if replay.StatusCode != fiber.StatusUnauthorized {
+		t.Errorf("replay: status = %d, want 401", replay.StatusCode)
+	}
+	if text := body(t, replay); !strings.Contains(text, "Incorrect username, password or authentication code.") {
+		t.Errorf("replay: the page does not read like a failed login:\n%s", text)
+	}
+
+	// A code from the next step is a new code and still works: refusing
+	// replays must not lock somebody out for the rest of the window.
+	if sessionCookie(post(key.Code(at.Add(30*time.Second)))) == nil {
+		t.Error("a fresh code after a spent one was refused")
+	}
+
+	// And an older one is refused too, because it is at or before the
+	// step that was last accepted - a code cannot be walked backwards
+	// into either.
+	if sessionCookie(post(key.Code(at))) != nil {
+		t.Error("a code older than the last accepted step was accepted")
+	}
+}
+
+// The same rule for a Basic credential in X-TOTP-Code: a client that sends one
+// code twice is refused the second time, so a long script has to log in for a
+// session cookie and send fresh codes only while it has none.
+func TestTOTPCodeIsSingleUseOnBasicAuth(t *testing.T) {
+	key, err := totp.Parse(testTOTPSecret)
+	if err != nil {
+		t.Fatalf("totp.Parse: %v", err)
+	}
+	app, _ := newTestAppAuth(t, WithTOTP(&key))
+
+	code := key.Code(time.Unix(testNow, 0))
+	headers := map[string]string{
+		fiber.HeaderAuthorization: "Basic " + base64Std(testUser+":"+testPassword),
+		TOTPHeader:                code,
+	}
+
+	if resp := get(t, app, "/api/system/status", nil, headers); resp.StatusCode != fiber.StatusOK {
+		t.Fatalf("the first request: status = %d, want 200", resp.StatusCode)
+	}
+	if resp := get(t, app, "/api/system/status", nil, headers); resp.StatusCode != fiber.StatusUnauthorized {
+		t.Errorf("the replayed code: status = %d, want 401", resp.StatusCode)
+	}
+
+	// The right password is not enough on its own, and a code that is
+	// merely different is not consumed by the refusal: a fresh one works.
+	fresh := map[string]string{
+		fiber.HeaderAuthorization: "Basic " + base64Std(testUser+":"+testPassword),
+		TOTPHeader:                key.Code(time.Unix(testNow+30, 0)),
+	}
+	if resp := get(t, app, "/api/system/status", nil, fresh); resp.StatusCode != fiber.StatusOK {
+		t.Errorf("a fresh code: status = %d, want 200", resp.StatusCode)
+	}
+}
+
+// Two requests carrying the same code race for it: one wins, and the check and
+// the bookkeeping happen inside one lock, so the other cannot get through.
+func TestTOTPCodeIsSingleUseUnderConcurrency(t *testing.T) {
+	key, err := totp.Parse(testTOTPSecret)
+	if err != nil {
+		t.Fatalf("totp.Parse: %v", err)
+	}
+	app, _ := newTestAppAuth(t, WithTOTP(&key))
+
+	const attempts = 16
+	code := key.Code(time.Unix(testNow, 0))
+
+	var (
+		wg      sync.WaitGroup
+		mu      sync.Mutex
+		allowed int
+	)
+	wg.Add(attempts)
+	for range attempts {
+		go func() {
+			defer wg.Done()
+
+			req := httptest.NewRequest(http.MethodGet, "/api/system/status", nil)
+			req.Header.Set(fiber.HeaderAuthorization, "Basic "+base64Std(testUser+":"+testPassword))
+			req.Header.Set(TOTPHeader, code)
+			resp, err := app.Test(req)
+			if err != nil {
+				return
+			}
+			defer resp.Body.Close()
+			if resp.StatusCode == fiber.StatusOK {
+				mu.Lock()
+				allowed++
+				mu.Unlock()
+			}
+		}()
+	}
+	wg.Wait()
+
+	if allowed != 1 {
+		t.Errorf("%d of %d concurrent requests were let through with one code, want 1", allowed, attempts)
 	}
 }
 

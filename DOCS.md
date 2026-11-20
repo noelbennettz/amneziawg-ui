@@ -981,7 +981,7 @@ the two failures that happen before anything is logged by the panel itself.
 | `WEB_UI_AUDIT_LOG` | `false` | Append logins, logouts and every change made through the API to `/etc/amnezia/audit.log`: time, address, user, route, status. Off by default — it records who reached the panel |
 | `WEB_UI_AUDIT_RETENTION_HOURS` | `24` | How long an entry stays in that file: a value below `1` is raised to `1`, one above `720` (30 days) is lowered to `720`, and anything that is not a number falls back to `24`. The file is swept at most once an hour, and rewritten atomically only when something has aged out |
 | `WEB_UI_LOGIN_RATE_LIMIT` | `true` | Five failed logins from one address block it for 15 minutes; the second block lasts 30, and each one after that doubles, up to 24 hours. A blocked address gets `429` and `Retry-After` on the login form, on the API and on a basic-auth header alike. On by default; `false` turns it off, which is the right setting only behind a proxy that does not forward the client address — every request then looks like one address, and the limiter would lock the operator out along with the attacker. Any value other than `false`/`0`/`no`/`off` leaves it on |
-| `WEB_UI_TOTP_SECRET` | *unset* | Optional second factor: the base32 secret an authenticator app is given (grouping spaces and dashes are accepted). When set, the login form draws an authentication-code field, and a Basic credential has to carry the six digits in `X-TOTP-Code`. A code is accepted in its own 30-second step and one step either side. A secret that is not valid base32, or shorter than 80 bits, stops the container at startup |
+| `WEB_UI_TOTP_SECRET` | *unset* | Optional second factor: the base32 secret an authenticator app is given (grouping spaces and dashes are accepted). When set, the login form draws an authentication-code field, and a Basic credential has to carry the six digits in `X-TOTP-Code`. A code is accepted in its own 30-second step and one step either side, and **only once**: the panel remembers the last accepted step and refuses anything at or before it, so a script that sends one code twice gets `401` the second time — log in for a session cookie instead. The counter is in memory and a restart forgets it. A secret that is not valid base32, or shorter than 80 bits, stops the container at startup |
 | `WEB_UI_TRUST_PROXY` | `false` | Take the client address from `X-Forwarded-For` instead of the connection: the left-most entry, and only when it parses as an IP. It feeds the limiter and the audit log. Only turn it on when every request arrives through a proxy that appends the address it saw — a client that can reach the panel directly sets that header itself, and a limiter counting a value the attacker picks is no limiter |
 | `WEB_UI_PPROF` | `false` | Enables the profiler at `/debug/pprof` (behind the same login). Parsed as a boolean (`1`, `true`, `t`); anything else is "off" |
 | `AUTO_START_SERVERS` | `true` | Bring servers up automatically: on container start, and for a server created in the panel — the form's "Auto-start server on creation" switch defaults to it |
@@ -1495,11 +1495,27 @@ standard library. A code is accepted in its own step and one step either side,
 which is the window a phone and a container need when nobody synchronised their
 clocks.
 
+**A code is single use.** The panel remembers the step the last accepted code
+belonged to, and refuses any code from that step or an earlier one, so a code
+that was observed — in a proxy log, over a shoulder, in a screen recording —
+cannot be replayed inside the window that would otherwise still accept it. The
+counter is in memory only: a container restart forgets it, and the first code
+after a restart is accepted whatever step it falls in. A code from an earlier
+step is refused from the same moment, which is why a client that races the clock
+should send its newest code, not one it kept from a minute ago.
+
 A Basic credential cannot open a second form, so the code travels in a header:
 
 ```bash
 curl -u admin:<password> -H "X-TOTP-Code: 123456" https://panel.example/api/servers
 ```
+
+Each request needs a code that has not been used yet; the same header sent twice
+is a `401` the second time. That makes Basic auth a poor fit for a long script
+with a second factor on. Log in once for a session cookie instead — `POST
+/login` with `username`, `password`, `totp` and the CSRF token — and send
+`awg_session` afterwards; the cookie carries no code and does not expire with
+one.
 
 A wrong code is a failed login: it counts against the address, is audited, and
 the page says *Incorrect username, password or authentication code.* — the panel

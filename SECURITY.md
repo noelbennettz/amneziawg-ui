@@ -100,10 +100,15 @@ Written down rather than left to be discovered:
 * **The second factor is optional and time-based.** `WEB_UI_TOTP_SECRET` turns on
   a six-digit TOTP (RFC 6238, HMAC-SHA1, 30-second step, code accepted one step
   either side) in the login form and in an `X-TOTP-Code` header for Basic
-  credentials. There is no WebAuthn, no recovery codes and one account, so the
-  secret in the environment (or in the compose file) is the whole of the second
-  factor's storage; a code is not single-use across the ±1 step window, which is
-  the compromise that keeps `curl -u` usable.
+  credentials. A code is single use: the last accepted step is remembered and a
+  code from that step or an earlier one is refused, so a replayed code — the
+  same digits sent twice, or one observed in transit — does not get in. That
+  makes a code per request the cost of Basic auth with a second factor; a
+  session cookie is the alternative for a long-running client. The counter is
+  in memory, so a restart forgets it and the first code afterwards is accepted
+  whatever step it falls in. There is no WebAuthn and no recovery codes, and one
+  account, so the secret in the environment (or in the compose file) is the
+  whole of the second factor's storage.
 * **The generated password is readable on the volume until the first login.**
   The first start writes it to `/etc/amnezia/first-run-password` (mode `0600`)
   and does not print it, so the container log is not a copy; the file is deleted

@@ -73,16 +73,31 @@ func (k Key) Code(t time.Time) string {
 // comparison is constant time, and a code of the wrong length is refused
 // before any HMAC runs.
 func (k Key) Verify(code string, t time.Time) bool {
+	_, ok := k.Match(code, t)
+	return ok
+}
+
+// Match is Verify with the answer made explicit: it reports the step counter
+// the code belongs to, and whether the code is one of the ones the window
+// accepts. A caller that has to refuse a code it has already accepted needs the
+// counter, not just the verdict - the six digits alone do not say how old they
+// are. The highest matching counter is the one returned, and the comparison is
+// the same constant-time one Verify makes.
+func (k Key) Match(code string, t time.Time) (uint64, bool) {
 	code = strings.TrimSpace(code)
 	if len(code) != Digits {
-		return false
+		return 0, false
 	}
 	for _, r := range code {
 		if r < '0' || r > '9' {
-			return false
+			return 0, false
 		}
 	}
 
+	var (
+		matched uint64
+		found   bool
+	)
 	counter := uint64(t.Unix() / int64(Period/time.Second))
 	for offset := -Skew; offset <= Skew; offset++ {
 		candidate := counter + uint64(offset)
@@ -91,11 +106,16 @@ func (k Key) Verify(code string, t time.Time) bool {
 			continue
 		}
 		if subtle.ConstantTimeCompare([]byte(k.codeAt(candidate)), []byte(code)) == 1 {
-			return true
+			// Two steps can derive the same six digits; the later one
+			// is the safer answer, because accepting the earlier one
+			// would leave the other usable a second time.
+			if !found || candidate > matched {
+				matched, found = candidate, true
+			}
 		}
 	}
 
-	return false
+	return matched, found
 }
 
 // codeAt is the HOTP of RFC 4226 section 5.3 for one counter value, with the

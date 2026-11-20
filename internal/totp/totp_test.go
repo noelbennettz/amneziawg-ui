@@ -108,6 +108,52 @@ func TestVerifyWindow(t *testing.T) {
 	}
 }
 
+// Match is Verify with the step attached: the caller that has to refuse a code
+// it has already accepted is told which step to remember.
+func TestMatchReportsTheStep(t *testing.T) {
+	key, err := Parse(rfcBase32)
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+
+	const step = 30
+	at := time.Unix(5*step, 0) // counter 5
+	code := key.Code(at)
+	if code != "254676" {
+		t.Fatalf("Code = %q, want the counter-5 vector", code)
+	}
+
+	cases := []struct {
+		name      string
+		at        time.Time
+		wantStep  uint64
+		wantMatch bool
+	}{
+		{"the step itself", at, 5, true},
+		{"one step later, so the code is one step old", at.Add(step * time.Second), 5, true},
+		{"one step earlier", at.Add(-step * time.Second), 5, true},
+		{"two steps later", at.Add(2 * step * time.Second), 0, false},
+		{"a minute earlier", at.Add(-time.Minute), 0, false},
+	}
+	for _, tc := range cases {
+		gotStep, got := key.Match(code, tc.at)
+		if got != tc.wantMatch || gotStep != tc.wantStep {
+			t.Errorf("%s: Match = (%d, %v), want (%d, %v)", tc.name, gotStep, got, tc.wantStep, tc.wantMatch)
+		}
+		if got := key.Verify(code, tc.at); got != tc.wantMatch {
+			t.Errorf("%s: Verify = %v, want %v - Match and Verify disagree", tc.name, got, tc.wantMatch)
+		}
+	}
+
+	// A code that is not six digits never matches, and there is no step to
+	// report for it.
+	for _, bad := range []string{"", "25467", "2546761", "25467a"} {
+		if gotStep, got := key.Match(bad, at); got || gotStep != 0 {
+			t.Errorf("Match(%q) = (%d, %v), want (0, false)", bad, gotStep, got)
+		}
+	}
+}
+
 func TestVerifyRejectsMalformedCodes(t *testing.T) {
 	key, err := Parse(rfcBase32)
 	if err != nil {

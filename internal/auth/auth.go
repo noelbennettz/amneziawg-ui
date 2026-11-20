@@ -44,11 +44,12 @@ const (
 	// CookieName is the session cookie. Nothing else in the panel sets a
 	// cookie, so the name needs no prefix.
 	CookieName = "awg_session"
-	// TOTPHeader carries the second factor of a Basic credential. A script
-	// keeps sending its header on every request; a six-digit code that has
-	// to be regenerated per request would make "curl -u" unusable, so the
-	// code is a header of its own, and the panel accepts it in the ±1 step
-	// window internal/totp defines.
+	// TOTPHeader carries the second factor of a Basic credential. A header
+	// of its own says what the six digits are, and keeps "curl -u" legible.
+	// It is one code per request: each code is accepted once, in the ±1
+	// step window internal/totp defines, so a script that keeps sending the
+	// same code gets 401 on the second call. Logging in for a session
+	// cookie is what a long script should do.
 	TOTPHeader = "X-TOTP-Code"
 	// SessionTTL is how long a login lasts. It is deliberately short enough
 	// that a stolen cookie ages out on its own, and long enough not to
@@ -88,6 +89,17 @@ type Auth struct {
 	dropOnce         sync.Once
 	// totp is the optional second factor, nil when none is configured.
 	totp *totp.Key
+	// totpMu guards the last step a code was accepted for. A code is single
+	// use: the step it belonged to is remembered, and any code at or before
+	// that step is refused afterwards, so a code somebody watched go past -
+	// in a log, over a shoulder, in a proxy - cannot be replayed inside the
+	// window it is still nominally valid for.
+	totpMu sync.Mutex
+	// totpStep is that step, and totpUsed says whether there is one yet:
+	// the first code of a fresh process always passes, whatever step it
+	// lands in.
+	totpStep uint64
+	totpUsed bool
 
 	// sem bounds how many verifications run at once. argon2id is deliberate
 	// about memory - 19 MiB per hash - and a script that polls the REST API
@@ -160,8 +172,11 @@ func WithFirstRunPassword(path string) Option {
 
 // WithTOTP adds a second factor: the six digits an authenticator app holding
 // the same secret shows, required by the login form and, for a Basic
-// credential, in the X-TOTP-Code header. A nil key leaves the panel
-// password-only.
+// credential, in the X-TOTP-Code header. A code is single use - the step it
+// matched is remembered, and a code from that step or an earlier one is
+// refused - so a client that is not a browser logs in for a session cookie
+// rather than sending a fresh code with every request. A nil key leaves the
+// panel password-only.
 func WithTOTP(key *totp.Key) Option {
 	return func(a *Auth) { a.totp = key }
 }
@@ -385,15 +400,33 @@ func (a *Auth) basicValid(c fiber.Ctx) bool {
 	return a.secondFactorValid(c.Get(TOTPHeader))
 }
 
-// secondFactorValid reports whether code passes the second factor. With no
-// secret configured there is nothing to pass, and the check is a nil test: the
-// password is the whole of the credential, as it has always been.
+// secondFactorValid reports whether code passes the second factor, and consumes
+// it: a code that was accepted once is refused from then on, because the step
+// it matched is remembered and anything at or before that step is spent.
+//
+// With no secret configured there is nothing to pass, and the check is a nil
+// test: the password is the whole of the credential, as it has always been.
 func (a *Auth) secondFactorValid(code string) bool {
 	if a.totp == nil {
 		return true
 	}
 
-	return a.totp.Verify(code, a.now())
+	step, ok := a.totp.Match(code, a.now())
+	if !ok {
+		return false
+	}
+
+	// Check and remember in one critical section, so two requests carrying
+	// the same code cannot both be told they are the first.
+	a.totpMu.Lock()
+	defer a.totpMu.Unlock()
+
+	if a.totpUsed && step <= a.totpStep {
+		return false
+	}
+	a.totpStep = step
+	a.totpUsed = true
+	return true
 }
 
 // public lists the paths that need no credentials.

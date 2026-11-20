@@ -5,11 +5,12 @@ import (
 	"time"
 )
 
-// The login limiter. Off by default (WEB_UI_LOGIN_RATE_LIMIT), because a
-// panel behind a proxy that does not forward the client address sees one
-// address for everybody - and then a limiter locks the operator out along with
-// the attacker. Turning it on is the right choice whenever the panel is on the
-// internet and the real address arrives.
+// The login limiter. On by default (WEB_UI_LOGIN_RATE_LIMIT=false turns it
+// off), but a panel behind a proxy that does not forward the client address
+// sees one address for everybody - and then the limiter locks the operator out
+// along with the attacker. Turning it off is only right in that deployment;
+// WEB_UI_TRUST_PROXY is the other way out when the proxy does forward the
+// address.
 const (
 	limitWindow   = 15 * time.Minute
 	limitFailures = 5
