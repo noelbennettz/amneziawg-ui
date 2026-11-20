@@ -1,0 +1,52 @@
+name: Workflow lint
+
+# actionlint reads the workflows the way GitHub does and checks them with
+# shellcheck: an expression that cannot resolve, a job whose permission is
+# missing, a `run:` script with a quoting bug. Those are the failures that
+# otherwise only show up as a red run after a merge, which is the worst moment
+# to find them.
+#
+# The project's rule is that a check has to be runnable locally by a
+# contributor, so this is the same binary `actionlint` on PATH, installed from
+# its module at an exact version rather than through an action: nothing
+# third-party is trusted beyond the Go module proxy.
+#
+# shellcheck comes with the runner image; when it is missing actionlint simply
+# skips those checks, which is why the version is printed first.
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/**"
+  pull_request:
+    paths:
+      - ".github/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  ACTIONLINT_VERSION: v1.7.12
+
+jobs:
+  actionlint:
+    name: Every workflow parses and passes shellcheck
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Set up Go
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Install actionlint
+        run: go install "github.com/rhysd/actionlint/cmd/actionlint@${ACTIONLINT_VERSION}"
+
+      - name: Lint the workflows
+        run: |
+          "$(go env GOPATH)/bin/actionlint" --version
+          "$(go env GOPATH)/bin/actionlint"
