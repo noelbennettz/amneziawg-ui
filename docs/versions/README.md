@@ -16,7 +16,7 @@ What does identify a build:
   ```
 
   ```json
-  {"version":"2026.11.20","commit":"70ce4a3","build_time":"2026-11-20T10:08:00Z","go":"go1.26.4"}
+  {"version":"2026.11.20","commit":"70ce4a3","build_time":"2026-11-20T10:08:00Z","go":"go1.27.x"}
   ```
 
 - **The image labels**, for a container that is not running or whose login you
@@ -26,9 +26,10 @@ What does identify a build:
   docker inspect --format '{{index .Config.Labels "org.opencontainers.image.version"}} {{index .Config.Labels "org.opencontainers.image.revision"}}' <container>
   ```
 
-- **The tag.** `latest` moves with every push to `main`; the date tag
-  (`2026.11.11`) is the day the build was made and does not move again. Pinning
-  the date tag, or the digest, is how an upgrade becomes a decision.
+- **The tag.** `latest` moves with every push to `main`. The date tag
+  (`2026.11.11`) is the day the build was made, and a second build on the same
+  day replaces it - the registry holds one image per tag. To keep one image for
+  good, pin its digest, not its date.
 - **The signature.** Every published image is signed keylessly by the workflow
   that built it, and `cosign verify` names the commit's workflow run —
   [Verifying a published image](../../DOCS.md#verifying-a-published-image).

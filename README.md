@@ -16,7 +16,7 @@ WireGuard that gets past DPI blocks on VPN traffic. One container holds the
 panel and the VPN servers it manages: create servers, add clients, hand out a
 `.conf` file, a QR code or a `vpn://` link for the AmneziaVPN app, and watch
 traffic and handshakes in the browser. It is a single Go binary with a
-WebAssembly front end, about 35 MB, no Node.js, nginx or supervisor, licensed
+WebAssembly front end, about 41 MB, no Node.js, nginx or supervisor, licensed
 AGPL-3.0. AmneziaWG 3.1 (header protection, random trailers, cookies disabled)
 is on for every server, with nothing to configure by hand.
 
@@ -118,9 +118,10 @@ matter behind a proxy.
 | [`.env.example`](.env.example) | Every environment variable with its default |
 | [`docker-compose.example.yml`](docker-compose.example.yml) | The same service with every compose key and variable commented |
 
-Dated image tags, one per build, are listed under
-[Releases](https://github.com/noelbennettz/amneziawg-ui/releases); pinning one
-turns an upgrade into a decision.
+Dated image tags, one per build, are on the
+[container package](https://github.com/noelbennettz/amneziawg-ui/pkgs/container/amneziawg-ui);
+pinning the digest of one turns an upgrade into a decision. The date tag alone
+is not a pin: a second push on the same day replaces it.
 
 ## Licence
 

@@ -12,7 +12,7 @@ ARG AWG_TOOLS_VERSION=v3.1.20260812
 # something an operator may verify. The digest is the multi-platform index, so
 # one pin covers both architectures. To bump one:
 #
-#   docker buildx imagetools inspect golang:1.26-alpine --format '{{json .Manifest.Digest}}'
+#   docker buildx imagetools inspect golang:1.27-alpine --format '{{json .Manifest.Digest}}'
 #
 # and put tag@digest in the FROM line - keep the tag, it is what a reader needs
 # to know which release the digest belongs to.

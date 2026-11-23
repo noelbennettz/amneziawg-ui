@@ -919,13 +919,13 @@ reports the host's IPv6 view.
 `GET /api/version`
 
 ```json
-{"version":"c7fc127","commit":"c7fc1277","build_time":"2026-11-19T16:49:46Z","go":"go1.26.4"}
+{"version":"c7fc127","commit":"c7fc1277","build_time":"2026-11-19T16:49:46Z","go":"go1.27.x"}
 ```
 
-The values are put into the binary by the linker, so they are the build's own,
-not something the process worked out at startup: the Makefile and the workflow
-take them from git and the clock, the Dockerfile carries the same three as
-image labels (`org.opencontainers.image.version`, `.revision`, `.created`), and
+The first three are put into the binary by the linker, so they are the build's
+own, not something the process worked out at startup: the Makefile and the
+workflow take them from git and the clock, the Dockerfile carries the same three
+as image labels (`org.opencontainers.image.version`, `.revision`, `.created`), and
 a binary nobody passed them to answers `dev` / `unknown` — which is also true.
 Behind the login like the rest of the API. See
 [docs/versions/README.md](docs/versions/README.md) for what a version means in
@@ -1032,7 +1032,7 @@ The package is public, so `docker pull ghcr.io/noelbennettz/amneziawg-ui:latest`
 needs no login. To run your own build instead, `make run` or
 `docker compose build` produce the image locally.
 
-The pulled image is about **35 MB** compressed — the figure the CI job's size
+The pulled image is about **41 MB** compressed — the figure the CI job's size
 report prints on every build, with a warning above 40 MB. No nginx, no
 supervisor, no language runtime beyond the shell `awg-quick` itself needs
 (bash, `ip`, `iptables`, `resolvconf`); most of the size is the frontend - the
