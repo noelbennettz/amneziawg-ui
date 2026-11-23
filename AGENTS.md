@@ -166,6 +166,26 @@ From the project root, run:
   make vet
 ```
 
+`make vet` is `go vet` over the three modules. Two things it does not catch, and
+both are worth a run before a change is called finished:
+
+```sh
+  # unreachable functions in the shipped binary. Anything that only a test
+  # calls shows up here, which is the shape dead code takes in this repository:
+  # delete it, or delete the accessor and check the behaviour instead.
+  go run golang.org/x/tools/cmd/deadcode@latest ./...
+  cd web-ui && GOOS=js GOARCH=wasm go run golang.org/x/tools/cmd/deadcode@latest ./...
+
+  # unused fields, constants and functions, plus the usual simplifications
+  go run honnef.co/go/tools/cmd/staticcheck@latest ./...
+```
+
+A function whose only caller is its own test is what that first command finds:
+`totp.Key.Verify` was `Match` with the verdict thrown away, `Manager.ServerStatus`
+was a wrapper around `serverStatus` that only the panel's tests called, and
+`adminpw.Store.FromEnv` / `Store.Err` were accessors nothing but their own tests
+read. All four are gone; do not add their successors back.
+
 ## Building the project
 
 From the project root, run:

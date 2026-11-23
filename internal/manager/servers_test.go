@@ -207,7 +207,7 @@ func TestCreateServerWritesTheConfAndAutoStarts(t *testing.T) {
 	if !run.Ran("/usr/bin/awg-quick up " + srv.Interface) {
 		t.Errorf("the server was not brought up: %v", run.Commands)
 	}
-	if got := m.ServerStatus(srv.ID); got != "running" {
+	if got := m.serverStatus(srv.Interface); got != "running" {
 		t.Errorf("status after auto-start = %q", got)
 	}
 }

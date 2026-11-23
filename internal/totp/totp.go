@@ -70,20 +70,12 @@ func (k Key) Code(t time.Time) string {
 	return k.codeAt(uint64(t.Unix() / int64(Period/time.Second)))
 }
 
-// Verify reports whether code is the one for t, one step either side. The
-// comparison is constant time, and a code of the wrong length is refused
+// Match reports whether code is the one for t, one step either side, and which
+// step it belongs to. A caller that has to refuse a code it has already
+// accepted needs the counter, not just the verdict - the six digits alone do
+// not say how old they are. The highest matching counter is the one returned,
+// the comparison is constant time, and a code that is not six digits is refused
 // before any HMAC runs.
-func (k Key) Verify(code string, t time.Time) bool {
-	_, ok := k.Match(code, t)
-	return ok
-}
-
-// Match is Verify with the answer made explicit: it reports the step counter
-// the code belongs to, and whether the code is one of the ones the window
-// accepts. A caller that has to refuse a code it has already accepted needs the
-// counter, not just the verdict - the six digits alone do not say how old they
-// are. The highest matching counter is the one returned, and the comparison is
-// the same constant-time one Verify makes.
 func (k Key) Match(code string, t time.Time) (uint64, bool) {
 	code = strings.TrimSpace(code)
 	if len(code) != Digits {

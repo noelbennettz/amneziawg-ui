@@ -15,11 +15,8 @@ func TestStatusComesFromTheKernelNotTheConfig(t *testing.T) {
 	m, _ := newTestManager(t)
 	m.cfg.Servers[0].Status = "running"
 
-	if got := m.ServerStatus("s1"); got != "stopped" {
-		t.Errorf("ServerStatus = %q, want %q", got, "stopped")
-	}
-	if got := m.ServerStatus("nope"); got != "not_found" {
-		t.Errorf("unknown server = %q, want not_found", got)
+	if got := m.serverStatus(m.cfg.Servers[0].Interface); got != "stopped" {
+		t.Errorf("serverStatus = %q, want %q", got, "stopped")
 	}
 }
 
@@ -98,12 +95,12 @@ func TestStartAndStopRecordTheirOwnObservation(t *testing.T) {
 	iface := m.cfg.Servers[0].Interface
 
 	m.noteServerStatus(iface, "running")
-	if got := m.ServerStatus("s1"); got != "running" {
+	if got := m.serverStatus(iface); got != "running" {
 		t.Errorf("noted status = %q, want running", got)
 	}
 
 	m.forgetServerStatus(iface)
-	if got := m.ServerStatus("s1"); got != "stopped" {
+	if got := m.serverStatus(iface); got != "stopped" {
 		t.Errorf("after forgetting, status = %q, want a fresh stopped", got)
 	}
 }

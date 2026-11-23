@@ -290,7 +290,6 @@ type Store struct {
 	hash    Hash
 	modTime time.Time
 	checked time.Time
-	loadErr error
 	// generation counts the password changes this process has seen. Anything
 	// cached against a password is dropped when it moves.
 	generation uint64
@@ -361,20 +360,6 @@ func (s *Store) Hash() (Hash, uint64) {
 	return s.hash, s.generation
 }
 
-// FromEnv reports whether WEB_UI_PASSWORD is what is in force.
-func (s *Store) FromEnv() bool { return s.fromEnv }
-
-// Err returns the error of the last attempt to reload the hash file, when that
-// attempt failed. A broken file keeps the previous password in force: a
-// half-written hash must not lock the operator out, so the error is reported
-// and not acted on.
-func (s *Store) Err() error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	return s.loadErr
-}
-
 // CheckDefault refuses the password the image used to ship. It is a
 // verification and not a string comparison on purpose: the point is that no
 // hash of "changeme" - in either format - is what the panel starts with.
@@ -401,10 +386,10 @@ func (s *Store) refreshLocked() {
 
 	hash, modTime, err := readFile(s.path)
 	if err != nil {
-		s.loadErr = err
+		// A broken file keeps the password already in force: a half-written
+		// hash must not lock the operator out.
 		return
 	}
-	s.loadErr = nil
 	if modTime.Equal(s.modTime) || hash.String() == s.hash.String() {
 		s.modTime = modTime
 		return

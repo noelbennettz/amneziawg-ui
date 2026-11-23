@@ -19,15 +19,6 @@ type statusObservation struct {
 	since time.Time
 }
 
-// ServerStatus checks the real interface state of a server.
-func (m *Manager) ServerStatus(serverID string) string {
-	srv, ok := m.Server(serverID)
-	if !ok {
-		return "not_found"
-	}
-	return m.serverStatus(srv.Interface)
-}
-
 // serverStatus reports whether the server's interface is up, from a short
 // lived cache. The kernel is the only authority on this - the Status field in
 // the config is a stale echo of the last observation - but every dashboard

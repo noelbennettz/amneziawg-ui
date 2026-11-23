@@ -29,9 +29,6 @@ func TestHotpVectors(t *testing.T) {
 		if got := key.Code(at); got != code {
 			t.Errorf("counter %d: Code = %q, want %q", counter, got, code)
 		}
-		if !key.Verify(code, at) {
-			t.Errorf("counter %d: Verify(%q) = false", counter, code)
-		}
 	}
 }
 
@@ -76,7 +73,7 @@ func TestParseRejects(t *testing.T) {
 
 // A code is accepted in its own step and one step either side, and not
 // further: the window is what an unsynchronised clock needs and no more.
-func TestVerifyWindow(t *testing.T) {
+func TestMatchWindow(t *testing.T) {
 	key, err := Parse(rfcBase32)
 	if err != nil {
 		t.Fatalf("Parse: %v", err)
@@ -102,14 +99,14 @@ func TestVerifyWindow(t *testing.T) {
 		{"a minute earlier", current.Add(-time.Minute), false},
 	}
 	for _, tc := range cases {
-		if got := key.Verify(code, tc.at); got != tc.want {
-			t.Errorf("%s: Verify = %v, want %v", tc.name, got, tc.want)
+		if _, got := key.Match(code, tc.at); got != tc.want {
+			t.Errorf("%s: Match = %v, want %v", tc.name, got, tc.want)
 		}
 	}
 }
 
-// Match is Verify with the step attached: the caller that has to refuse a code
-// it has already accepted is told which step to remember.
+// The step comes back with the verdict: the caller that has to refuse a code it
+// has already accepted is told which step to remember.
 func TestMatchReportsTheStep(t *testing.T) {
 	key, err := Parse(rfcBase32)
 	if err != nil {
@@ -140,9 +137,6 @@ func TestMatchReportsTheStep(t *testing.T) {
 		if got != tc.wantMatch || gotStep != tc.wantStep {
 			t.Errorf("%s: Match = (%d, %v), want (%d, %v)", tc.name, gotStep, got, tc.wantStep, tc.wantMatch)
 		}
-		if got := key.Verify(code, tc.at); got != tc.wantMatch {
-			t.Errorf("%s: Verify = %v, want %v - Match and Verify disagree", tc.name, got, tc.wantMatch)
-		}
 	}
 
 	// A code that is not six digits never matches, and there is no step to
@@ -154,7 +148,7 @@ func TestMatchReportsTheStep(t *testing.T) {
 	}
 }
 
-func TestVerifyRejectsMalformedCodes(t *testing.T) {
+func TestMatchRejectsMalformedCodes(t *testing.T) {
 	key, err := Parse(rfcBase32)
 	if err != nil {
 		t.Fatalf("Parse: %v", err)
@@ -162,15 +156,15 @@ func TestVerifyRejectsMalformedCodes(t *testing.T) {
 	at := time.Unix(0, 0)
 
 	for _, code := range []string{"", "75522", "7552241", "75522a", " 755224 ", "７５５２２４"} {
-		got := key.Verify(code, at)
+		_, got := key.Match(code, at)
 		if code == " 755224 " {
 			if !got {
-				t.Errorf("Verify(%q) = false, want true: surrounding spaces are a copy-paste artefact", code)
+				t.Errorf("Match(%q) = false, want true: surrounding spaces are a copy-paste artefact", code)
 			}
 			continue
 		}
 		if got {
-			t.Errorf("Verify(%q) = true, want false", code)
+			t.Errorf("Match(%q) = true, want false", code)
 		}
 	}
 }

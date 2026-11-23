@@ -43,9 +43,6 @@ func TestOpenFromEnv(t *testing.T) {
 	if generated != "" {
 		t.Errorf("Open generated a password although WEB_UI_PASSWORD is set: %q", generated)
 	}
-	if !store.FromEnv() {
-		t.Error("the store did not report WEB_UI_PASSWORD as its source")
-	}
 	hash, _ := store.Hash()
 	if !hash.Verify("from-the-environment") {
 		t.Error("the environment variable is not what the store verifies")
@@ -67,9 +64,6 @@ func TestOpenUsesTheStoredHash(t *testing.T) {
 	}
 	if generated != "" {
 		t.Errorf("Open printed a password although one was stored: %q", generated)
-	}
-	if store.FromEnv() {
-		t.Error("the store claims WEB_UI_PASSWORD is set")
 	}
 	hash, _ := store.Hash()
 	if !hash.Verify(testPassword) {
@@ -197,9 +191,6 @@ func TestStoreAdoptsARewrittenFile(t *testing.T) {
 	if !after.Verify(password) {
 		t.Error("the new password does not verify")
 	}
-	if got := store.Err(); got != nil {
-		t.Errorf("Err = %v, want nil", got)
-	}
 }
 
 func TestStoreKeepsThePasswordWhenTheFileBreaks(t *testing.T) {
@@ -214,13 +205,10 @@ func TestStoreKeepsThePasswordWhenTheFileBreaks(t *testing.T) {
 	advance(store)
 
 	// Unreadable is not the same as unusable: the panel keeps the password it
-	// had, and the failure is reported rather than acted on.
+	// had.
 	hash, _ := store.Hash()
 	if !hash.Verify(generated) {
 		t.Error("a broken hash file dropped the password that was working")
-	}
-	if store.Err() == nil {
-		t.Error("a broken hash file was not reported")
 	}
 }
 
