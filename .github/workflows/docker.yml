@@ -253,14 +253,20 @@ jobs:
       # and the number is only worth acting on when a human looks at what
       # changed. The sum is of the compressed layers the registry holds, which
       # is what `docker pull` reports - not the unpacked size on disk.
+      #
+      # The manifests are read with --raw, not --format '{{json .Manifest}}':
+      # that template carries a manifest's digest and size but not its layer
+      # list, so the sum came out as 0 MB on every platform and the warning
+      # below could never fire. The index also lists the attestations, under a
+      # platform of "unknown"; they are not images, so only linux is summed.
       - name: Report the image size
         continue-on-error: true
         run: |
           ref="${IMAGE_NAME}:latest"
           largest=0
-          for digest in $(docker buildx imagetools inspect "$ref" --format '{{json .Manifest}}' \
-              | python3 -c 'import json,sys;print(" ".join(m["digest"] for m in json.load(sys.stdin).get("manifests",[])))'); do
-            size=$(docker buildx imagetools inspect "${ref}@${digest}" --format '{{json .Manifest}}' \
+          for digest in $(docker buildx imagetools inspect --raw "$ref" \
+              | python3 -c 'import json,sys;print(" ".join(m["digest"] for m in json.load(sys.stdin).get("manifests",[]) if m.get("platform",{}).get("os") == "linux"))'); do
+            size=$(docker buildx imagetools inspect --raw "${ref}@${digest}" \
               | python3 -c 'import json,sys;print(sum(l.get("size",0) for l in json.load(sys.stdin).get("layers",[])))')
             echo "  ${digest}: $((size / 1000000)) MB"
             if [ "$size" -gt "$largest" ]; then largest=$size; fi
@@ -269,7 +275,6 @@ jobs:
           if [ "$largest" -gt 40000000 ]; then
             echo "::warning::the image is $((largest / 1000000)) MB compressed, over the 40 MB line"
           fi
-
       - name: Verify pushed image
         run: |
           echo "Image successfully pushed to ${{ env.REGISTRY }}"
