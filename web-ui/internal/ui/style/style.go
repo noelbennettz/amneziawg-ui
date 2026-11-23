@@ -190,7 +190,8 @@ func (t *darkTheme) Color(name fyne.ThemeColorName, _ fyne.ThemeVariant) color.C
 
 // Font answers with the page's text face. The stock theme's faces stop at
 // Latin, Greek and Cyrillic, so Chinese - the panel is translated into it -
-// would come out as boxes; see font.go for the two files this returns.
+// would come out as boxes; see font.go for the two files that answer that, and
+// for why they are only installed when the browser needs them.
 //
 // Italic maps to the regular face: Noto Sans SC has no italic cut, and a
 // slanted Latin face with no CJK in it would trade readable Chinese hints for
@@ -202,10 +203,15 @@ func (t *darkTheme) Font(style fyne.TextStyle) fyne.Resource {
 	if style.Monospace || style.Symbol {
 		return t.Theme.Font(style)
 	}
-	if style.Bold {
+	if style.Bold && boldFace != nil {
 		return boldFace
 	}
-	return textFace
+	if textFace != nil {
+		return textFace
+	}
+	// No CJK face: this browser asked for a language that does not need one,
+	// or the download failed. Fyne's own faces are the honest answer.
+	return t.Theme.Font(style)
 }
 
 func (t *darkTheme) Size(name fyne.ThemeSizeName) float32 {

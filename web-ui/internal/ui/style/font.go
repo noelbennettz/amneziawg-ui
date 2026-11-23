@@ -1,7 +1,7 @@
 package style
 
 import (
-	"embed"
+	"strings"
 
 	"fyne.io/fyne/v2"
 )
@@ -10,33 +10,80 @@ import (
 //
 // Fyne's own faces cover Latin, Greek and Cyrillic and stop there - NotoSans,
 // Inter, an emoji font and a monospace one - and the wasm build has no system
-// fonts behind them to fill a gap. A Chinese string therefore drew as a row of
-// empty boxes, which is what the panel looked like in Chinese before these two
-// files existed. NotoSansSC is the same family with the CJK repertoire in it
-// (30 890 glyphs: Simplified and Traditional alike), so one face serves both
-// Chinese translations and any Chinese a person types into a server or client
-// name, whatever language their browser asked for.
+// fonts behind them to fill a gap. A Chinese string would therefore draw as a
+// row of empty boxes, which is what the panel looked like in Chinese before
+// Noto Sans SC was shipped with it. One face covers Simplified and Traditional
+// alike (30 890 glyphs), so it serves both Chinese translations and any Chinese
+// a person types into a server or client name.
 //
-// They are the reason the image grew by about 17 MB; a subset with only the
-// 15 615 characters of GB2312 and Big5 would have cost half of that and left
-// the rarer characters of a name as boxes, so the whole font ships instead.
-// The OFL licence sits next to them.
+// The two files weigh about 17 MB together and they used to sit in the bundle,
+// so every browser downloaded them whichever language it asked for. They now
+// live next to the bundle as font/*.otf and main.go fetches them only for a
+// browser whose languages need CJK; see NeedsCJK and SetFaces. A tab that never
+// loads them keeps Fyne's stock faces, which is correct for English, French,
+// Spanish and Russian and a row of boxes for Chinese.
 //
-//go:embed font/NotoSansSC-Regular.otf font/NotoSansSC-Bold.otf
-var fontFiles embed.FS
-
+// The files themselves are still in this directory - the build copies them into
+// web-ui/wasm/font/ - and the OFL licence sits next to them.
 var (
-	textFace = loadFace("font/NotoSansSC-Regular.otf")
-	boldFace = loadFace("font/NotoSansSC-Bold.otf")
+	textFace fyne.Resource
+	boldFace fyne.Resource
 )
 
-// loadFace reads one of the embedded faces. A failure here is a broken build,
-// not a runtime condition, so it panics the way the login template does.
-func loadFace(name string) fyne.Resource {
-	data, err := fontFiles.ReadFile(name)
-	if err != nil {
-		panic("style: " + err.Error())
+// SetFaces installs the CJK faces once their bytes have arrived. Until it is
+// called the theme answers with Fyne's own faces, so a failed download leaves a
+// working panel with boxes where Chinese would be rather than no panel at all.
+//
+// Both files are Noto Sans SC; a nil argument leaves that weight unset.
+func SetFaces(regular, bold []byte) {
+	// fyne keys its font cache by resource name, so the names stay short and
+	// stable: they are what a later SetTheme call looks the parsed face up by.
+	if regular != nil {
+		textFace = fyne.NewStaticResource("NotoSansSC-Regular.otf", regular)
 	}
-	// fyne keys its font cache by resource name, so the name stays short.
-	return fyne.NewStaticResource(name[len("font/"):], data)
+	if bold != nil {
+		boldFace = fyne.NewStaticResource("NotoSansSC-Bold.otf", bold)
+	}
+}
+
+// FacesLoaded reports whether the CJK faces are in place.
+func FacesLoaded() bool {
+	return textFace != nil
+}
+
+// NeedsCJK reports whether the CJK face has to be fetched for a browser that
+// lists these languages in navigator.languages, most wanted first.
+//
+// Chinese, Japanese and Korean all need it: the Chinese translations are the
+// obvious case, but Fyne also ships base translations for Japanese, and its own
+// string there would be boxes without a face that carries kana. Noto Sans SC
+// carries kana and Hangul as well as Han, so one face covers all three.
+//
+// The whole list is consulted rather than its first entry. go-locale hands
+// Fyne every language the browser prefers, Fyne matches them and can land on
+// Chinese from a list that starts elsewhere - "de-DE, zh-TW" resolves to
+// Chinese - and a deduplicated answer here would then leave a Chinese panel
+// without a Chinese face. The price is over-fetching for a browser that lists a
+// CJK language but gets an English panel, which is rare and costs bandwidth
+// once, where the other mistake costs boxes on screen.
+func NeedsCJK(languages []string) bool {
+	for _, tag := range languages {
+		switch primarySubtag(tag) {
+		case "zh", "ja", "ko":
+			return true
+		}
+	}
+	return false
+}
+
+// primarySubtag is the language part of a BCP 47 tag, lowercased: "zh-Hant-TW"
+// answers "zh". Anything that is not a language tag - an empty string, "*" -
+// answers "".
+func primarySubtag(tag string) string {
+	tag = strings.ToLower(strings.TrimSpace(tag))
+	if tag == "" || tag == "*" {
+		return ""
+	}
+	primary, _, _ := strings.Cut(tag, "-")
+	return primary
 }

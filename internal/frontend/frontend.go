@@ -1,12 +1,12 @@
-// Package frontend serves the packaged web UI straight off disk: the loader
-// page, the wasm bundle and its assets, exactly as "fyne package -os wasm"
-// wrote them - except that the Docker build leaves the bundle gzipped.
-// Nothing is baked into the binary, so the bundle can be swapped without
-// relinking the server.
+// Package frontend serves the web UI straight off disk: the wasm bundle and its
+// assets as "fyne package -os wasm" wrote them, the CJK faces beside it (see
+// web-ui/internal/ui/style) and a loading page this repository writes itself
+// (loader.go) - except that the Docker build leaves the bundle and the faces
+// gzipped. Nothing is baked into the binary, so the frontend can be swapped
+// without relinking the server.
 package frontend
 
 import (
-	"bytes"
 	"compress/gzip"
 	"crypto/sha256"
 	"encoding/hex"
@@ -27,32 +27,37 @@ import (
 type Assets struct {
 	files  fs.FS
 	packed map[string]string // request path -> .gz file answering it
-	// loader is the page served for "/" and "/index.html": the packaged one,
-	// repainted. Nil when the tree has no index.html at all.
+	// loader is the page served for "/" and "/index.html", with the process's
+	// nonce written into it. This package writes it; see loader.go.
 	loader []byte
-	// nonce is what the loader page carries when it could be prepared for a
-	// strict CSP, and empty when it could not - see Nonce.
+	// nonce is the value that page carries, and empty when the server was
+	// started without one - see Nonce.
 	nonce string
 }
 
 // Open indexes the directory. A tree without any .gz - a development build -
 // simply has nothing packed, and every asset takes the ordinary static path.
 //
-// nonce is the script nonce the loader page is rewritten around. An empty one
-// leaves the page exactly as packaged.
+// nonce is the script nonce the loader page carries. An empty one leaves the
+// attribute off, and the policy allows inline scripts instead.
 func Open(files fs.FS, nonce string) *Assets {
-	page, ready := loaderPage(files, nonce)
-	a := &Assets{files: files, packed: packedAssets(files, "."), loader: page}
-	if ready {
-		a.nonce = nonce
+	// Go's mime table maps .otf to the OpenDocument formula template type, which
+	// is what a browser would be told the panel's CJK face is. "font/otf" is
+	// what the extension means and what both the packed and the plain static
+	// handler answer with after this.
+	mime.AddExtensionType(".otf", "font/otf") //nolint:errcheck // the extension is valid
+
+	return &Assets{
+		files:  files,
+		packed: packedAssets(files, "."),
+		loader: loaderPage(nonce),
+		nonce:  nonce,
 	}
-	return a
 }
 
-// Nonce is what the security headers have to name in the page's policy, or
-// empty when the packaged loader no longer has the markers the rewrite needs.
-// The headers then fall back to allowing inline scripts rather than breaking a
-// page they cannot see into.
+// Nonce is what the security headers have to name in the page's policy. Empty
+// when the server was started without one - a development build, or a test -
+// in which case the policy falls back to allowing inline scripts.
 func (a *Assets) Nonce() string {
 	return a.nonce
 }
@@ -84,121 +89,15 @@ func (a *Assets) Mount(app *fiber.App) {
 	}))
 }
 
-// The loader page "fyne package" writes chooses between its two stylesheets and
-// its two spinners with prefers-color-scheme, and the panel behind it forces the
-// dark variant whatever the browser asks for. So the choice is made here
-// instead of in the browser: the dark branch is pinned to every colour scheme,
-// or a browser set to light shows a white page - and then a spinner drawn for a
-// white page on a white page - between the login and the panel.
-const (
-	darkMedia  = `media="(prefers-color-scheme: dark)"`
-	lightMedia = `media="(prefers-color-scheme: light)"`
-	anyMedia   = `media="all"`
-	noMedia    = `media="not all"`
-
-	// loaderBackground is the page colour of the panel
-	// (web-ui/internal/ui/style/style.go) and of the login page in front of it
-	// (internal/auth/login.html). The loader's own dark stylesheet says
-	// #141415, close but not the same, and it is the last thing on screen
-	// before the canvas takes over.
-	loaderBackground = "#131314"
-)
-
-// loaderPage reads the packaged index.html, or nil when the tree has none - a
-// test fixture, or a bundle that was not built yet; the static handler then
-// answers the request with whatever the tree does have. ready reports whether
-// the page came back prepared for a policy that allows no inline script but
-// its own.
-func loaderPage(files fs.FS, nonce string) (page []byte, ready bool) {
-	raw, err := fs.ReadFile(files, "index.html")
-	if err != nil {
-		return nil, false
-	}
-	return darkLoader(raw, nonce)
-}
-
-// darkLoader pins the loading screen to the dark variant and to the page colour
-// of everything around it, and - when a nonce is given - turns the page into
-// one that runs under the panel's CSP.
-//
-// The palette of the panel is decided inside the wasm bundle, which has not
-// started yet while this page is on screen, so nothing in the bundle can be
-// asked to recolour it - the page has to be served that way. A page without the
-// markers (a loader from a future "fyne package") is returned untouched rather
-// than broken by a rewrite that no longer applies.
-func darkLoader(page []byte, nonce string) ([]byte, bool) {
-	if !bytes.Contains(page, []byte(darkMedia)) || !bytes.Contains(page, []byte(lightMedia)) {
-		return page, false
-	}
-
-	pinned := bytes.ReplaceAll(page, []byte(darkMedia), []byte(anyMedia))
-	pinned = bytes.ReplaceAll(pinned, []byte(lightMedia), []byte(noMedia))
-
-	ready := false
-	if nonce != "" {
-		pinned, ready = nonceLoader(pinned, nonce)
-	}
-
-	// Last rule in the head: the dark stylesheet sets the body to its own
-	// #141415, and the injection has to win that tie on specificity.
-	injected := `<style>html{background:` + loaderBackground + `;color-scheme:dark}body{background:` + loaderBackground + `}</style>`
-	if ready {
-		// The wasm bundle injects a <script> of its own once it starts (the
-		// phone input and drag handling); it reads this to give that script
-		// the nonce the policy names.
-		injected = `<meta name="csp-nonce" content="` + nonce + `">` + injected
-	}
-	if at := bytes.Index(pinned, []byte("</head>")); at >= 0 {
-		pinned = append(pinned[:at:at], append([]byte(injected), pinned[at:]...)...)
-	}
-	return pinned, ready
-}
-
-// nonceLoader makes the packaged loader run under a policy that allows exactly
-// one inline script: the page's own.
-//
-// "fyne package" writes the startup code into an inline <script> and calls it
-// from an onload attribute; CSP allows neither without help, and an attribute
-// cannot be rescued by a nonce at all. So the attribute comes out - the call
-// moves into the script as a load listener - and the element gets the nonce the
-// panel's policy names.
-func nonceLoader(page []byte, nonce string) ([]byte, bool) {
-	const (
-		openTag  = "<script>"
-		closeTag = "</script>"
-		onload   = ` onload="download_application()"`
-	)
-	if !bytes.Contains(page, []byte(onload)) {
-		return page, false
-	}
-
-	open := bytes.Index(page, []byte(openTag))
-	if open < 0 {
-		return page, false
-	}
-	body := open + len(openTag)
-	closing := bytes.Index(page[body:], []byte(closeTag))
-	if closing < 0 {
-		return page, false
-	}
-	closing += body
-
-	code := append([]byte("\nwindow.addEventListener('load', download_application);\n"), page[body:closing]...)
-
-	out := make([]byte, 0, len(page)+len(nonce)+len(code))
-	out = append(out, page[:open]...)
-	out = append(out, `<script nonce="`+nonce+`">`...)
-	out = append(out, code...)
-	out = append(out, page[closing:]...)
-
-	return bytes.Replace(out, []byte(onload), nil, 1), true
-}
+// The loader page itself lives in loader.go: this package writes it rather
+// than repainting the one "fyne package" emits, so the palette, the progress
+// indicator and the language are the panel's own.
 
 // sendLoader answers / and /index.html with that page. It goes before the
 // static handler, which would serve the file as it sits on disk.
 func (a *Assets) sendLoader() fiber.Handler {
 	return func(c fiber.Ctx) error {
-		if a.loader == nil || (c.Path() != "/" && c.Path() != "/index.html") {
+		if c.Path() != "/" && c.Path() != "/index.html" {
 			return c.Next()
 		}
 		if c.Method() != fiber.MethodGet && c.Method() != fiber.MethodHead {
@@ -218,18 +117,23 @@ func (a *Assets) sendLoader() fiber.Handler {
 func packedAssets(files fs.FS, root string) map[string]string {
 	packed := map[string]string{}
 
-	entries, err := fs.ReadDir(files, root)
+	// The walk goes into subdirectories: the CJK faces sit in font/ next to the
+	// bundle. A request always names the asset by the path it has once
+	// unpacked - "/font/NotoSansSC-Regular.otf" for "font/NotoSansSC-Regular.otf.gz"
+	// - whichever directory it lives in.
+	err := fs.WalkDir(files, root, func(name string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			log.Printf("frontend assets: %s: %v", name, walkErr)
+			return nil
+		}
+		if entry.IsDir() || !strings.HasSuffix(name, ".gz") {
+			return nil
+		}
+		packed["/"+strings.TrimSuffix(name, ".gz")] = name
+		return nil
+	})
 	if err != nil {
 		log.Printf("frontend assets: %v", err)
-		return packed
-	}
-
-	for _, entry := range entries {
-		name := entry.Name()
-		if entry.IsDir() || !strings.HasSuffix(name, ".gz") {
-			continue
-		}
-		packed["/"+strings.TrimSuffix(name, ".gz")] = path.Join(root, name)
 	}
 	return packed
 }
@@ -303,29 +207,35 @@ func (g gzipFile) Close() error {
 func (a *Assets) cache() fiber.Handler {
 	tags := map[string]string{}
 
-	entries, err := fs.ReadDir(a.files, ".")
+	// Every file, in every directory: the faces under font/ are revalidated
+	// like the bundle is, so a browser that has one keeps it across an upgrade
+	// unless the bytes really changed.
+	err := fs.WalkDir(a.files, ".", func(name string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			log.Printf("frontend cache: %s: %v", name, walkErr)
+			return nil
+		}
+		if entry.IsDir() {
+			return nil
+		}
+		tag, err := fileETag(a.files, name)
+		if err != nil {
+			log.Printf("frontend cache: %s: %v", name, err)
+			return nil
+		}
+		tags["/"+name] = tag
+		return nil
+	})
 	if err != nil {
 		log.Printf("frontend cache: %v", err)
 		return func(c fiber.Ctx) error { return c.Next() }
 	}
 
-	for _, entry := range entries {
-		if entry.IsDir() {
-			continue
-		}
-		tag, err := fileETag(a.files, entry.Name())
-		if err != nil {
-			log.Printf("frontend cache: %v", err)
-			continue
-		}
-		tags["/"+entry.Name()] = tag
-	}
-
 	// A packed asset is requested under the name it will have once unpacked,
 	// so its tag has to answer to that path too. The tag is weak, which is
 	// exactly what lets one identifier stand for both encodings of the bundle.
-	for requested, name := range a.packed {
-		tags[requested] = tags["/"+path.Base(name)]
+	for requested := range a.packed {
+		tags[requested] = tags[requested+".gz"]
 	}
 	tags["/"] = tags["/index.html"]
 

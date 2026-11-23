@@ -7,6 +7,7 @@ tool fyne.io/tools/cmd/fyne
 require (
 	fyne.io/fyne/v2 v2.8.1
 	github.com/go-text/typesetting v0.3.4
+	github.com/jeandeaual/go-locale v0.0.0-20250612000132-0ef82f21eade
 	github.com/sdassow/fyne-datepicker v0.0.0-20250403132905-bf906d02ba0c
 	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e
 )
@@ -35,7 +36,6 @@ require (
 	github.com/hack-pad/go-indexeddb v0.3.2 // indirect
 	github.com/hack-pad/safejs v0.1.0 // indirect
 	github.com/jackmordaunt/icns/v2 v2.2.7 // indirect
-	github.com/jeandeaual/go-locale v0.0.0-20250612000132-0ef82f21eade // indirect
 	github.com/josephspurrier/goversioninfo v1.7.0 // indirect
 	github.com/jsummers/gobmp v0.0.0-20230614200233-a9de23ed2e25 // indirect
 	github.com/kr/pretty v0.3.1 // indirect

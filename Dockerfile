@@ -33,9 +33,12 @@ COPY . .
 # emits the loader page, its stylesheets and the bundle straight into
 # web-ui/wasm.
 #
-# The bundle then ships gzipped and nothing else: 14 MB of layer instead of 49,
-# and the server hands the file over as it is rather than compressing 49 MB
-# again on every cold request (see packedAssets in main.go).
+# The bundle ships gzipped and so do the two CJK faces, which sit in font/
+# beside it rather than inside the bundle: 26 MB of bundle and 15 MB of faces,
+# where one uncompressed bundle would be 54 MB and would carry the faces into
+# every browser that will never draw a Chinese glyph. The server hands each
+# file over as it is rather than compressing 54 MB again on every cold request
+# (see packedAssets in internal/frontend).
 #
 # GOOS=js output is identical for every target platform, so this stage names no
 # TARGETARCH and BuildKit builds it once for the whole multi-platform image.
@@ -59,7 +62,10 @@ RUN --mount=type=cache,id=awg_mod,target=/go/pkg/mod \
         echo "frontend version: no git tag in the build context, keeping FyneApp.toml"; \
     fi \
     && cd web-ui && go tool fyne package -os wasm --name bundle --release \
-    && gzip -9 wasm/bundle.wasm
+    && mkdir -p wasm/font \
+    && cp internal/ui/style/font/NotoSansSC-Regular.otf internal/ui/style/font/NotoSansSC-Bold.otf \
+        internal/ui/style/font/LICENSE-OFL.txt wasm/font/ \
+    && gzip -9 wasm/bundle.wasm wasm/font/*.otf
 
 # ── Backend ───────────────────────────────────────────────────────
 # VERSION, COMMIT and BUILD_TIME are the build's identity: they go into the

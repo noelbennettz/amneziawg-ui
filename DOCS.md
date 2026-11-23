@@ -300,11 +300,11 @@ address automatically.
 *   `internal/audit` — the opt-in security log (`WEB_UI_AUDIT_LOG`): logins,
     logouts, rejected writes and API changes as JSON lines, kept to a window of
     time (`WEB_UI_AUDIT_RETENTION_HOURS`)
-*   `internal/frontend` — serving the frontend off disk: the gzip bundle, the
-    loading page repainted for the panel's dark palette and rewritten around the
-    CSP nonce, ETag validators (so the browser neither keeps a stale bundle
-    after an update nor re-downloads ~50 MB of wasm on every load), response
-    compression
+*   `internal/frontend` — serving the frontend off disk: the gzip bundle and the
+    CJK faces beside it, the loading page (written by this package, in the
+    panel's palette and its six languages), ETag validators (so the browser
+    neither keeps a stale bundle after an update nor re-downloads the 12 MB
+    bundle on every load), response compression
 *   `internal/publicip`, `internal/netutil`, `internal/atomicfile` — small
     helper packages: public address detection, subnet arithmetic, atomic file
     writes
@@ -320,12 +320,17 @@ address automatically.
     `web-ui/wasm`, from where the server serves the files straight off disk —
     nothing is embedded into the binary, so the bundle can be replaced without
     rebuilding the server
-*   A single dark theme, forced inside the application itself. The loading page
-    `fyne package` writes is served by `internal/frontend`, which pins it to the
-    dark branch (its two stylesheets and its two spinners are otherwise chosen
-    by `prefers-color-scheme`) and paints it in the panel's own `#131314`: a
-    browser set to light would otherwise show a white page, with a spinner
-    drawn for the light theme, between the login page and the panel
+*   A single dark theme, forced inside the application itself. In front of it,
+    `internal/frontend/loader.go` serves the loading page: the panel's own
+    `#131314`, a Material 3 indeterminate progress indicator in place of the
+    GIF `fyne package` draws, and its status line in whichever of the six
+    languages the browser asks for
+*   The CJK faces are not in the bundle. Noto Sans SC (regular and bold, OFL)
+    weighs 17 MB and only a browser reading Chinese, Japanese or Korean needs
+    it, so `make web-ui` copies the two files to `web-ui/wasm/font/` and the
+    bundle fetches them when `navigator.languages` says it needs them - before
+    the first widget, so no string is ever drawn as boxes. Every other browser
+    downloads the bundle and stops: about 12 MB gzipped instead of 26
 *   Status and traffic refresh by REST polling: the counters every 5 seconds
     with one `GET /api/traffic` request, the server list every 30 seconds (and
     right after every action from that tab). A hidden tab skips its rounds and
@@ -1030,8 +1035,9 @@ needs no login. To run your own build instead, `make run` or
 The pulled image is about **35 MB** compressed — the figure the CI job's size
 report prints on every build, with a warning above 40 MB. No nginx, no
 supervisor, no language runtime beyond the shell `awg-quick` itself needs
-(bash, `ip`, `iptables`, `resolvconf`); most of the size is the wasm bundle,
-which ships gzipped at about 14 MB (49 MB uncompressed).
+(bash, `ip`, `iptables`, `resolvconf`); most of the size is the frontend - the
+bundle ships gzipped at about 12 MB (37 MB uncompressed), and the two CJK faces
+at 15 MB (17 MB) are in the image for the browsers that ask for them.
 
 The upstream AmneziaWG versions are pinned in the `Dockerfile`
 (`AWG_GO_VERSION=v3.1.20260828`, `AWG_TOOLS_VERSION=v3.1.20260812`), so a
@@ -1680,13 +1686,13 @@ Every response carries `Content-Security-Policy`, `X-Frame-Options: DENY`,
 
 The policy allows the panel's own origin and nothing else, plus what the wasm
 bundle needs: `'wasm-unsafe-eval'` for `WebAssembly.instantiate`, and one inline
-script by nonce — the loader page's startup code, which the server rewrites to
-carry a random value generated when the process starts. The bundle injects two
-more inline scripts of its own (the phone input handling and the wheel handler);
-they read the same nonce from a `<meta name="csp-nonce">` in the page. A loader
-page without the markers the rewrite needs (a future `fyne package`) is served
-untouched and the policy falls back to `'unsafe-inline'`, because a page the
-server cannot see into must not be broken by a header.
+script by nonce - the loading page's bootstrap, which this repository writes
+(`internal/frontend/loader.go`) and which carries a random value generated when
+the process starts. The bundle injects two more inline scripts of its own (the
+phone input handling and the wheel handler); they read the same nonce from a
+`<meta name="csp-nonce">` in the page. A server started without a nonce (a
+development run) leaves the attribute off and the policy falls back to
+`'unsafe-inline'`, so the page still runs.
 
 `style-src` keeps `'unsafe-inline'`: fyne's driver injects a `<style>` element
 for the viewport fix. `frame-ancestors 'none'` and `X-Frame-Options: DENY` keep

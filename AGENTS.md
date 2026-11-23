@@ -85,17 +85,57 @@ Two things about that are not obvious:
 
 ### The text face
 
-`web-ui/internal/ui/style/font.go` embeds Noto Sans SC (regular and bold, OFL)
-and `darkTheme.Font` hands it out. It is there for the glyphs: fyne's own faces
-are Latin/Greek/Cyrillic plus an emoji and a symbol font, the wasm build has no
-system fonts behind them, and a Chinese string would otherwise draw as empty
-boxes. Consequences worth knowing:
+Noto Sans SC (regular and bold, OFL) is the only reason a Chinese string is not
+a row of empty boxes: fyne's own faces are Latin/Greek/Cyrillic plus an emoji and
+a symbol font, and the wasm build has no system fonts behind them.
 
+The two files are not in the bundle. They weigh ~17 MB, and only a browser that
+reads Chinese, Japanese or Korean needs them, so `make web-ui` copies them to
+`web-ui/wasm/font/` and `web-ui/font_wasm.go` fetches them from there when
+`navigator.languages` says so, before the first widget is built. That is the one
+place the frontend's bytes depend on the browser; everybody else keeps fyne's
+faces and downloads a 12 MB bundle instead of 26. Consequences worth knowing:
+
+- `style.NeedsCJK` decides, from the whole `navigator.languages` list - Fyne
+  matches that list too and can land on Chinese from a probe that starts with
+  German, and a first-entry-only rule would then draw boxes
+- a failed fetch is logged and the panel runs with fyne's faces; it must never
+  become a blank page
+- `internal/frontend` gzips both files next to the bundle in the image and walks
+  into `font/` for the packing and the ETags; `Open` also registers `.otf` as
+  `font/otf`, because Go's mime table calls it an OpenDocument formula template
 - italic text uses the regular face - Noto Sans SC has no italic cut, and the
   alternative was slanted English hints next to unreadable Chinese ones
 - monospace stays on fyne's DejaVu face for the config view's column
   alignment, so Chinese in a `.conf` comment is boxes; keep that view ASCII
-- the two files are ~17 MB of the wasm bundle, which is why the image grew
+
+### The loading page
+
+`internal/frontend/loader.go` holds the page a browser sees while the bundle
+downloads, and the server serves it instead of the `index.html` "fyne package"
+writes. That output is not used at all: it draws its progress with two animated
+GIFs and speaks English, and rewriting it meant string surgery that had to fall
+back to `'unsafe-inline'` whenever fyne moved a marker.
+
+Owning the page leaves a contract with the wasm side that fyne upgrades can
+break, so it is written down here:
+
+- `wasm_exec.js` defines `Go`; `bundle.wasm` is the module; both come from the
+  same directory the page is served from
+- the canvas is appended to `document.body` when the app starts, and the page
+  hides itself on seeing it - there is no callback from the module
+- `#dummyEntry` is the input fyne's driver focuses for a soft keyboard; the
+  fixes in `web-ui/internal/fixes` look it up by that id
+- the `<meta name="csp-nonce">` is what the bundle reads back for the styles and
+  scripts it injects (see `web-ui/internal/ui/browser`)
+
+A fyne release that changes any of those shows up as a loader that never goes
+away, which is why the frontend's browser tests wait for the canvas.
+
+The page also picks the loader's language from `navigator.languages` with the
+same rule as the Go side (`internal/auth/i18n.go` and the wasm's translation
+list are the same six languages); the strings live in the page's own script,
+not in the bundle, because the bundle is what it is waiting for.
 
 ### The login page
 

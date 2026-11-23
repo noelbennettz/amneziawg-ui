@@ -19,7 +19,7 @@ Licence texts the project can redistribute are installed in the image under
 | `THIRD_PARTY_NOTICES.md` | This file |
 | `amneziawg-go.LICENSE` | MIT, from `amneziawg-go` at the pinned tag |
 | `amneziawg-tools.COPYING` | GPL-2.0, from `amneziawg-tools` at the pinned tag |
-| `NotoSansSC-OFL.txt` | SIL Open Font License 1.1, for the Chinese text face bundled into the WebAssembly frontend (`web-ui/internal/ui/style/font/LICENSE-OFL.txt`) |
+| `NotoSansSC-OFL.txt` | SIL Open Font License 1.1, for the Chinese text face served beside the WebAssembly frontend (`web-ui/internal/ui/style/font/LICENSE-OFL.txt`) |
 
 Alpine packages carry their licence in the package database
 (`/lib/apk/db/installed`) but do not install the licence text, so those texts
@@ -34,7 +34,7 @@ licence and its upstream, which is where the text comes from. `apk info -a
 | AmneziaWG Web UI (`/usr/bin/api`, the frontend under `/app/web-ui/wasm`) | the image's build, see the dated tag | AGPL-3.0 | this repository |
 | amneziawg-go (`/usr/bin/proxy`, the userspace tunnel engine) | `v3.1.20260828` | MIT | <https://github.com/amnezia-vpn/amneziawg-go/tree/v3.1.20260828> |
 | amneziawg-tools, `awg` and `awg-quick` (`/usr/bin/awg`, `/usr/bin/awg-quick`) | `v3.1.20260812` | GPL-2.0 | <https://github.com/amnezia-vpn/amneziawg-tools/tree/v3.1.20260812> |
-| Noto Sans SC (regular and bold, compiled into the frontend bundle) | as vendored in `web-ui/internal/ui/style/font/` | OFL-1.1 | <https://github.com/notofonts/noto-cjk> |
+| Noto Sans SC (regular and bold, served beside the frontend bundle in `web-ui/wasm/font/`) | as vendored in `web-ui/internal/ui/style/font/` | OFL-1.1 | <https://github.com/notofonts/noto-cjk> |
 
 `amneziawg-go` is a pure-Go program started as its own process, and `awg` /
 `awg-quick` are separate C and bash programs the panel executes: none of them is

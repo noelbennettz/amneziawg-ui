@@ -46,9 +46,19 @@ GO_BUILD_FLAGS = -trimpath -ldflags="-s -w -X $(VERSION_PKG).Version=$(VERSION) 
 # generated, and gitignored.
 WASM_DIR = web-ui/wasm
 
+# The CJK faces are not in the bundle: they weigh 17 MB, and only a browser that
+# reads Chinese, Japanese or Korean asks for them. They are served from font/
+# next to the bundle instead, which is what the wasm side fetches when
+# navigator.languages needs them, and they are copied here from the style
+# package so the source tree holds one copy. The OFL licence goes with them: the
+# files are redistributed by base image and release alike.
+FONT_DIR = web-ui/internal/ui/style/font
+
 .PHONY: web-ui
 web-ui: check-go web-ui-version web-ui-clean ## Build the Fyne WebAssembly frontend into web-ui/wasm/
 	cd web-ui && go tool fyne package -os wasm --name $(WASM_NAME) --release
+	@mkdir -p $(WASM_DIR)/font
+	@cp $(FONT_DIR)/NotoSansSC-Regular.otf $(FONT_DIR)/NotoSansSC-Bold.otf $(FONT_DIR)/LICENSE-OFL.txt $(WASM_DIR)/font/
 
 # The header shows the release the bundle was built from, and "fyne package"
 # reads that release out of FyneApp.toml (bumping Build there itself on every

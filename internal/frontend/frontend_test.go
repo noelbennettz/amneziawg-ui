@@ -27,8 +27,8 @@ func gzipped(t *testing.T, data string) []byte {
 func newApp(t *testing.T) *fiber.App {
 	t.Helper()
 	files := fstest.MapFS{
-		"index.html":     {Data: []byte("<html>loader</html>")},
-		"bundle.wasm.gz": {Data: gzipped(t, "\x00asm")},
+		"bundle.wasm.gz":                 {Data: gzipped(t, "\x00asm")},
+		"font/NotoSansSC-Regular.otf.gz": {Data: gzipped(t, "\x00otf")},
 	}
 	app := fiber.New()
 	assets := Open(files, "")
@@ -108,167 +108,92 @@ func TestEtagMatches(t *testing.T) {
 	}
 }
 
-// loaderFixture is the loader page "fyne package" writes, trimmed to the parts
-// this package cares about: the two stylesheets and the two spinners, each
-// chosen by prefers-color-scheme.
-const loaderFixture = `<!DOCTYPE html>
-<html>
-	<head>
-		<style>
-			body { text-align:center; }
-		</style>
-		<link rel="stylesheet" href="dark.css" media="(prefers-color-scheme: dark)" />
-		<link rel="stylesheet" href="light.css" media="(prefers-color-scheme: light)" />
-		<meta charset="utf-8">
-		<link rel="icon" type="image/png" href="icon.png">
-	</head>
-	<body scroll="no" style="overflow: hidden">
-		<div id="main">
-			<picture>
-				<source srcset="spinner_dark.gif" media="(prefers-color-scheme: dark)" />
-				<source srcset="spinner_light.gif" media="(prefers-color-scheme: light)" />
-				<img class="spinner" src="spinner_light.gif" />
-			</picture>
-		</div>
-	</body>
-</html>
-`
-
-func newLoaderApp(t *testing.T) *fiber.App {
-	t.Helper()
-	app := fiber.New()
-	assets := Open(fstest.MapFS{
-		"index.html": {Data: []byte(loaderFixture)},
-		"dark.css":   {Data: []byte("body { background-color: #141415; }")},
-		"light.css":  {Data: []byte("body { background-color: white; }")},
-	}, "")
-	assets.Mount(app)
-	return app
-}
-
-// The panel is always dark, so the loading screen in front of it has to be too:
-// a browser set to light would otherwise be shown a white page (and a spinner
-// drawn for one) between the login and the panel.
-func TestLoaderIsServedInTheDarkVariant(t *testing.T) {
-	app := newLoaderApp(t)
+// The loading screen is this package's own page now, not the one "fyne package"
+// emits: same panel palette, a Material 3 progress indicator instead of the GIF,
+// and the panel's six languages.
+func TestLoaderIsThePanelsOwnPage(t *testing.T) {
+	app := newApp(t)
 
 	for _, path := range []string{"/", "/index.html"} {
 		resp := get(t, app, path, nil)
 		body, _ := io.ReadAll(resp.Body)
+		page := string(body)
 
 		if resp.StatusCode != 200 || !strings.HasPrefix(resp.Header.Get("Content-Type"), "text/html") {
 			t.Errorf("%s: %d %q", path, resp.StatusCode, resp.Header.Get("Content-Type"))
 		}
-		// No choice is left to the browser: the dark stylesheet and the dark
-		// spinner are unconditional, and the light pair can never match.
-		if strings.Contains(string(body), "prefers-color-scheme") {
-			t.Errorf("%s: the page still asks the browser which variant it wants:\n%s", path, body)
+		// The panel's page colour, not the packaged page's #141415 or a white
+		// one: this is the last thing on screen before the canvas takes over.
+		if !strings.Contains(page, "#131314") {
+			t.Errorf("%s: the loader does not use the panel background (see #131314):\n%s", path, page)
 		}
-		if !strings.Contains(string(body), `href="dark.css" media="all"`) ||
-			!strings.Contains(string(body), `href="light.css" media="not all"`) ||
-			!strings.Contains(string(body), `srcset="spinner_dark.gif" media="all"`) {
-			t.Errorf("%s: the dark branch is not pinned:\n%s", path, body)
-		}
-		// The page colour is the panel's, and it is the last rule in the head so
-		// it wins against the dark stylesheet's own #141415.
-		if !strings.Contains(string(body), `<style>html{background:#131314;color-scheme:dark}body{background:#131314}</style></head>`) {
-			t.Errorf("%s: page colour not injected before </head>:\n%s", path, body)
-		}
-		if at, head := strings.Index(string(body), "</head>"), strings.Index(string(body), "<style>html{"); head < 0 || head > at {
-			t.Errorf("%s: injected style is not inside the head", path)
-		}
-	}
-}
-
-// A loader page without those markers is somebody else's page - a future "fyne
-// package" - and is served exactly as it is instead of being half-rewritten.
-func TestLoaderWithoutTheMarkersIsServedUntouched(t *testing.T) {
-	app := newApp(t) // its fixture is "<html>loader</html>"
-
-	for _, path := range []string{"/", "/index.html"} {
-		resp := get(t, app, path, nil)
-		body, _ := io.ReadAll(resp.Body)
-		if resp.StatusCode != 200 || string(body) != "<html>loader</html>" {
-			t.Errorf("%s: %d %q", path, resp.StatusCode, body)
-		}
-	}
-}
-
-// scriptedLoader is the packaged page as far as the policy is concerned: the
-// two stylesheets that are pinned, an inline <script> holding the startup code,
-// and the onload attribute that calls it.
-const scriptedLoader = `<!DOCTYPE html>
-<html>
-	<head>
-		<link rel="stylesheet" href="dark.css" media="(prefers-color-scheme: dark)" />
-		<link rel="stylesheet" href="light.css" media="(prefers-color-scheme: light)" />
-		<script>
-			function download_application() {
-				async_load("wasm_exec.js", function () {});
+		// The GIF is gone, and so is the browser's choice of variant.
+		for _, gone := range []string{"spinner_dark.gif", "spinner_light.gif", "prefers-color-scheme"} {
+			if strings.Contains(page, gone) {
+				t.Errorf("%s: the page still carries %q:\n%s", path, gone, page)
 			}
-		</script>
-	</head>
-	<body scroll="no" style="overflow: hidden" onload="download_application()">
-	</body>
-</html>
-`
+		}
+		// A Material 3 indeterminate indicator: an arc on a track, animated by
+		// the stylesheet rather than by a picture.
+		for _, want := range []string{`class="track"`, `class="arc"`, "@keyframes dash"} {
+			if !strings.Contains(page, want) {
+				t.Errorf("%s: the progress indicator has no %q", path, want)
+			}
+		}
+		// The bootstrap contract with fyne: the exec shim, the bundle, the
+		// hidden input the driver focuses, and the canvas watch.
+		for _, want := range []string{"wasm_exec.js", "bundle.wasm", `id="dummyEntry"`, `querySelector("canvas")`} {
+			if !strings.Contains(page, want) {
+				t.Errorf("%s: the page does not contain %q", path, want)
+			}
+		}
+		// The six translations are in the page and picked in the browser, so
+		// the loader speaks the same language as the panel behind it.
+		for _, want := range []string{"Loading the interface…", "正在載入介面…", "正在加载界面…", "Загрузка интерфейса…", "Chargement de l'interface…", "Cargando la interfaz…"} {
+			if !strings.Contains(page, want) {
+				t.Errorf("%s: the page has no %q", path, want)
+			}
+		}
+	}
+}
 
-// The page runs under a policy that allows one inline script by nonce, so the
-// packaged startup code has to be named by that nonce - and the call the page
-// used to make from an onload attribute has to come from inside it, because CSP
-// has no way to allow an attribute.
-func TestLoaderIsPreparedForTheNoncePolicy(t *testing.T) {
+// The page runs under a policy that allows exactly one inline script, so that
+// script has to carry the nonce - and the wasm side reads the same value back
+// out of the meta tag for the elements it injects itself.
+func TestLoaderCarriesTheNonce(t *testing.T) {
 	const nonce = "dGVzdC1ub25jZQ"
 
 	app := fiber.New()
-	assets := Open(fstest.MapFS{
-		"index.html": {Data: []byte(scriptedLoader)},
-		"dark.css":   {Data: []byte("body { color: white; }")},
-		"light.css":  {Data: []byte("body { color: black; }")},
-	}, nonce)
+	assets := Open(fstest.MapFS{}, nonce)
 	assets.Mount(app)
 
 	if got := assets.Nonce(); got != nonce {
 		t.Fatalf("Nonce() = %q, want %q", got, nonce)
 	}
 
-	resp := get(t, app, "/", nil)
-	raw, _ := io.ReadAll(resp.Body)
-	body := string(raw)
-
+	body, _ := io.ReadAll(get(t, app, "/", nil).Body)
+	page := string(body)
 	for _, want := range []string{
 		`<script nonce="` + nonce + `">`,
 		`<meta name="csp-nonce" content="` + nonce + `">`,
-		`window.addEventListener('load', download_application);`,
 	} {
-		if !strings.Contains(body, want) {
-			t.Errorf("the served page does not contain %q:\n%s", want, body)
+		if !strings.Contains(page, want) {
+			t.Errorf("the served page does not contain %q:\n%s", want, page)
 		}
 	}
-	if strings.Contains(body, "onload=") {
-		t.Errorf("the page still calls its script from an onload attribute:\n%s", body)
+	if strings.Contains(page, "{{") {
+		t.Errorf("a placeholder was left in the page:\n%s", page)
 	}
-}
 
-// A page whose packaged script no longer sits where the rewrite expects it is
-// not claimed as ready: the policy then has to fall back to allowing inline
-// scripts, or the panel would not start at all.
-func TestLoaderWithoutTheScriptIsNotClaimedAsReady(t *testing.T) {
-	app := fiber.New()
-	assets := Open(fstest.MapFS{
-		"index.html": {Data: []byte(loaderFixture)},
-		"dark.css":   {Data: []byte("body { color: white; }")},
-		"light.css":  {Data: []byte("body { color: black; }")},
-	}, "dGVzdC1ub25jZQ")
-	assets.Mount(app)
-
-	if got := assets.Nonce(); got != "" {
-		t.Errorf("Nonce() = %q, want empty", got)
+	// Without a nonce the attribute is gone and the policy falls back to
+	// allowing inline scripts; the page has to stay usable that way too.
+	plain := Open(fstest.MapFS{}, "")
+	if plain.Nonce() != "" {
+		t.Errorf("Nonce() = %q without one", plain.Nonce())
 	}
-	resp := get(t, app, "/", nil)
-	raw, _ := io.ReadAll(resp.Body)
-	if strings.Contains(string(raw), "csp-nonce") {
-		t.Errorf("a page that was not prepared still names a nonce:\n%s", raw)
+	plainPage := string(plain.loader)
+	if strings.Contains(plainPage, "csp-nonce") || strings.Contains(plainPage, "nonce=") {
+		t.Errorf("a page without a nonce still names one:\n%s", plainPage)
 	}
 }
 
@@ -281,11 +206,7 @@ func TestLoaderETagFollowsTheNonce(t *testing.T) {
 	etagOf := func(nonce string) string {
 		t.Helper()
 		app := fiber.New()
-		Open(fstest.MapFS{
-			"index.html": {Data: []byte(scriptedLoader)},
-			"dark.css":   {Data: []byte("body { color: white; }")},
-			"light.css":  {Data: []byte("body { color: black; }")},
-		}, nonce).Mount(app)
+		Open(fstest.MapFS{}, nonce).Mount(app)
 		return get(t, app, "/", nil).Header.Get("ETag")
 	}
 
@@ -296,11 +217,7 @@ func TestLoaderETagFollowsTheNonce(t *testing.T) {
 
 	// Both names answer with the page that is served, so both carry its tag.
 	app := fiber.New()
-	Open(fstest.MapFS{
-		"index.html": {Data: []byte(scriptedLoader)},
-		"dark.css":   {Data: []byte("body { color: white; }")},
-		"light.css":  {Data: []byte("body { color: black; }")},
-	}, "bm9uY2U").Mount(app)
+	Open(fstest.MapFS{}, "bm9uY2U").Mount(app)
 	slash := get(t, app, "/", nil).Header.Get("ETag")
 	index := get(t, app, "/index.html", nil).Header.Get("ETag")
 	if slash != index {
@@ -334,5 +251,40 @@ func TestPackedAssetAnswersHead(t *testing.T) {
 	}
 	if got := resp.Header.Get("Content-Type"); !strings.Contains(got, "wasm") {
 		t.Errorf("Content-Type = %q, want the wasm type", got)
+	}
+}
+
+// The CJK faces ship the way the bundle does - gzipped on disk, served under
+// the unpacked name - but from a subdirectory, which the packing and the
+// validator both have to walk into or a Chinese panel would fetch a 404 and
+// draw boxes. They are also worth caching: the browser has to keep them across
+// an upgrade, so they revalidate by the same content hash.
+func TestPackedFontIsServedFromSubdirectory(t *testing.T) {
+	app := newApp(t)
+
+	resp := get(t, app, "/font/NotoSansSC-Regular.otf", map[string]string{"Accept-Encoding": "gzip"})
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != 200 || resp.Header.Get("Content-Encoding") != "gzip" {
+		t.Fatalf("gzip client: %d %v", resp.StatusCode, resp.Header)
+	}
+	// Go's mime table calls .otf an OpenDocument formula template; Open fixes
+	// that, or a browser would be told the panel's face is a spreadsheet.
+	if ct := resp.Header.Get("Content-Type"); ct != "font/otf" {
+		t.Errorf("Content-Type = %q, want font/otf", ct)
+	}
+	raw, err := gzip.NewReader(bytes.NewReader(body))
+	if err != nil {
+		t.Fatalf("body is not gzip: %v", err)
+	}
+	if inflated, _ := io.ReadAll(raw); string(inflated) != "\x00otf" {
+		t.Errorf("inflated body = %q", inflated)
+	}
+
+	tag := resp.Header.Get("ETag")
+	if tag == "" || resp.Header.Get("Cache-Control") != "no-cache" {
+		t.Fatalf("no validator for a packed font: %q %q", tag, resp.Header.Get("Cache-Control"))
+	}
+	if again := get(t, app, "/font/NotoSansSC-Regular.otf", map[string]string{"If-None-Match": tag}); again.StatusCode != http.StatusNotModified {
+		t.Errorf("a matching tag = %d, want 304", again.StatusCode)
 	}
 }

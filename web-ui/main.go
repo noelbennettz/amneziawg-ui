@@ -28,6 +28,16 @@ func main() {
 		fyne.LogError("loading translations", err)
 	}
 
+	// The CJK faces are not in the binary: they weigh 17 MB and only a browser
+	// that reads Chinese, Japanese or Korean needs them. This decides from
+	// navigator.languages and fetches them before the first widget exists, so
+	// no Chinese string is ever drawn with a face that has no glyph for it.
+	// A browser that needs none, and one whose download failed, keep Fyne's own
+	// Latin faces; see style.NeedsCJK.
+	if err := installCJKFaces(); err != nil {
+		fyne.LogError("loading the Chinese face", err)
+	}
+
 	// Upstream workarounds next: they have to be in place before the window
 	// takes any input, and one of them replaces the app's clipboard.
 	fixes.Install(application)
