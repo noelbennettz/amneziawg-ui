@@ -1,8 +1,10 @@
 //go:build js && wasm
 
-// Package browser is the page's bridge to the JavaScript host: where the
-// app was served from, how to open a link, write the clipboard and hand the
-// viewer a file. Nothing else in the UI touches syscall/js.
+// Package browser is the UI's whole view of the page: where the app was
+// served from, how to open a link, write the clipboard and hand the viewer a
+// file, plus the page-level setup a wasm build needs before the first frame
+// (Install: viewport, touch, wheel, keyboard, clipboard and repaint - see
+// install.go). Nothing else in the UI touches syscall/js.
 package browser
 
 import (

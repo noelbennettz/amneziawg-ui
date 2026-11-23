@@ -1,6 +1,6 @@
 //go:build !js || !wasm
 
-package fixes
+package browser
 
 // installWheelInput is a no-op off the browser: the wheel deltas the page has
 // to convert are the ones fyne's wasm driver reads through glfw-js, see

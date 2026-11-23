@@ -1,6 +1,6 @@
 //go:build js && wasm
 
-package fixes
+package browser
 
 import (
 	"syscall/js"
@@ -23,7 +23,7 @@ import (
 // (2 bytes), "é" or "€" do not: charCallback is never called and the rune
 // never reaches fyne.Focusable.TypedRune. Only the wasm driver is affected.
 //
-// The workaround is a second "keydown" listener on the document - glfw-js
+// What this package does instead is a second "keydown" listener on the document - glfw-js
 // calls preventDefault but not stopPropagation, so the event still reaches us
 // - delivering exactly the runes glfw-js dropped: ASCII is left alone, or we
 // would get every latin character twice. Delivery goes through `go`, as it

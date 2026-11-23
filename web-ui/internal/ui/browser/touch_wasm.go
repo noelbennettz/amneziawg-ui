@@ -1,6 +1,6 @@
 //go:build js && wasm
 
-package fixes
+package browser
 
 import (
 	"syscall/js"
@@ -213,4 +213,68 @@ func isTouchDevice() bool {
 		}
 	}
 	return js.Global().Get("navigator").Get("maxTouchPoints").Int() > 0
+}
+
+// installTouchInput gives a phone two things the wasm driver does not: a
+// keyboard that appears when a field is tapped, and a page that scrolls when
+// dragged.
+//
+// The keyboard: glfw-js ships the hook that raises it - showVirtualKeyboard in
+// fyne's device_wasm.go focuses the loader page's #dummyEntry input - but
+// nothing calls it, so a tapped entry gets a caret and no keyboard, and the
+// keystrokes that never arrive are the ones the user is typing. The input
+// itself is parked at top:-100pt, which a phone will not focus either: a
+// control that is not on screen cannot take focus. So the input is moved into
+// the corner at a pixel square, focused when a Fyne widget takes focus, and its
+// own events are fed back into Fyne - a soft keyboard reports what was typed
+// through "input" events, never through the keydown codes the driver reads.
+//
+// The scrolling: glfw-js's touch handler is commented out upstream, so a drag
+// on the canvas does nothing and the page cannot be scrolled at all on a phone.
+// Touches are turned into the wheel events the driver does handle.
+//
+// Neither applies to a desktop browser: there a hardware keyboard would be
+// typed twice (the driver's keydown and the input's own event), and a mouse
+// does not need dragging turned into wheeling.
+func installTouchInput() {
+	if !isTouchDevice() {
+		return
+	}
+
+	js.Global().Set("awgFocused", js.FuncOf(func(js.Value, []js.Value) any {
+		return js.ValueOf(widgetFocused())
+	}))
+	js.Global().Set("awgType", js.FuncOf(func(_ js.Value, args []js.Value) any {
+		if len(args) == 0 {
+			return nil
+		}
+		text := args[0].String()
+		go func() {
+			for _, r := range text {
+				typeRune(r)
+			}
+		}()
+		return nil
+	}))
+	js.Global().Set("awgKey", js.FuncOf(func(_ js.Value, args []js.Value) any {
+		if len(args) == 0 {
+			return nil
+		}
+		name := args[0].String()
+		go typeKey(name)
+		return nil
+	}))
+
+	document := js.Global().Get("document")
+	script := document.Call("createElement", "script")
+	script.Set("textContent", touchScript)
+	// The page is served under a policy that allows one inline script by
+	// nonce, and this is the second one. The value is the server's, put in
+	// the loader page's markup for exactly this.
+	if nonce := CSPNonce(); nonce != "" {
+		script.Set("nonce", nonce)
+	}
+	document.Get("head").Call("appendChild", script)
+
+	go followFocus()
 }

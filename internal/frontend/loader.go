@@ -37,7 +37,7 @@ const loaderHTML = `<!DOCTYPE html>
 <link rel="icon" type="image/png" href="icon.png">
 <style>
 * { box-sizing: border-box; }
-html, body { margin: 0; padding: 0; height: 100%; background: #131314; }
+html, body { margin: 0; padding: 0; height: 100%; background: #131314; -webkit-tap-highlight-color: transparent; }
 body {
 	color: #e3e3e3; text-align: center;
 	font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;

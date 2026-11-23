@@ -1,6 +1,6 @@
 //go:build js && wasm
 
-package fixes
+package browser
 
 import (
 	"strings"
@@ -33,7 +33,7 @@ import (
 // makes it look like a paste bug rather than a crash. Every browser is
 // affected, since none of them expose navigator.clipboard over plain http.
 //
-// The workaround does not need the async API at all. Ctrl/Cmd+V, +C and +X
+// The panel does not need the async API at all. Ctrl/Cmd+V, +C and +X
 // (and Shift+Insert / Shift+Delete) are caught on the document in the CAPTURE
 // phase, which runs before glfw-js's own keydown listener no matter which of
 // the two was registered first, and stopped there: glfw-js never sees the

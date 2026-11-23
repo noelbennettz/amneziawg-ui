@@ -1580,7 +1580,7 @@ lead with the same blue. The page also paints `html` as well as `body` with
 `#131314`, declares `color-scheme: dark` (the scrollbar, the overscroll area and
 the controls the browser draws itself are otherwise light) and sizes itself with
 `100dvh` where it is known - the same three things the panel does for itself in
-`web-ui/internal/fixes/mobile_wasm.go`.
+`web-ui/internal/ui/browser/viewport_wasm.go`.
 
 The form posts the user and the password. The pair is checked in constant time
 against `WEB_UI_USER` and the argon2id hash the panel holds — from

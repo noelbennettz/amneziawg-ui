@@ -1,6 +1,6 @@
 //go:build !js || !wasm
 
-package fixes
+package browser
 
 import "fyne.io/fyne/v2"
 

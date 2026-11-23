@@ -127,6 +127,12 @@ func TestLoaderIsThePanelsOwnPage(t *testing.T) {
 		if !strings.Contains(page, "#131314") {
 			t.Errorf("%s: the loader does not use the panel background (see #131314):\n%s", path, page)
 		}
+		// A tap on a phone used to flash the browser's own highlight over the
+		// whole page; the canvas covers the viewport, so the panel turns it off
+		// here and again in the stylesheet the wasm side injects.
+		if !strings.Contains(page, "-webkit-tap-highlight-color: transparent") {
+			t.Errorf("%s: a tap would still flash the browser highlight", path)
+		}
 		// The GIF is gone, and so is the browser's choice of variant.
 		for _, gone := range []string{"spinner_dark.gif", "spinner_light.gif", "prefers-color-scheme"} {
 			if strings.Contains(page, gone) {

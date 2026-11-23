@@ -10,8 +10,8 @@ import (
 	"fyne.io/fyne/v2/app"
 	"fyne.io/fyne/v2/lang"
 
-	"amneziawg-web-ui/web-ui/internal/fixes"
 	"amneziawg-web-ui/web-ui/internal/ui"
+	"amneziawg-web-ui/web-ui/internal/ui/browser"
 )
 
 // The UI strings, one JSON file per language (en.json is the fallback). The
@@ -38,9 +38,10 @@ func main() {
 		fyne.LogError("loading the Chinese face", err)
 	}
 
-	// Upstream workarounds next: they have to be in place before the window
-	// takes any input, and one of them replaces the app's clipboard.
-	fixes.Install(application)
+	// The page side has to be ready before the window takes any input: one of
+	// these calls replaces the app's clipboard, and another has to have wrapped
+	// document.addEventListener before the driver registers its own listeners.
+	browser.Install(application)
 
 	// One theme, always dark - the page is served with a matching dark
 	// loader, so the app never flashes a light background.

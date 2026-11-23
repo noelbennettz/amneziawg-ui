@@ -46,11 +46,6 @@ func SetFaces(regular, bold []byte) {
 	}
 }
 
-// FacesLoaded reports whether the CJK faces are in place.
-func FacesLoaded() bool {
-	return textFace != nil
-}
-
 // NeedsCJK reports whether the CJK face has to be fetched for a browser that
 // lists these languages in navigator.languages, most wanted first.
 //

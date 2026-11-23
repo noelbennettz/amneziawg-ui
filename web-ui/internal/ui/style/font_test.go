@@ -64,10 +64,6 @@ func TestThemeUsesTheCJKFacesOnlyOnceLoaded(t *testing.T) {
 	if got := th.Font(fyne.TextStyle{}); got != stock {
 		t.Errorf("before loading, Font() = %v, want the stock face %v", got, stock)
 	}
-	if FacesLoaded() {
-		t.Error("FacesLoaded() is true before SetFaces")
-	}
-
 	regular, err := testFaces.ReadFile("font/NotoSansSC-Regular.otf")
 	if err != nil {
 		t.Fatal(err)
@@ -77,10 +73,6 @@ func TestThemeUsesTheCJKFacesOnlyOnceLoaded(t *testing.T) {
 		t.Fatal(err)
 	}
 	SetFaces(regular, bold)
-
-	if !FacesLoaded() {
-		t.Error("FacesLoaded() is false after SetFaces")
-	}
 	for _, style := range []fyne.TextStyle{{}, {Bold: true}, {Italic: true}, {Bold: true, Italic: true}} {
 		if got := th.Font(style); got != textFace && got != boldFace {
 			t.Errorf("Font(%+v) = %v, want one of the CJK faces", style, got)

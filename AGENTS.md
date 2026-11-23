@@ -50,10 +50,15 @@ the server did not". The backend's `validateObfuscationParams` and
 `validateISettings` are thin wrappers that turn the shared problem lists into
 one error.
 
-The one other frontend package is `web-ui/internal/fixes`: workarounds for
-upstream bugs in fyne and its wasm driver, one per file, each documenting the
-bug and when it can be dropped. `main.go` calls `fixes.Install()` before the
-window starts; keep such patches out of the UI code.
+`web-ui/internal/ui/browser` is the frontend's whole view of the page, and it
+holds two kinds of thing. The DOM helpers the UI calls by name (the origin,
+opening a link, handing over a file) and the page-level setup: `main.go` calls
+`browser.Install()` before the window starts, which adds the viewport meta,
+the on-screen keyboard, drag scrolling, a wheel event per frame, non-ASCII key
+delivery, a clipboard that survives plain http, and the repaint a hidden tab
+needs. Each of those is its own file and opens with the upstream behaviour it
+answers and when it can be dropped, because they are the panel's half of the
+browser contract - not patches kept away from the UI code.
 
 Build the bundle with `make web-ui`; it lands in `web-ui/wasm`, which the
 server serves straight off disk under the relative path `./web-ui/wasm`.
@@ -125,7 +130,7 @@ break, so it is written down here:
 - the canvas is appended to `document.body` when the app starts, and the page
   hides itself on seeing it - there is no callback from the module
 - `#dummyEntry` is the input fyne's driver focuses for a soft keyboard; the
-  fixes in `web-ui/internal/fixes` look it up by that id
+  touch handling in `web-ui/internal/ui/browser` looks it up by that id
 - the `<meta name="csp-nonce">` is what the bundle reads back for the styles and
   scripts it injects (see `web-ui/internal/ui/browser`)
 

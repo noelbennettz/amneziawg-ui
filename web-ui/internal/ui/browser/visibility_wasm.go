@@ -1,6 +1,6 @@
 //go:build js && wasm
 
-package fixes
+package browser
 
 import (
 	"syscall/js"
@@ -31,7 +31,7 @@ import (
 // works because it marks the canvas dirty directly, and the next paint walks
 // the whole tree and re-registers every object.
 //
-// The workaround does the same thing on purpose: when the document reports
+// The panel does the same thing on purpose: when the document reports
 // itself visible again, every window's content and overlays are refreshed
 // through the canvas itself (fyne.Canvas.Refresh does not look the canvas up)
 // on the next turn of the draw loop - that is after the Clean that empties
