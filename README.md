@@ -1,9 +1,9 @@
 # AmneziaWG Web UI — a self-hosted admin panel for AmneziaWG VPN in Docker
 
-> Applies to the current `main`, published under the dated image tags
-> (`ghcr.io/noelbennettz/amneziawg-ui:2026.11.18` at the time of writing). An
-> older tag keeps its documentation on the project site under
-> `versions/<tag>/`.
+> This tree documents the current `main`, which is what `latest` and the dated
+> image tags point at. There are no numbered releases, so there is no
+> per-version documentation; each image records the commit it was built from —
+> see [docs/versions/](docs/versions/README.md).
 
 [![Container image](https://img.shields.io/badge/ghcr.io-amneziawg--ui-blue?logo=github)](https://github.com/noelbennettz/amneziawg-ui/pkgs/container/amneziawg-ui)
 [![Website](https://img.shields.io/badge/website-noelbennettz.github.io%2Famneziawg--ui-5b7cff)](https://noelbennettz.github.io/amneziawg-ui/)
