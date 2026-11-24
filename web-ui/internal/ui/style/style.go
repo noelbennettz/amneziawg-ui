@@ -3,10 +3,11 @@
 // applies the same values to the stock widgets.
 //
 // The look is Material 3 (dark): neutral near-black surfaces, one blue accent,
-// large corner radii, no borders - separation comes from tonal steps and space,
-// not from hairlines - and a type scale of regular-weight sizes rather than
-// bold everywhere. Every component colours its own canvas objects from the
-// exported values, so a shade is changed in one place.
+// the M3 shape scale (8-point chips, 16-point fields, 28-point cards and
+// dialogs), no borders - separation comes from tonal steps and space, not from
+// hairlines - and a type scale of regular-weight sizes rather than bold
+// everywhere. Every component colours its own canvas objects from the exported
+// values, so a shade is changed in one place.
 package style
 
 import (
@@ -24,6 +25,7 @@ var (
 	SurfaceAlt  = rgb(0x2a2b2d) // inputs, chips, secondary buttons
 	SurfaceHigh = rgb(0x333537) // menus, snackbar, floating layers
 	Border      = rgb(0x3c4043) // the rare hairline that is still wanted
+	Outline     = rgb(0x8e918f) // the M3 outline role: strokes of controls, not dividers
 
 	Text  = rgb(0xe3e3e3) // on-surface
 	Muted = rgb(0xc4c7c5) // on-surface-variant
@@ -52,12 +54,15 @@ var (
 )
 
 // Corner radii, in points. XL is what cards and dialogs use, LG the inner
-// blocks and the server/client rows, MD the text fields and menus.
+// blocks and the server/client rows, MD the text fields and menus, SM the
+// selection and the snackbar, and XS the chip - M3 chips are 8-point
+// rectangles, not the fully rounded pills of an older iOS-flavoured look.
 const (
 	RadiusXL float32 = 28
 	RadiusLG float32 = 24
 	RadiusMD float32 = 16
 	RadiusSM float32 = 12
+	RadiusXS float32 = 8
 )
 
 // The spacing scale, in points.
@@ -83,15 +88,20 @@ const (
 // window again.
 const Breakpoint float32 = 1024
 
-// The type scale, in points. Titles are regular weight: M3 builds hierarchy
-// out of size and space, not out of bolding everything.
+// The type scale, in points, following the M3 type roles rather than fyne's
+// default sizes: Display is the one headline figure of a screen, Headline the
+// figures of the small tiles, Title the page and section titles, Body the
+// running text and Label the text of a chip, a button or a field caption.
+// Titles are regular weight: M3 builds hierarchy out of size and space, not out
+// of bolding everything.
 const (
-	SizeDisplay float32 = 28
-	SizeTitle   float32 = 22
-	SizeHeading float32 = 20
-	SizeBody    float32 = 15
-	SizeLabel   float32 = 13
-	SizeCaption float32 = 12
+	SizeDisplay  float32 = 36
+	SizeHeadline float32 = 24
+	SizeTitle    float32 = 22
+	SizeHeading  float32 = 20
+	SizeBody     float32 = 15
+	SizeLabel    float32 = 13
+	SizeCaption  float32 = 12
 )
 
 // rgb builds an opaque NRGBA from its RGB hex.

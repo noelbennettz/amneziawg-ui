@@ -40,6 +40,19 @@ func TestWrapLinesNeverEndsOnASeparator(t *testing.T) {
 	}
 }
 
+// A text that fits its minimum width in one line is the case where the wrapped
+// form equals the source. apply used to compare the two, decide nothing had
+// changed and leave the box empty, so a short label - "Advanced settings" next
+// to its switch - was never drawn at all.
+func TestParagraphDrawsShortText(t *testing.T) {
+	test.NewApp()
+
+	p := NewParagraph("Advanced settings", 13, nil, fyne.TextStyle{}, 140)
+	if len(p.box.Objects) != 1 {
+		t.Fatalf("the paragraph holds %d text objects, want one", len(p.box.Objects))
+	}
+}
+
 // The paragraph reports the height of the lines it actually draws at its
 // minimum width, which is what keeps a long hint from making its card tall.
 func TestParagraphMinSizeFollowsItsWrappedText(t *testing.T) {

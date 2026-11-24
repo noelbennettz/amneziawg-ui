@@ -154,9 +154,9 @@ func TestShowError(t *testing.T) {
 	}
 }
 
-// The message is a word-wrapped, centred label: a label of its own would be as
-// wide as the sentence, and as tall as one word per line where the card is
-// narrow.
+// The message is a word-wrapped label aligned to the start of the card, where
+// M3 puts supporting text: a label of its own would be as wide as the sentence,
+// and as tall as one word per line where the card is narrow.
 func TestWrappedMessage(t *testing.T) {
 	label, ok := wrappedMessage("the server did not answer").(*widget.Label)
 	if !ok {
@@ -165,7 +165,7 @@ func TestWrappedMessage(t *testing.T) {
 	if label.Text != "the server did not answer" {
 		t.Errorf("wrappedMessage text = %q", label.Text)
 	}
-	if label.Wrapping != fyne.TextWrapWord || label.Alignment != fyne.TextAlignCenter {
+	if label.Wrapping != fyne.TextWrapWord || label.Alignment != fyne.TextAlignLeading {
 		t.Errorf("wrappedMessage wrapping = %v, alignment = %v", label.Wrapping, label.Alignment)
 	}
 }

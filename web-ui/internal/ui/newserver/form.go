@@ -219,7 +219,6 @@ func New(e *env.Env, state State, reflow func()) *Form {
 	f.simpleNote = widget.NewLabel(lang.L("Subnet, MTU, DNS, endpoint and the AmneziaWG 3.1 obfuscation parameters are " +
 		"generated automatically. Tick \"Advanced settings\" to fill them in yourself."))
 	f.simpleNote.Wrapping = fyne.TextWrapWord
-	f.simpleNote.TextStyle = fyne.TextStyle{Italic: true}
 
 	f.errors = widget.NewLabel("")
 	f.errors.Wrapping = fyne.TextWrapWord

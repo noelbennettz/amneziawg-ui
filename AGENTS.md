@@ -87,6 +87,12 @@ Two things about that are not obvious:
   (`other`), Russian four, so `{{.Count}} clients` is an object in some files
   and a string in others. A form the language needs and the file lacks falls
   back to the English key with its template unexpanded.
+- **A key is the exact string the code passes to `lang.L`/`lang.N`.** Fyne
+  answers an unknown key with the key itself, so a key that drifts from the
+  source - a hint that was reworded, a status chip asking for `active` while the
+  files carry `ACTIVE` - leaves that string in English in every language without
+  any error. `TestTranslationsHaveTheSameKeys` only compares the files with each
+  other; when a string moves, check it against the source too.
 
 ### The text face
 
@@ -109,8 +115,10 @@ faces and downloads a 12 MB bundle instead of 26. Consequences worth knowing:
 - `internal/frontend` gzips both files next to the bundle in the image and walks
   into `font/` for the packing and the ETags; `Open` also registers `.otf` as
   `font/otf`, because Go's mime table calls it an OpenDocument formula template
-- italic text uses the regular face - Noto Sans SC has no italic cut, and the
-  alternative was slanted English hints next to unreadable Chinese ones
+- italic requests get the regular face - Noto Sans SC has no italic cut, and a
+  slanted English hint next to an unreadable Chinese one is worse than no slant
+  at all. Nothing in the panel asks for one any more: the M3 type scale has no
+  italic, so hints and notes are told apart by colour and size
 - monospace stays on fyne's DejaVu face for the config view's column
   alignment, so Chinese in a `.conf` comment is boxes; keep that view ASCII
 

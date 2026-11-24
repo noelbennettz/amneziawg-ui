@@ -43,7 +43,12 @@ type Paragraph struct {
 // NewParagraph builds wrapped text with the given type size and colour, no
 // narrower than minWidth.
 func NewParagraph(text string, size float32, c color.Color, style fyne.TextStyle, minWidth float32) *Paragraph {
-	p := &Paragraph{full: text, size: size, style: style, color: c, minWidth: minWidth, lines: []string{text}}
+	// lines starts nil so that the first apply always draws: a text that fits
+	// minWidth in one line wraps to a single line identical to the source,
+	// and seeding lines with the source would make apply report "unchanged"
+	// and leave the box empty - which is how a short label like "Advanced
+	// settings" next to its switch was never drawn.
+	p := &Paragraph{full: text, size: size, style: style, color: c, minWidth: minWidth}
 	p.ExtendBaseWidget(p)
 	p.box = container.New(layout.NewCustomPaddedVBoxLayout(0))
 	p.apply(p.wrap(minWidth))

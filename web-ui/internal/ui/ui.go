@@ -62,6 +62,7 @@ type UI struct {
 	snackbar *snackbar
 
 	publicIP   *canvas.Text
+	ipCaption  *canvas.Text
 	statusSlot *fyne.Container
 	summary    *canvas.Text
 
@@ -213,15 +214,18 @@ func (u *UI) refreshNotice() {
 }
 
 func (u *UI) header() fyne.CanvasObject {
+	// The M3 top app bar carries its title at title-large (22) in every
+	// window size; the version line under it is the supporting text.
 	u.title = canvas.NewText("AmneziaWG Web UI", style.Text)
-	u.title.TextSize = style.SizeDisplay
+	u.title.TextSize = style.SizeTitle
 
 	version := widgets.SmallText(u.version(), style.Muted)
 	version.TextStyle = fyne.TextStyle{Monospace: true}
 
 	u.publicIP = widgets.MonoText(widgets.LabelText(lang.L("unknown"), style.Muted))
+	u.ipCaption = widgets.LabelText(lang.L("Public IP"), style.Muted)
 	ipChip := widgets.Pill(style.SurfaceAlt, container.NewHBox(
-		widgets.LabelText(lang.L("Public IP"), style.Muted),
+		u.ipCaption,
 		container.NewCenter(u.publicIP),
 	))
 
@@ -251,8 +255,9 @@ func (u *UI) header() fyne.CanvasObject {
 		container.NewCenter(u.logout),
 	)
 
-	// Padding rather than a centre layout: a 28pt canvas.Text needs a few
-	// points of slack above it, or the top of the glyphs is cut by the row.
+	// Padding rather than a centre layout: a canvas.Text draws from the top
+	// of its box, so a 22pt line needs a few points of slack above it, or the
+	// top of the glyphs is cut by the row.
 	u.titleBlock = container.NewVBox(
 		widgets.Inset(u.title, style.Space1, style.Space1), widgets.Inset(version, style.Space1, 0))
 
@@ -565,18 +570,24 @@ func (u *UI) reflow(width float32) {
 	bar.narrow = u.narrow
 	u.facts.Layout.(*factsLayout).narrow = u.narrow
 
-	// M3's compact top app bar sets its title at 22, not at the 28 of a
-	// desktop window, and drops the labels of its actions down to icons: on
-	// a phone the facts of the bar have to share 390 points between them.
-	u.title.TextSize = style.SizeDisplay
+	// M3's compact top app bar drops the labels of its actions down to
+	// icons: on a phone the facts of the bar have to share 390 points
+	// between them. The title keeps its title-large size, which M3 sets at
+	// 22 in both layouts, so only the buttons change here.
 	u.refresh.SetText(lang.L("Refresh IP"))
 	u.logout.SetText(lang.L("Log out"))
+	caption := lang.L("Public IP")
 	if u.narrow {
-		u.title.TextSize = style.SizeTitle
 		u.refresh.SetText("")
 		u.logout.SetText("")
+		// The address chip drops its caption for the same reason the actions
+		// drop their labels: with "Публичный IP" in front of it, the chip,
+		// the status light and the two buttons no longer fit a 390-point
+		// phone in Russian or Spanish. The value is an address on its own.
+		caption = ""
 	}
-	u.title.Refresh()
+	u.ipCaption.Text = caption
+	u.ipCaption.Refresh()
 
 	u.bar.Refresh()
 	u.charts.SetNarrow(u.narrow)

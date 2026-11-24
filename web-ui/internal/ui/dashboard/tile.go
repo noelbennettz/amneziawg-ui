@@ -38,7 +38,7 @@ func newHero(capacity int) *hero {
 	subtle := style.WithAlpha(style.OnPrimaryContainer, 0xd0)
 	h := &hero{
 		title: caption("", style.OnPrimaryContainer, style.SizeLabel),
-		value: caption("—", style.OnPrimaryContainer, 38),
+		value: caption("—", style.OnPrimaryContainer, style.SizeDisplay),
 		in:    caption("", subtle, style.SizeLabel),
 		out:   caption("", subtle, style.SizeLabel),
 		total: caption("", subtle, style.SizeLabel),
@@ -103,7 +103,7 @@ type tile struct {
 func newTile(label, footCaption string, tint color.NRGBA, capacity int, ceiling float64, withChart bool) *tile {
 	t := &tile{
 		caption: caption(label, style.Muted, style.SizeLabel),
-		value:   caption("—", style.Text, 26),
+		value:   caption("—", style.Text, style.SizeHeadline),
 		foot:    caption(footCaption, style.Muted, style.SizeCaption),
 	}
 

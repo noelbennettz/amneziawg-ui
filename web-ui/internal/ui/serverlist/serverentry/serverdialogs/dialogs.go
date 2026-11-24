@@ -61,9 +61,12 @@ func presentConfig(e *env.Env, info api.ServerInfo) {
 
 	basics := widgets.InfoGrid(rows)
 
+	// The badge keeps the case the translation gives it, the same way the
+	// card's status chip does: upper case would shout in some languages and
+	// not in others, and the translator is the one who knows which.
 	head := container.NewHBox(
 		widgets.SectionTitle(info.Name),
-		container.NewCenter(widgets.Badge(strings.ToUpper(lang.L(info.Status)), statusColor)),
+		container.NewCenter(widgets.Badge(lang.L(info.Status), statusColor)),
 	)
 
 	body := container.NewVBox(head, basics)

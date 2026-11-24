@@ -99,8 +99,10 @@ func ShowError(win fyne.Window, err error) {
 	view.Show()
 }
 
+// wrappedMessage is the dialog body: M3 sets supporting text start-aligned,
+// not centred, so a two-line message reads as a sentence rather than a banner.
 func wrappedMessage(message string) fyne.CanvasObject {
-	return &widget.Label{Text: message, Alignment: fyne.TextAlignCenter, Wrapping: fyne.TextWrapWord}
+	return &widget.Label{Text: message, Alignment: fyne.TextAlignLeading, Wrapping: fyne.TextWrapWord}
 }
 
 // messageSize is wide enough for the message on one line, capped at 600px and

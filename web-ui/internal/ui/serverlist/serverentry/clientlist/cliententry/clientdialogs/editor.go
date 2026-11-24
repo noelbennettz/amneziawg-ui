@@ -87,15 +87,12 @@ func ShowEditor(e *env.Env, server api.Server, client *api.Client) {
 		container.NewCenter(widgets.SectionTitle(lang.L("Signature packets"))),
 		iGrid,
 	))
-	iNote := widget.NewLabel(lang.L("Each value describes one packet sent before the handshake, as a sequence of tags: " +
+	iGrid.Add(widgets.MutedNote(lang.L("Each value describes one packet sent before the handshake, as a sequence of tags: " +
 		"<b 0x...> static bytes, <t> a 4-byte timestamp, <r N> random bytes, <rc N> random letters, <rd N> random digits " +
 		"(N up to 1000). Example: <b 0xd100000001><rc 8><t><r 50>. These are client-only parameters, they are never " +
 		"written into the server config; empty values are skipped, and an empty I1 turns the whole set off. Keep each " +
 		"packet under about 1472 bytes or it is fragmented on the way out, which is the signature this is meant to avoid. " +
-		"A config that grows past the QR code limit can still be downloaded as a file."))
-	iNote.Wrapping = fyne.TextWrapWord
-	iNote.TextStyle = fyne.TextStyle{Italic: true}
-	iGrid.Add(iNote)
+		"A config that grows past the QR code limit can still be downloaded as a file.")))
 	if !applyI.Checked() {
 		iBox.Hide()
 	}

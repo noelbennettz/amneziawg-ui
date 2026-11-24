@@ -220,9 +220,11 @@ func (a *app) start() {
 	must(a.t, a.page.Locator("canvas").WaitFor(playwright.LocatorWaitForOptions{
 		Timeout: new(float64(bootTimeout.Milliseconds())),
 	}))
-	// "fyne package" generates the loader page: it hides #main as soon as
-	// Fyne puts its canvas up.
-	_, err = a.page.WaitForFunction(`() => document.getElementById('main')?.style.display === 'none'`, nil,
+	// The loader page (internal/frontend/loader.go) watches for the canvas
+	// Fyne appends and marks itself hidden; that is the page's own "the app
+	// is up" signal, and the only one - the wasm module never tells the
+	// document that it has started.
+	_, err = a.page.WaitForFunction(`() => document.getElementById('loader')?.classList.contains('hidden') === true`, nil,
 		playwright.PageWaitForFunctionOptions{Timeout: new(float64(bootTimeout.Milliseconds()))})
 	must(a.t, err)
 	time.Sleep(3 * time.Second)

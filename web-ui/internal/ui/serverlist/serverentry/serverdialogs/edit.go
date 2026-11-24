@@ -1,7 +1,6 @@
 // Package serverdialogs holds the dialogs a server card opens: the overview
 // with the parameters, the raw .conf viewer, and the editor for the settings
 // that can change without recreating the server.
-
 package serverdialogs
 
 import (
@@ -35,9 +34,11 @@ func ShowEdit(e *env.Env, srv api.Server) {
 	content := container.NewVBox(
 		widgets.Field(lang.L("Endpoint"), endpoint,
 			lang.L("host or address clients connect to; empty follows the detected public IP")),
-		widgets.Field(lang.L("DNS"), dns,
+		// DNS and MTU are the same three letters in every language and are
+		// not translated, so they are not run through lang.L.
+		widgets.Field("DNS", dns,
 			lang.L("comma-separated resolver addresses written into new client configs")),
-		widgets.Field(lang.L("MTU"), mtu,
+		widgets.Field("MTU", mtu,
 			lang.L("stop the server before changing this: the interface is re-created with it")),
 		widgets.ToggleRow(lang.L("Start this server with the container"), autoStart),
 	)

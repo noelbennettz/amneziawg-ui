@@ -47,6 +47,17 @@ func (b *Button) Cursor() desktop.Cursor {
 	return desktop.PointerCursor
 }
 
+// buttonMinSize is the M3 target a button may not shrink below: 40 points
+// tall, and 40 wide for a label-less icon button. Fyne's own minimum is 36, so
+// an icon action on a phone was a target a finger can miss.
+const buttonMinSize float32 = 40
+
+// MinSize keeps the stock button's text measurement and floors the result at
+// the M3 target size.
+func (b *Button) MinSize() fyne.Size {
+	return b.Button.MinSize().Max(fyne.NewSize(buttonMinSize, buttonMinSize))
+}
+
 // IconButton is a square, label-less button for a single glyph: the trailing
 // action of a list row or a card header.
 func IconButton(icon fyne.Resource, tapped func()) *Button {
@@ -248,7 +259,7 @@ func MonoText(t *canvas.Text) *canvas.Text {
 // which is what lets the form fold into one column.
 func Hint(text string) fyne.CanvasObject {
 	note := NewParagraph(text, style.SizeCaption, style.Muted,
-		fyne.TextStyle{Italic: true}, 180)
+		fyne.TextStyle{}, 180)
 	return container.NewPadded(note)
 }
 
@@ -262,9 +273,11 @@ func SmallIcon(icon fyne.Resource) fyne.CanvasObject {
 	return container.New(&insetLayout{h: 0, v: 0, right: 4}, box)
 }
 
-// MutedNote is an italic, word-wrapped explanation under a field or a grid.
+// MutedNote is a word-wrapped explanation under a field or a grid. It is set in
+// the same regular face as the hinted caption above it: the M3 type scale has
+// no italic, and a slanted face would vanish anyway in the CJK one.
 func MutedNote(text string) fyne.CanvasObject {
-	return NewParagraph(text, style.SizeLabel, style.Muted, fyne.TextStyle{Italic: true}, 220)
+	return NewParagraph(text, style.SizeLabel, style.Muted, fyne.TextStyle{}, 220)
 }
 
 // ── Chips, badges, meters ────────────────────────────────────────────────────
@@ -282,10 +295,10 @@ func Badge(text string, c color.NRGBA) fyne.CanvasObject {
 	return pill(text, style.WithAlpha(c, 0x1f), c, nil)
 }
 
-// Pill wraps any content in the rounded, filled shape a chip is.
+// Pill wraps any content in the rounded, filled shape of an M3 chip.
 func Pill(bg color.NRGBA, content fyne.CanvasObject) fyne.CanvasObject {
 	background := canvas.NewRectangle(bg)
-	background.CornerRadius = style.RadiusLG
+	background.CornerRadius = style.RadiusXS
 	return container.NewStack(background, container.New(&chipInset{}, content))
 }
 
@@ -329,15 +342,25 @@ func pill(text string, bg, fg color.NRGBA, leading fyne.CanvasObject) fyne.Canva
 
 // ── Switch ───────────────────────────────────────────────────────────────────
 
-// Switch is the M3 switch: a rounded track and a thumb that slides across it.
-// Fyne has no switch of its own, and the checkbox it does have reads as a form
-// control rather than as the settings toggle this page is imitating.
+// Switch is the M3 switch: a 52x32 track with a 24-point handle, and the
+// outline M3 gives the unselected one. Fyne has no switch of its own, and the
+// checkbox it does have reads as a form control rather than as the settings
+// toggle this page is imitating.
 type Switch struct {
 	widget.BaseWidget
 
 	checked   bool
 	onChanged func(bool)
 }
+
+// The M3 switch geometry: the handle sits 4 points inside the track, which
+// leaves the same gap on either side of it.
+const (
+	switchWidth  float32 = 52
+	switchHeight float32 = 32
+	switchThumb  float32 = 24
+	switchInset  float32 = (switchHeight - switchThumb) / 2
+)
 
 // NewSwitch builds a switch in the given state; onChanged runs on every tap.
 func NewSwitch(checked bool, onChanged func(bool)) *Switch {
@@ -374,11 +397,11 @@ func (s *Switch) Cursor() desktop.Cursor { return desktop.PointerCursor }
 func (s *Switch) CreateRenderer() fyne.WidgetRenderer {
 	r := &switchRenderer{s: s}
 	r.track = canvas.NewRectangle(style.SurfaceHigh)
-	r.track.CornerRadius = 16
-	r.track.StrokeColor = style.Border
+	r.track.CornerRadius = switchHeight / 2
+	r.track.StrokeColor = style.Outline
 	r.track.StrokeWidth = 2
-	r.thumb = canvas.NewRectangle(style.Muted)
-	r.thumb.CornerRadius = 10
+	r.thumb = canvas.NewRectangle(style.Outline)
+	r.thumb.CornerRadius = switchThumb / 2
 	r.objects = []fyne.CanvasObject{r.track, r.thumb}
 	r.Refresh()
 	return r
@@ -394,27 +417,30 @@ type switchRenderer struct {
 func (r *switchRenderer) Layout(size fyne.Size) {
 	r.track.Resize(size)
 	r.track.Move(fyne.NewPos(0, 0))
-	const inset float32 = 5
-	thumbSize := size.Height - inset*2
-	x := inset
+
+	x := switchInset
 	if r.s.checked {
-		x = size.Width - inset - thumbSize
+		x = size.Width - switchInset - switchThumb
 	}
-	r.thumb.Resize(fyne.NewSize(thumbSize, thumbSize))
-	r.thumb.Move(fyne.NewPos(x, inset))
+	r.thumb.Resize(fyne.NewSize(switchThumb, switchThumb))
+	r.thumb.Move(fyne.NewPos(x, (size.Height-switchThumb)/2))
 }
 
-func (r *switchRenderer) MinSize() fyne.Size { return fyne.NewSize(48, 28) }
+func (r *switchRenderer) MinSize() fyne.Size { return fyne.NewSize(switchWidth, switchHeight) }
 
 func (r *switchRenderer) Refresh() {
 	if r.s.checked {
+		// The selected track is filled and loses its outline, exactly as the
+		// M3 switch does; keeping the stroke would draw a rim in a second
+		// shade around the accent.
 		r.track.FillColor = style.Primary
-		r.track.StrokeColor = style.Primary
+		r.track.StrokeWidth = 0
 		r.thumb.FillColor = style.OnPrimary
 	} else {
 		r.track.FillColor = style.SurfaceHigh
-		r.track.StrokeColor = style.Border
-		r.thumb.FillColor = style.Muted
+		r.track.StrokeColor = style.Outline
+		r.track.StrokeWidth = 2
+		r.thumb.FillColor = style.Outline
 	}
 	r.track.Refresh()
 	r.thumb.Refresh()
