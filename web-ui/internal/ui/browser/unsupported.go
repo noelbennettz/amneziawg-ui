@@ -31,6 +31,10 @@ func CSPNonce() string {
 	panic(unsupportedPlatform)
 }
 
+func AssetPath(string) string {
+	panic(unsupportedPlatform)
+}
+
 func OpenURL(string) {
 	panic(unsupportedPlatform)
 }

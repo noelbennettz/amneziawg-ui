@@ -2,6 +2,7 @@ package frontend
 
 import (
 	"html"
+	"sort"
 	"strings"
 
 	"amneziawg-web-ui/internal/version"
@@ -33,8 +34,8 @@ const loaderHTML = `<!DOCTYPE html>
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="dark">
 <meta name="theme-color" content="#131314">
-{{csp}}<title>AmneziaWG Web UI</title>
-<link rel="icon" type="image/png" href="icon.png">
+{{csp}}{{assets}}<title>AmneziaWG Web UI</title>
+<link rel="icon" type="image/png" href="{{icon}}">
 <style>
 * { box-sizing: border-box; }
 html, body { margin: 0; padding: 0; height: 100%; background: #131314; -webkit-tap-highlight-color: transparent; }
@@ -211,7 +212,7 @@ body {
 			};
 
 		status.textContent = text.loading;
-		instantiate(fetch("bundle.wasm"), go.importObject).then(function (result) {
+		instantiate(fetch("{{bundle}}"), go.importObject).then(function (result) {
 			watch();
 			go.run(result.instance);
 		}).catch(function () {
@@ -229,7 +230,7 @@ body {
 			return;
 		}
 		var script = document.createElement("script");
-		script.src = "wasm_exec.js";
+		script.src = "{{wasmexec}}";
 		script.addEventListener("load", run);
 		script.addEventListener("error", function () { fail(text.failed); });
 		document.head.appendChild(script);
@@ -247,19 +248,61 @@ body {
 `
 
 // loaderPage is the page served for "/" and "/index.html", with the process's
-// script nonce in place and the build's release under the app's name.
+// script nonce in place, the build's release under the app's name, and every
+// asset it names carrying the version the server answers it with.
 //
 // An empty nonce - a development build, or a server started without one -
 // leaves the attribute off; the policy then allows inline scripts, which is the
 // same fallback it always had.
-func loaderPage(nonce string) []byte {
+func loaderPage(nonce string, tags map[string]string) []byte {
 	page := loaderHTML
 
 	page = strings.ReplaceAll(page, "{{csp}}", cspMeta(nonce))
+	page = strings.ReplaceAll(page, "{{assets}}", assetMetas(tags))
 	page = strings.ReplaceAll(page, "{{nonce}}", nonceAttribute(nonce))
 	page = strings.ReplaceAll(page, "{{version}}", versionLine())
+	page = strings.ReplaceAll(page, "{{icon}}", versioned("icon.png", tags))
+	page = strings.ReplaceAll(page, "{{wasmexec}}", versioned("wasm_exec.js", tags))
+	page = strings.ReplaceAll(page, "{{bundle}}", versioned("bundle.wasm", tags))
 
 	return []byte(page)
+}
+
+// versioned is path with the "?v=" that names the bytes behind it, and path
+// itself when this build has no tag for it. The page is the one place the
+// asset names are written, so it is where the versions have to be attached;
+// see Assets.cache for what the server does with them.
+func versioned(path string, tags map[string]string) string {
+	tag, ok := tags["/"+path]
+	if !ok || tag == "" {
+		return path
+	}
+	return path + "?v=" + versionOf(tag)
+}
+
+// assetMetas publishes the version of every face to the wasm side. The page
+// names the bundle and the runtime itself, but the CJK faces are fetched from
+// the module once it runs, and this is where both ends agree on which bytes
+// are current - the same trick as the CSP nonce meta above.
+func assetMetas(tags map[string]string) string {
+	paths := make([]string, 0, len(tags))
+	for path := range tags {
+		if strings.HasPrefix(path, "/font/") && !strings.HasSuffix(path, ".gz") {
+			paths = append(paths, path)
+		}
+	}
+	if len(paths) == 0 {
+		return ""
+	}
+	sort.Strings(paths)
+
+	var b strings.Builder
+	for _, path := range paths {
+		b.WriteString(`<meta name="asset-version" content="`)
+		b.WriteString(html.EscapeString("/" + versioned(strings.TrimPrefix(path, "/"), tags)))
+		b.WriteString(`">` + "\n")
+	}
+	return b.String()
 }
 
 // cspMeta publishes the nonce to the wasm side, which reads it back for the

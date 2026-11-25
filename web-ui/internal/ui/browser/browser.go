@@ -63,6 +63,26 @@ func CSPNonce() string {
 	return meta.Call("getAttribute", "content").String()
 }
 
+// AssetPath is the path to fetch for path: the one the page published when it
+// carries the asset's version - "/font/NotoSansSC-Regular.otf?v=<hash>" - and
+// path itself when it names none, as the page "fyne package" writes and a
+// development build do.
+//
+// The server answers a versioned path with a year-long immutable cache, because
+// the bytes behind it cannot change without the URL changing. Without the
+// version a CJK browser would revalidate 15 MB of faces on every page load,
+// which is what this exists to avoid; see internal/frontend.
+func AssetPath(path string) string {
+	metas := js.Global().Get("document").Call("querySelectorAll", `meta[name="asset-version"]`)
+	for i := 0; i < metas.Length(); i++ {
+		content := metas.Index(i).Call("getAttribute", "content").String()
+		if strings.HasPrefix(content, path+"?") {
+			return content
+		}
+	}
+	return path
+}
+
 // OpenURL asks the browser to follow a link in a new tab. Used for the
 // download endpoints, which reply with a Content-Disposition header.
 func OpenURL(url string) {

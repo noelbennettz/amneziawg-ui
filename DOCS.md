@@ -302,9 +302,12 @@ address automatically.
     time (`WEB_UI_AUDIT_RETENTION_HOURS`)
 *   `internal/frontend` — serving the frontend off disk: the gzip bundle and the
     CJK faces beside it, the loading page (written by this package, in the
-    panel's palette and its six languages), ETag validators (so the browser
-    neither keeps a stale bundle after an update nor re-downloads the 12 MB
-    bundle on every load), response compression
+    panel's palette and its six languages), content hashes that serve as both
+    ETag validators and URL versions: the page names every asset as
+    `?v=<hash>`, those answers are immutable for a year, and a refresh reads
+    them from the browser's cache instead of revalidating 12 MB of wasm and
+    15 MB of faces — the bare names stay `no-cache` so an upgrade is never
+    missed, response compression
 *   `internal/publicip`, `internal/netutil`, `internal/atomicfile` — small
     helper packages: public address detection, subnet arithmetic, atomic file
     writes

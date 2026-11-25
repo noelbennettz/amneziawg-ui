@@ -115,6 +115,12 @@ faces and downloads a 12 MB bundle instead of 26. Consequences worth knowing:
 - `internal/frontend` gzips both files next to the bundle in the image and walks
   into `font/` for the packing and the ETags; `Open` also registers `.otf` as
   `font/otf`, because Go's mime table calls it an OpenDocument formula template
+- both faces are fetched by the version the loading page publishes in its
+  `<meta name="asset-version">` (`/font/NotoSansSC-Regular.otf?v=<hash>`), so
+  the server can promise a year of immutable caching. The same version names
+  the bundle and the runtime in the page itself. Without it every refresh
+  revalidated 15 MB of faces and 12 MB of wasm; the bare names are still
+  `no-cache` + ETag, so a page that asks for one cannot end up on stale bytes
 - italic requests get the regular face - Noto Sans SC has no italic cut, and a
   slanted English hint next to an unreadable Chinese one is worse than no slant
   at all. Nothing in the panel asks for one any more: the M3 type scale has no
@@ -141,6 +147,11 @@ break, so it is written down here:
   touch handling in `web-ui/internal/ui/browser` looks it up by that id
 - the `<meta name="csp-nonce">` is what the bundle reads back for the styles and
   scripts it injects (see `web-ui/internal/ui/browser`)
+- each `<meta name="asset-version">` names one asset with its content version
+  (`/font/NotoSansSC-Regular.otf?v=<hash>`); the wasm side fetches the faces
+  under exactly that path (`browser.AssetPath`), which is what makes the
+  server's year-long immutable cache on versioned URLs safe. The page itself
+  names `bundle.wasm`, `wasm_exec.js` and `icon.png` the same way
 
 A fyne release that changes any of those shows up as a loader that never goes
 away, which is why the frontend's browser tests wait for the canvas.

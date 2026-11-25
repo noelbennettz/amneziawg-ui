@@ -29,6 +29,8 @@ func newApp(t *testing.T) *fiber.App {
 	files := fstest.MapFS{
 		"bundle.wasm.gz":                 {Data: gzipped(t, "\x00asm")},
 		"font/NotoSansSC-Regular.otf.gz": {Data: gzipped(t, "\x00otf")},
+		"icon.png":                       {Data: []byte("\x89PNG")},
+		"wasm_exec.js":                   {Data: []byte("// Go")},
 	}
 	app := fiber.New()
 	assets := Open(files, "")
@@ -94,6 +96,66 @@ func TestAssetsRevalidateByContentHash(t *testing.T) {
 		if resp.StatusCode != http.StatusNotModified {
 			t.Errorf("%s with matching tag: %d, want 304", path, resp.StatusCode)
 		}
+	}
+}
+
+// The page has to name the assets it loads with the version the server answers
+// them with, or a refresh revalidates 12 MB of wasm and 15 MB of faces instead
+// of reading them from the browser's cache. The bundle and the runtime are the
+// page's own references; the faces are published as metas for the wasm side.
+func TestLoaderNamesVersionedAssets(t *testing.T) {
+	app := newApp(t)
+	body, _ := io.ReadAll(get(t, app, "/", nil).Body)
+	page := string(body)
+
+	for _, path := range []string{"/bundle.wasm", "/wasm_exec.js", "/icon.png", "/font/NotoSansSC-Regular.otf"} {
+		tag := get(t, app, path, nil).Header.Get("ETag")
+		if tag == "" {
+			t.Fatalf("%s has no tag to name it with", path)
+		}
+		want := strings.TrimPrefix(path, "/") + "?v=" + versionOf(tag)
+		if !strings.Contains(page, want) {
+			t.Errorf("the page does not name %s:\n%s", want, page)
+		}
+	}
+
+	if !strings.Contains(page, `<meta name="asset-version" content="/font/NotoSansSC-Regular.otf?v=`) {
+		t.Errorf("the face is not published for the wasm side:\n%s", page)
+	}
+	if strings.Contains(page, "{{") {
+		t.Errorf("the page still holds an unresolved placeholder:\n%s", page)
+	}
+}
+
+// A URL that names the content is what a refresh asks for, and the answer can
+// be kept for as long as the browser likes - the bytes behind that URL cannot
+// change. A tag from another build (or no tag at all) is not that promise, so
+// it keeps the revalidating answer the bare names get.
+func TestVersionedAssetIsImmutable(t *testing.T) {
+	app := newApp(t)
+
+	tag := get(t, app, "/font/NotoSansSC-Regular.otf", nil).Header.Get("ETag")
+	version := versionOf(tag)
+
+	fresh := get(t, app, "/font/NotoSansSC-Regular.otf?v="+version, map[string]string{"Accept-Encoding": "gzip"})
+	if fresh.StatusCode != http.StatusOK || fresh.Header.Get("Cache-Control") != immutableCacheControl {
+		t.Errorf("versioned font: %d %q", fresh.StatusCode, fresh.Header.Get("Cache-Control"))
+	}
+	if fresh.Header.Get("ETag") != tag {
+		t.Errorf("versioned font tag = %q, want %q", fresh.Header.Get("ETag"), tag)
+	}
+
+	again := get(t, app, "/font/NotoSansSC-Regular.otf?v="+version, map[string]string{"If-None-Match": tag})
+	if again.StatusCode != http.StatusNotModified || again.Header.Get("Cache-Control") != immutableCacheControl {
+		t.Errorf("revalidating a versioned font: %d %q", again.StatusCode, again.Header.Get("Cache-Control"))
+	}
+
+	stale := get(t, app, "/font/NotoSansSC-Regular.otf?v=0000000000000000", nil)
+	if stale.StatusCode != http.StatusOK || stale.Header.Get("Cache-Control") != "no-cache" {
+		t.Errorf("stale version: %d %q", stale.StatusCode, stale.Header.Get("Cache-Control"))
+	}
+	if bare := get(t, app, "/font/NotoSansSC-Regular.otf", nil); bare.Header.Get("Cache-Control") != "no-cache" {
+		t.Errorf("bare font: %q", bare.Header.Get("Cache-Control"))
 	}
 }
 

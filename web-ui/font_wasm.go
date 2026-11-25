@@ -13,6 +13,7 @@ import (
 
 	"github.com/jeandeaual/go-locale"
 
+	"amneziawg-web-ui/web-ui/internal/ui/browser"
 	"amneziawg-web-ui/web-ui/internal/ui/style"
 )
 
@@ -60,6 +61,12 @@ func installCJKFaces() error {
 // resolve against. The browser supplies the session cookie for the same origin
 // and decompresses the gzip the image stores the files in, so what arrives here
 // is the font itself.
+//
+// The path carries the version the loader page published for it, which is what
+// lets the server answer with a year-long immutable cache: a second page load
+// reads the faces from the browser's cache instead of revalidating 15 MB. A
+// page that names none - a development build - gets the bare path and the
+// ordinary no-cache answer.
 func fetchFaces() (regular, bold []byte, err error) {
 	origin := js.Global().Get("location").Get("origin").String()
 
@@ -74,7 +81,7 @@ func fetchFaces() (regular, bold []byte, err error) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			faces[i], errs[i] = getBytes(ctx, origin+path)
+			faces[i], errs[i] = getBytes(ctx, origin+browser.AssetPath(path))
 		}()
 	}
 	wg.Wait()

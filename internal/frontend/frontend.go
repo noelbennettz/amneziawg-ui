@@ -27,6 +27,10 @@ import (
 type Assets struct {
 	files  fs.FS
 	packed map[string]string // request path -> .gz file answering it
+	// tags maps a request path to the weak validator of the bytes it serves.
+	// The same digest is the version in the URLs the loader page writes, so
+	// the page and the response headers cannot disagree about what is current.
+	tags map[string]string
 	// loader is the page served for "/" and "/index.html", with the process's
 	// nonce written into it. This package writes it; see loader.go.
 	loader []byte
@@ -47,12 +51,32 @@ func Open(files fs.FS, nonce string) *Assets {
 	// handler answer with after this.
 	mime.AddExtensionType(".otf", "font/otf") //nolint:errcheck // the extension is valid
 
-	return &Assets{
+	a := &Assets{
 		files:  files,
 		packed: packedAssets(files, "."),
-		loader: loaderPage(nonce),
+		tags:   fileTags(files),
 		nonce:  nonce,
 	}
+
+	// A packed asset is requested under the name it will have once unpacked,
+	// so its tag has to answer to that path too. The tag is weak, which is
+	// exactly what lets one identifier stand for both encodings of the bundle.
+	for requested := range a.packed {
+		a.tags[requested] = a.tags[requested+".gz"]
+	}
+
+	// The loader page is not served as it sits on disk: it is rewritten here
+	// around the nonce and the asset versions, so its validator has to be the
+	// hash of the bytes that go on the wire. A tag taken from the file would
+	// survive a restart, a browser would revalidate against it, and the 304
+	// would hand back a page whose nonce the new policy does not name - so the
+	// panel would load nothing at all until someone forced a reload.
+	a.loader = loaderPage(nonce, a.tags)
+	loaderTag := weakTag(digest(a.loader))
+	a.tags["/index.html"] = loaderTag
+	a.tags["/"] = loaderTag
+
+	return a
 }
 
 // Nonce is what the security headers have to name in the page's policy. Empty
@@ -199,67 +223,34 @@ func (g gzipFile) Close() error {
 	return err
 }
 
-// cache makes the browser revalidate the frontend instead of caching it
-// blindly. The file names are the same in every release, so without a
-// content-derived validator a browser would happily keep running the
-// previous bundle after an upgrade - and re-downloading ~50 MB of wasm on
-// every page load is not an acceptable alternative.
+// immutableCacheControl is what an asset is answered with when the request
+// names the content it wants (see versionOf). The URL changes with the bytes,
+// so a year is safe: a refresh costs nothing, and an upgrade asks for a URL the
+// browser has never seen instead of reusing the old bytes.
+const immutableCacheControl = "public, max-age=31536000, immutable"
+
+// cache gives every asset a content-derived validator and decides how long a
+// browser may keep it.
+//
+// The bare file names are the same in every release - bundle.wasm, the faces
+// under font/ - so they are answered with no-cache and an ETag: the browser
+// keeps its copy but has to ask, and a 304 means an upgrade is picked up
+// without ever re-downloading 12 MB. An URL that carries the version (the
+// loader page writes those, and the wasm side reads them from the page's
+// metas) names one set of bytes, so that answer is immutable for a year and a
+// page refresh does not touch the network at all.
 func (a *Assets) cache() fiber.Handler {
-	tags := map[string]string{}
-
-	// Every file, in every directory: the faces under font/ are revalidated
-	// like the bundle is, so a browser that has one keeps it across an upgrade
-	// unless the bytes really changed.
-	err := fs.WalkDir(a.files, ".", func(name string, entry fs.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			log.Printf("frontend cache: %s: %v", name, walkErr)
-			return nil
-		}
-		if entry.IsDir() {
-			return nil
-		}
-		tag, err := fileETag(a.files, name)
-		if err != nil {
-			log.Printf("frontend cache: %s: %v", name, err)
-			return nil
-		}
-		tags["/"+name] = tag
-		return nil
-	})
-	if err != nil {
-		log.Printf("frontend cache: %v", err)
-		return func(c fiber.Ctx) error { return c.Next() }
-	}
-
-	// A packed asset is requested under the name it will have once unpacked,
-	// so its tag has to answer to that path too. The tag is weak, which is
-	// exactly what lets one identifier stand for both encodings of the bundle.
-	for requested := range a.packed {
-		tags[requested] = tags[requested+".gz"]
-	}
-	tags["/"] = tags["/index.html"]
-
-	// The loader page is not served as it sits on disk: it is rewritten at
-	// start-up around a nonce, and that nonce changes when the process
-	// restarts. Its validator therefore has to be the hash of the bytes that
-	// go on the wire. A tag taken from the file would survive a restart, a
-	// browser would revalidate against it, and the 304 would hand back a page
-	// whose nonce the new policy does not name - so the panel would load
-	// nothing at all until someone forced a reload.
-	if a.loader != nil {
-		sum := sha256.Sum256(a.loader)
-		tag := weakTag(sum[:])
-		tags["/index.html"] = tag
-		tags["/"] = tag
-	}
-
 	return func(c fiber.Ctx) error {
-		tag, ok := tags[c.Path()]
+		tag, ok := a.tags[c.Path()]
 		if !ok || tag == "" || c.Method() != fiber.MethodGet {
 			return c.Next()
 		}
 
-		c.Set(fiber.HeaderCacheControl, "no-cache")
+		if version := c.Query("v"); version != "" && version == versionOf(tag) {
+			c.Set(fiber.HeaderCacheControl, immutableCacheControl)
+		} else {
+			c.Set(fiber.HeaderCacheControl, "no-cache")
+		}
 		c.Set(fiber.HeaderETag, tag)
 		if etagMatches(c.Get(fiber.HeaderIfNoneMatch), tag) {
 			return c.SendStatus(fiber.StatusNotModified)
@@ -278,6 +269,34 @@ func (a *Assets) cache() fiber.Handler {
 	}
 }
 
+// fileTags hashes every file in the tree, in every directory: one walk gives
+// the validator for the bundle and for the faces under font/, which is also the
+// version the loader page writes into their URLs.
+func fileTags(files fs.FS) map[string]string {
+	tags := map[string]string{}
+
+	err := fs.WalkDir(files, ".", func(name string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			log.Printf("frontend cache: %s: %v", name, walkErr)
+			return nil
+		}
+		if entry.IsDir() {
+			return nil
+		}
+		tag, err := fileETag(files, name)
+		if err != nil {
+			log.Printf("frontend cache: %s: %v", name, err)
+			return nil
+		}
+		tags["/"+name] = tag
+		return nil
+	})
+	if err != nil {
+		log.Printf("frontend cache: %v", err)
+	}
+	return tags
+}
+
 // etagMatches reports whether an If-None-Match header covers tag. Browsers
 // echo back what they were sent, but the header is a list and the weak marker
 // is not part of the comparison, so both are handled.
@@ -290,6 +309,18 @@ func etagMatches(header, tag string) bool {
 		}
 	}
 	return false
+}
+
+// versionOf is the value of "?v=" that names an asset: the digest inside the
+// weak tag, without the W/"..." wrapper.
+func versionOf(tag string) string {
+	return strings.TrimSuffix(strings.TrimPrefix(tag, `W/"`), `"`)
+}
+
+// digest is the hash weakTag turns into a validator.
+func digest(data []byte) []byte {
+	sum := sha256.Sum256(data)
+	return sum[:]
 }
 
 func fileETag(files fs.FS, name string) (string, error) {
