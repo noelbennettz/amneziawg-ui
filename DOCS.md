@@ -21,6 +21,30 @@ the panel starts.
   <img src="screenshot.png" alt="Monitoring panel with VPN traffic, CPU, RAM and storage charts, and the create-server form with the IPv4 and IPv6 subnet fields"/>
 </p>
 
+## Contents
+
+- [AmneziaWG 3.1 — the essentials](#amneziawg-31--the-essentials)
+- [Features](#features)
+- [IPv6 and NAT6](#ipv6-and-nat6)
+- [Architecture](#architecture)
+- [Building and running locally](#building-and-running-locally)
+- [API endpoints](#api-endpoints)
+- [Profiling](#profiling)
+- [Deploying in Docker](#deploying-in-docker)
+- [Obfuscation parameters](#obfuscation-parameters)
+- [Logs and monitoring](#logs-and-monitoring)
+- [Backup and restore](#backup-and-restore)
+- [Removing it](#removing-it)
+- [Debugging commands](#debugging-commands)
+- [The login page](#the-login-page)
+- [The session cookie](#the-session-cookie)
+- [The CSRF token](#the-csrf-token)
+- [Security headers](#security-headers)
+- [What a request without credentials gets](#what-a-request-without-credentials-gets)
+- [The admin password](#the-admin-password)
+- [Basic auth for scripts](#basic-auth-for-scripts)
+- [FAQ](#faq)
+
 ## AmneziaWG 3.1 — the essentials
 
 **Every server created here uses the full AmneziaWG 3.x parameter set.** There
