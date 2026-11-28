@@ -380,6 +380,7 @@ address automatically.
 │   ├── wasm/                  # "fyne package" output: loader page + bundle (generated)
 │   ├── main.go                # Application entry: dark theme, window, lifecycle
 │   └── internal/ui/           # The application itself
+├── licenses/                  # Upstream licence text that travels with the tree
 ├── AGENTS.md                  # Repository conventions for coding agents
 ├── e2e/                       # Browser tests on playwright-go, its own Go module (see e2e/README.md)
 │   ├── main_test.go           # TestMain (driver, Chrome), coordinate clicks, REST API checks

@@ -190,6 +190,7 @@ RUN mkdir -p /var/log/amnezia /etc/amnezia/amneziawg
 # install the text; THIRD_PARTY_NOTICES.md names each one with its upstream.
 RUN mkdir -p /usr/share/doc/amneziawg-ui
 COPY LICENSE THIRD_PARTY_NOTICES.md /usr/share/doc/amneziawg-ui/
+COPY licenses/Apache-2.0.txt /usr/share/doc/amneziawg-ui/upstream-mycelium-mesh.Apache-2.0.txt
 COPY web-ui/internal/ui/style/font/LICENSE-OFL.txt /usr/share/doc/amneziawg-ui/NotoSansSC-OFL.txt
 COPY --from=awg /build/amneziawg-go/LICENSE /usr/share/doc/amneziawg-ui/amneziawg-go.LICENSE
 COPY --from=awg-tools /build/amneziawg-tools/COPYING /usr/share/doc/amneziawg-ui/amneziawg-tools.COPYING

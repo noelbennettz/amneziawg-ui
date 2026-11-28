@@ -130,6 +130,17 @@ panel as a network service and its users get the source of the version you run.
 Self-hosting, forking and selling support are fine; withholding your changes
 from the people using them is not.
 
+### Origins
+
+This tree started from
+[mycelium-mesh/amneziawg-ui](https://github.com/mycelium-mesh/amneziawg-ui),
+which is Apache-2.0. The server, the store, the front end, the image build and
+the documentation here have since been rewritten or replaced; the changes are
+substantial, and the repository as a whole is AGPL-3.0. The upstream licence
+text travels with the tree at
+[licenses/Apache-2.0.txt](licenses/Apache-2.0.txt), and its notice requirements
+still apply to whatever part of this code came from there.
+
 What the image ships besides this repository — amneziawg-go, the AmneziaWG
 tools, the Alpine packages and the Go modules — is listed with its version and
 licence in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md), and the texts are in
