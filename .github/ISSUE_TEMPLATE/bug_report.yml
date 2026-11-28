@@ -1,0 +1,135 @@
+name: Bug report
+description: The panel does something other than what the documentation says
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Read [Debugging commands](https://github.com/noelbennettz/amneziawg-ui/blob/main/DOCS.md#debugging-commands)
+        and the [FAQ](https://github.com/noelbennettz/amneziawg-ui/blob/main/DOCS.md#faq)
+        first — "the client says connected and nothing loads" is usually the NAT
+        rules, and the log line names which one is missing.
+
+        A client `.conf`, its private key, the admin password, the admin hash and
+        your public address are not needed to reproduce anything: leave them out.
+        A vulnerability belongs in [private reporting](https://github.com/noelbennettz/amneziawg-ui/security/advisories/new),
+        not here.
+  - type: checkboxes
+    id: preflight
+    attributes:
+      label: Before submitting
+      options:
+        - label: The newest image (`latest`, or the dated tag named below) still
+            has this problem.
+          required: true
+        - label: This is not a bug in amneziawg-go or in the AmneziaWG tools
+            themselves — those belong to their own upstream.
+          required: true
+        - label: This issue contains no client config, private key, password,
+            admin hash or public address I would rather not publish.
+          required: true
+  - type: input
+    id: build
+    attributes:
+      label: Build identity
+      description: |
+        `curl -u admin:<password> http://localhost:54845/api/version`, then paste
+        the JSON without the password. If that answers nothing,
+        `docker inspect --format '{{index .Config.Labels "org.opencontainers.image.version"}}' <container>`.
+      placeholder: '{"version":"c7fc127","commit":"c7fc1277","build_time":"2026-11-19T16:49:46Z","go":"go1.27.x"}'
+    validations:
+      required: true
+  - type: input
+    id: image
+    attributes:
+      label: Image reference and how it was obtained
+      description: Which tag, and whether it was pulled from GHCR or built locally.
+      placeholder: ghcr.io/noelbennettz/amneziawg-ui:2026.11.28, pulled
+    validations:
+      required: true
+  - type: input
+    id: host
+    attributes:
+      label: Host
+      description: Distribution, kernel and architecture of the machine running Docker.
+      placeholder: Ubuntu 24.04, kernel 6.8.0, x86_64
+    validations:
+      required: true
+  - type: dropdown
+    id: compose
+    attributes:
+      label: Compose file
+      description: The command you actually start it with.
+      options:
+        - docker-compose.yml, unmodified
+        - docker-compose.yml plus docker-compose.host.yml (host networking)
+        - docker-compose.example.yml, copied and edited
+        - make run (docker-compose.build.yml, built from source)
+        - Something else
+    validations:
+      required: true
+  - type: dropdown
+    id: stage
+    attributes:
+      label: First step that fails
+      description: Pick the earliest step that does not work; anything after it
+        cannot be trusted yet.
+      options:
+        - The container does not start, or never reports healthy
+        - The panel answers but I cannot log in
+        - Logged in, but the new-server form is rejected
+        - The server is created, but a client never completes a handshake
+        - The client connects, but nothing loads through the tunnel
+        - Traffic works, something else is wrong (DNS, IPv6, speed, the UI)
+        - Not sure which step it is
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: What you did, what you expected, what happened
+      description: |
+        Number the steps and quote the exact message or banner the panel shows.
+        Say what you changed before it started: compose variables, firewall, a
+        reverse proxy, a subnet, a port.
+      placeholder: |
+        1. Created a server with the default port and IPv4 subnet
+        2. Added a client and imported the .conf in the AmneziaVPN app
+        3. The app says connected, but no site loads
+    validations:
+      required: true
+  - type: dropdown
+    id: nat
+    attributes:
+      label: The iptables check
+      description: |
+        `curl -u admin:<password> "<panel>/api/system/iptables-test?server_id=<id>"`
+        — what do the rules and `nat4` / `nat6` say?
+      options:
+        - Every rule Found, nat4/nat6 state ok
+        - Some rules Not found
+        - nat4 or nat6 state is not ok, or uplink/source is missing
+        - The request answers 404 or an error
+        - Not run — the server never gets that far
+        - Not applicable — the symptom is not about traffic
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: |
+        `docker compose logs --tail=200 app`, and `curl -s http://localhost:54845/status`.
+        Both are safe to paste once anything site-specific is removed.
+      render: shell
+    validations:
+      required: true
+  - type: textarea
+    id: extra
+    attributes:
+      label: Anything else
+      description: Ports published on the host, a reverse proxy in front, other
+        containers on the same bridge, or what you already tried.
+    validations:
+      required: false

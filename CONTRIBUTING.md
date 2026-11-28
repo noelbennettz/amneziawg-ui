@@ -7,6 +7,9 @@ few days — the pull request is the queue, and nothing gets lost in it.
 ## Before you write code
 
 Open an issue for anything larger than a documentation fix or an obvious bug.
+The bug form asks for the build identity (`/api/version`), the compose file, the
+iptables check and the first step that failed; without those a report cannot be
+reproduced, and the form is the shortest path to getting it fixed.
 The panel is deliberately small: a feature that pulls in a runtime, a service or
 a JavaScript build step is the wrong shape for it, and it is better to find that
 out before the patch exists.

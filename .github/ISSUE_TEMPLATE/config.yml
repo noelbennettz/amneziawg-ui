@@ -1,0 +1,14 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Debugging commands
+    url: https://github.com/noelbennettz/amneziawg-ui/blob/main/DOCS.md#debugging-commands
+    about: Container status, the iptables check, and the log line that says the NAT rules were not applied.
+  - name: FAQ
+    url: https://github.com/noelbennettz/amneziawg-ui/blob/main/DOCS.md#faq
+    about: Changing the password, updating, the YOUR_SERVER_IP warning, HTTPS and reverse proxies.
+  - name: Verifying a published image
+    url: https://github.com/noelbennettz/amneziawg-ui/blob/main/DOCS.md#verifying-a-published-image
+    about: cosign signature and SPDX bill of materials, checked against the image digest.
+  - name: Report a vulnerability
+    url: https://github.com/noelbennettz/amneziawg-ui/security/advisories/new
+    about: Private advisory only. Never open a public issue with technical detail.

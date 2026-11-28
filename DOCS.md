@@ -400,6 +400,7 @@ address automatically.
 │   ├── setup_iptables.sh
 │   └── cleanup_iptables.sh
 ├── .github/workflows/docker.yml # CI: building and publishing the image
+├── .github/ISSUE_TEMPLATE/    # Bug report, feature request, and the links they point at
 ├── Dockerfile                 # Multi-stage build: the Go binary + pinned amneziawg-go and amneziawg-tools
 ├── docker-compose.yml         # Base compose file (runs the ready image, no build)
 ├── docker-compose.build.yml   # Overlay that adds `build: .` (used by `make run`)
@@ -1526,6 +1527,10 @@ Three details the table does not show:
 
 ## Debugging commands
 
+If the answer is not below, open a bug report: the form asks for the build
+identity, the compose file and the first step that failed, which is most of what
+a report needs before anything can be reproduced.
+
 ### Check the server status
 
 `curl -u admin:<password> http://localhost:54845/api/system/status`
@@ -1905,5 +1910,8 @@ ports.
 
 # Support
 
-Support is NOT provided, and regular updates are not planned. Reported issues
-may be fixed as time permits.
+There is no paid support and no service-level promise. Bug reports are read and
+fixed as time permits, and the issue forms ask for the build identity, the
+compose file, the iptables check and the first step that failed — a report
+without them costs a round trip before anyone can reproduce it. Security
+problems go to [SECURITY.md](SECURITY.md), never to a public issue.

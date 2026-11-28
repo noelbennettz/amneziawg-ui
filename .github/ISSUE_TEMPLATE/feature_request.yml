@@ -1,0 +1,60 @@
+name: Feature request
+description: Propose a change to the panel, its documentation or its build
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        The panel is deliberately one container: a Go binary with a WebAssembly
+        front end, no Node.js, no nginx, no supervisor and no database server
+        beside it, with the tunnel in userspace. A proposal that needs one of
+        those is the wrong shape for this project, not a detail to negotiate.
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: Scope
+      options:
+        - label: It still runs as one container, with nothing else to deploy.
+          required: true
+        - label: It keeps the tunnel in userspace (amneziawg-go), with no kernel
+            module and no SYS_MODULE.
+          required: true
+        - label: It is about AmneziaWG. Plain WireGuard, OpenVPN, VLESS and
+            subscription formats are separate products.
+          required: true
+        - label: It sends nothing home — no telemetry, no analytics, no phone-home
+            of any kind.
+          required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem does it solve?
+      description: The situation where the panel gets in your way, rather than
+        the feature you already have in mind.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What should happen instead?
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: What did you try or consider?
+      description: A workaround, another panel, or a reason the current behaviour
+        exists.
+    validations:
+      required: false
+  - type: dropdown
+    id: implement
+    attributes:
+      label: Would you write it?
+      options:
+        - Yes, with guidance
+        - Yes, I have already started
+        - No, I am only proposing the idea
+    validations:
+      required: true
