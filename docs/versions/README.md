@@ -28,8 +28,10 @@ What does identify a build:
 
 - **The tag.** `latest` moves with every push to `main`. The date tag
   (`2026.11.11`) is the day the build was made, and a second build on the same
-  day replaces it - the registry holds one image per tag. To keep one image for
-  good, pin its digest, not its date.
+  day replaces it - the registry holds one image per tag. The package keeps only
+  the newest build: older versions, digests included, are deleted, so the way to
+  hold on to a build is `docker save` before the next one, and the way back is
+  rebuilding the commit `/api/version` names.
 - **The signature.** Every published image is signed keylessly by the workflow
   that built it, and `cosign verify` names the commit's workflow run —
   [Verifying a published image](../../DOCS.md#verifying-a-published-image).

@@ -118,10 +118,11 @@ matter behind a proxy.
 | [`.env.example`](.env.example) | Every environment variable with its default |
 | [`docker-compose.example.yml`](docker-compose.example.yml) | The same service with every compose key and variable commented |
 
-Dated image tags, one per build, are on the
-[container package](https://github.com/noelbennettz/amneziawg-ui/pkgs/container/amneziawg-ui);
-pinning the digest of one turns an upgrade into a decision. The date tag alone
-is not a pin: a second push on the same day replaces it.
+The [container package](https://github.com/noelbennettz/amneziawg-ui/pkgs/container/amneziawg-ui)
+keeps one build: `latest`, the date of that build, and the signature that belongs
+to it. Older versions are deleted, so neither an old date nor an old digest stays
+pullable — to go back, rebuild the commit `/api/version` reports. The date tag is
+not a pin either: a second push on the same day replaces it.
 
 ## Licence
 

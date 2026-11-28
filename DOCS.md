@@ -1005,12 +1005,14 @@ that `block` and `mutex` are always empty without
 ## Deploying in Docker
 
 CI builds and publishes the image to GitHub Container Registry on every push to
-`main` (see `.github/workflows/docker.yml`). Each build publishes two tags: a
-dated one (`2026.11.11`, the day the build was made) and `latest`, which always
-points at the newest commit on main. A day with several pushes moves that day's
-tag — the registry holds one image per tag — so pinning a dated tag is how an
-upgrade becomes a decision instead of a restart. A `v*.*.*` git tag does not
-start a build and produces no `3.1` / `3` images. The image is
+`main` (see `.github/workflows/docker.yml`). Each build publishes a dated tag
+(`2026.11.11`, the day the build was made) and `latest`, which always points at
+the newest commit on main; a second push on the same day moves that day's tag,
+because the registry holds one image per tag. The package keeps only that newest
+build — an older version and its signature are deleted — so there is nothing to
+pin: to stay on a version, save the image locally (`docker save`) before the next
+build, and to go back, rebuild the commit `/api/version` names. A `v*.*.*` git
+tag does not start a build and produces no `3.1` / `3` images. The image is
 `ghcr.io/<owner>/<repository>`, built with the workflow's built-in
 `GITHUB_TOKEN` — no secret has to be configured. Every build is also signed and
 accompanied by an SBOM: see
@@ -1110,7 +1112,7 @@ spelled out and the optional ones commented. What each key does:
 
 | Key | Meaning |
 | --- | --- |
-| `image` | The image to run. `${IMAGE:-ghcr.io/noelbennettz/amneziawg-ui:latest}` lets `make run` and `make deploy` substitute their own build; pin a dated tag (`…:2026.11.18`) to keep an upgrade a decision |
+| `image` | The image to run. `${IMAGE:-ghcr.io/noelbennettz/amneziawg-ui:latest}` lets `make run` and `make deploy` substitute their own build; only the newest build is kept, so `docker save` the image locally if an upgrade has to wait |
 | `ports` | `"host address:host port:container port"`. Naming the host address (`127.0.0.1:54845:54845/tcp`) binds that address only — the usual setup behind a local TLS proxy. A UDP range (`54844-54864:54844-54864/udp`) publishes several servers at once |
 | `environment` / `env_file` | The variables from the table above. `.env` is optional (`required: false`) because every one of them has a default; when no password is set, one is generated on the first start and written to `/etc/amnezia/first-run-password` |
 | `volumes` | `/etc/amnezia` holds `web_config.json` and `audit.log`, plus the servers' `.conf` files under `amneziawg/`, `suspended/` included, and `admin.hash` (and `first-run-password` until the first login). A named volume or a host directory both work; this is the only state to back up |
@@ -1852,12 +1854,13 @@ machine, start the container, and the servers and clients come up as they were.
 ### How do I update?
 
 `docker compose pull && docker compose up -d` from the directory holding the
-compose file. Pinning the dated tag (`…:2026.11.11`) instead of `latest` turns
-an upgrade into a decision. State is untouched, and the container brings the
-servers it finds back up on its own; VPN clients reconnect by themselves. A
-browser tab left open from the previous version can still read, but its writes
-are refused until it is reloaded, because the old bundle never sends the CSRF
-token the new one expects.
+compose file. The package keeps only the newest build, so an upgrade that has to
+wait means saving the image you run now (`docker save`) and loading it again
+later; an older tag or digest will not be there. State is untouched, and the
+container brings the servers it finds back up on its own; VPN clients reconnect
+by themselves. A browser tab left open from the previous version can still read,
+but its writes are refused until it is reloaded, because the old bundle never
+sends the CSRF token the new one expects.
 
 > [!IMPORTANT]
 > **Breaking change: the base64(SHA-256) password hash no longer starts.** A
