@@ -5,16 +5,17 @@
 Open a private report with GitHub's *Report a vulnerability* button on the
 repository's Security tab. That is a draft security advisory: it reaches the
 maintainer, stays private until a fix is out, and gives you a place to attach a
-proof of concept. If the form is not available to you, mail the address on the
-maintainer's GitHub profile, with the same contents.
+proof of concept. If that form is not available to you, open a normal issue whose
+title is exactly `Security contact request` and whose body says nothing about the
+technical details — a maintainer will open a private channel there.
 
 Please do not open a public issue for anything that lets someone into a panel
 without the password, or lets a client reach something over the tunnel that it
 should not.
 
-Expect an acknowledgement within a few days. This is a one-person project
-maintained alongside a full-time job, so a fix may take longer than the report;
-the advisory is where the timetable lives.
+There is no response-time guarantee: this is a one-person project maintained
+alongside a full-time job. Reports are read and answered in the order they
+arrive, and the advisory is where the timetable lives.
 
 ## Supported versions
 
